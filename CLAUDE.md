@@ -25,7 +25,7 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 
 ## Architecture
 
-- **Vercel, no framework.** `api/*.ts` are thin Node functions using Web `Request`/`Response` (`export async function GET/POST`). All logic lives in `src/`. Region `fra1` (next to Supabase). Hobby with Fluid compute allows up to 300 s; the M2 webhook will set `maxDuration: 60` with a 120 s chat lease (SPEC §3: lease = maxDuration + 60 s).
+- **Vercel, no framework.** `api/*.ts` are thin Node functions using Web `Request`/`Response` (`export async function GET/POST`). All logic lives in `src/`. Region `dub1` (next to the Supabase project in eu-west-1). Hobby with Fluid compute allows up to 300 s; the M2 webhook will set `maxDuration: 60` with a 120 s chat lease (SPEC §3: lease = maxDuration + 60 s).
 - **DB.** Supabase used as plain Postgres through Drizzle + postgres-js (`src/db/client.ts`: lazy singleton, `prepare: false`, `max: 1`). Runtime goes through the transaction pooler (6543). Migrations go only through the session pooler (`MIGRATION_DATABASE_URL`). Every table has RLS enabled with no policies, and a db test enforces this. Add tables in `src/db/schema/`, export them from `schema/index.ts`, then run `pnpm db:generate`.
 - **Env.** `src/config/env.ts` has one memoized Zod parser per feature (`dbEnv`, `telegramEnv`, `aiEnv`, `sttEnv`, `cronEnv`), so a script only needs the variables it uses. `APP_TIMEZONE` (`Europe/Rome`) is in `src/config/constants.ts`.
 - **Calendar.** `src/domain/calendar.ts` (Luxon) handles "today" in Rome with a 03:00 day boundary, the plan week from the start date (2026-09-28), and Sat/Sun → no session.

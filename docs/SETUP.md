@@ -8,7 +8,7 @@ Do these steps once. Copy `.env.example` to `.env.local` if you work without Ver
 3. Open a chat with your new bot and press Start. The bot cannot message you before this.
 
 ## 2. Supabase
-1. Create a new project. Choose region EU (Frankfurt).
+1. Create a new project. Choose an EU region (this project is in eu-west-1, Ireland; keep `regions` in vercel.json next to it: `dub1`).
 2. Go to Connect, then Connection string.
 3. Copy the **Transaction pooler** URI (port 6543) to `DATABASE_URL`.
 4. Copy the **Session pooler** URI (port 5432) to `MIGRATION_DATABASE_URL`.
@@ -20,8 +20,8 @@ Do these steps once. Copy `.env.example` to `.env.local` if you work without Ver
 Examples (host depends on your region):
 
 ```
-DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres
-MIGRATION_DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres
+MIGRATION_DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
 ```
 
 ## 3. API keys
