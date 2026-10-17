@@ -4,12 +4,36 @@ import { describe, expect, it } from "vitest";
 import { applyOverrides } from "../../src/plan-import/apply-overrides.js";
 import { buildPlan } from "../../src/plan-import/build-plan.js";
 import { loadEquipment, loadHspuLadder } from "../../src/plan-import/load-seed.js";
+import type { PlanOverrides } from "../../src/plan-import/types.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const rawBytes = readFileSync(resolve(root, "seed/hybrid-strength-plan.json"), "utf8");
 const equipment = loadEquipment(resolve(root, "seed/equipment.json"));
 const hspuLadder = loadHspuLadder(resolve(root, "seed/hspu-ladder.json"));
 const plan = buildPlan(rawBytes, { equipment, hspuLadder });
+const blankPlan = {
+  ...plan,
+  equipment: plan.equipment.map((e) => ({
+    ...e,
+    base_kg: null,
+    step_kg: null,
+    discrete_values: null,
+    bands: null,
+  })),
+  hspu_ladder: plan.hspu_ladder.map((l) =>
+    l.slug === "full_wall_hspu" || l.slug === "lower_pad_wall_hspu"
+      ? { ...l, default_sets: null, default_reps_min: null, default_reps_max: null }
+      : l,
+  ),
+};
+const withNotes = {
+  ...plan,
+  exercises: plan.exercises.map((e) =>
+    e.slug === "triceps_extension" || e.slug === "ring_row"
+      ? { ...e, review_note: `check ${e.slug}` }
+      : e,
+  ),
+};
 const none = { source_hash: plan.source_hash, items: {} };
 
 describe("applyOverrides", () => {
@@ -46,15 +70,15 @@ describe("applyOverrides", () => {
   });
 
   it("null equipment values and ladder defaults are issues; filled ones are not", () => {
-    const r = applyOverrides(plan, none);
+    const r = applyOverrides(blankPlan, none);
     const eq = r.open_issues.filter((o) => o.scope === "equipment").map((o) => o.ref);
-    expect(eq).toEqual(expect.arrayContaining(["barbell", "dumbbells", "pullup", "hack_squat"]));
+    expect(eq).toEqual(expect.arrayContaining(["barbell", "dumbbells", "pullup"]));
     expect(r.open_issues.filter((o) => o.scope === "hspu_ladder").map((o) => o.ref)).toEqual([
       "lower_pad_wall_hspu",
       "full_wall_hspu",
     ]);
     const filled = applyOverrides(
-      { ...plan, equipment: plan.equipment.map((e) => ({ ...e, step_kg: 2.5 })) },
+      { ...blankPlan, equipment: blankPlan.equipment.map((e) => ({ ...e, step_kg: 2.5 })) },
       none,
     );
     expect(
@@ -63,33 +87,38 @@ describe("applyOverrides", () => {
   });
 
   it("exercise review notes are issues", () => {
-    const r = applyOverrides(plan, none);
+    expect(applyOverrides(plan, none).open_issues.filter((o) => o.scope === "exercise")).toEqual(
+      [],
+    );
+    const r = applyOverrides(withNotes, none);
     expect(
       r.open_issues
         .filter((o) => o.scope === "exercise")
         .map((o) => o.ref)
         .sort(),
-    ).toEqual(["chest_supported_row", "curl"]);
+    ).toEqual(["ring_row", "triceps_extension"]);
   });
 
   it("acknowledge clears the exercise issue and applies fields", () => {
-    const r = applyOverrides(plan, {
+    const r = applyOverrides(withNotes, {
       source_hash: plan.source_hash,
       items: {},
       exercises: {
-        curl: { acknowledge: true },
-        chest_supported_row: {
+        triceps_extension: {
           acknowledge: true,
-          load_basis: "stack",
-          equipment_slug: "row_machine",
+          equipment_slug: "dumbbells",
+          load_basis: "per_hand",
         },
+        ring_row: { acknowledge: true, muscle_group: "lats" },
       },
     });
     expect(r.open_issues.filter((o) => o.scope === "exercise")).toEqual([]);
-    const row = r.plan.exercises.find((e) => e.slug === "chest_supported_row");
-    expect(row).toMatchObject({
-      load_basis: "stack",
-      equipment_slug: "row_machine",
+    const row = r.plan.exercises.find((e) => e.slug === "ring_row");
+    expect(row).toMatchObject({ muscle_group: "lats", review_note: null });
+    const tri = r.plan.exercises.find((e) => e.slug === "triceps_extension");
+    expect(tri).toMatchObject({
+      equipment_slug: "dumbbells",
+      load_basis: "per_hand",
       review_note: null,
     });
   });
@@ -107,6 +136,13 @@ describe("applyOverrides", () => {
 
   it("hack squat has no review note", () => {
     expect(plan.exercises.find((e) => e.slug === "hack_squat")?.review_note).toBeNull();
+  });
+
+  it("seed files leave no open issues once accepted", () => {
+    const overrides = JSON.parse(
+      readFileSync(resolve(root, "seed/plan-overrides.json"), "utf8"),
+    ) as PlanOverrides;
+    expect(applyOverrides(plan, overrides).open_issues).toEqual([]);
   });
 
   const key = "w01-mon-01-0";
@@ -159,22 +195,23 @@ describe("applyOverrides", () => {
   });
 
   it("base_kg and bands are flagged", () => {
-    const eq = applyOverrides(plan, none).open_issues.filter((o) => o.scope === "equipment");
+    const eq = applyOverrides(blankPlan, none).open_issues.filter((o) => o.scope === "equipment");
     expect(eq.some((o) => o.ref === "barbell" && o.detail.includes("base_kg"))).toBe(true);
-    expect(eq.some((o) => o.ref === "hack_squat" && o.detail.includes("base_kg"))).toBe(true);
     expect(eq.some((o) => o.ref === "pullup" && o.detail.includes("bands"))).toBe(true);
-    const filled = applyOverrides(
-      {
-        ...plan,
-        equipment: plan.equipment.map((e) => ({
-          ...e,
-          base_kg: 20,
-          step_kg: 2.5,
-          bands: { red: 10 },
-        })),
-      },
-      none,
-    );
-    expect(filled.open_issues.some((o) => o.scope === "equipment")).toBe(false);
+    for (const bands of [{}, { red: 10 }] as Record<string, number>[]) {
+      const filled = applyOverrides(
+        {
+          ...blankPlan,
+          equipment: blankPlan.equipment.map((e) => ({
+            ...e,
+            base_kg: 20,
+            step_kg: 2.5,
+            bands,
+          })),
+        },
+        none,
+      );
+      expect(filled.open_issues.some((o) => o.scope === "equipment")).toBe(false);
+    }
   });
 });

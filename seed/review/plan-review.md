@@ -22,8 +22,8 @@
 - Source hash: `54f175de445362805c26768732763d6c4b64c6bf225520f647879bada8a4da69`
 - Weeks: 12, starting 2026-09-28
 - Items: 323 (322 plan rows + 1 extra set split out: w11-mon-01-1)
-- Exercises: 33
-- Open issues: 25
+- Exercises: 32
+- Open issues: 0
 
 | Week | Starts (Monday) | Phase |
 | --- | --- | --- |
@@ -42,87 +42,7 @@
 
 ## 2. Open issues
 
-### Plan items (12)
-
-How to fix: Edit `seed/plan-overrides.json`. Put the item key under `items`, set the fields you want, and list the flag codes you accept in `resolve`. See the ready-to-paste examples below.
-
-| Ref | What |
-| --- | --- |
-| `w04-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Deload: current progression 2 × 3 easy") |
-| `w07-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Lower pad / harder progression 4 × 3") |
-| `w08-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Deload: current progression 2 × 3 easy") |
-| `w09-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Hardest clean progression 5 × 2–4") |
-| `w10-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Hardest clean progression 5 × 2–4") |
-| `w11-mon-01-1` | missing_reps: Extra "+ 1 easy BW set" has no rep target. (Weighted pull-up, "3 × 2–3 + 1 easy BW set") |
-| `w11-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "Hardest clean progression 4 × 2–3") |
-| `w12-mon-01-0` | max_reps: Reps are open-ended (max clean reps); no rep number to store. (Clean pull-up TEST, "3 max-clean attempts; optional weighted top triple if fresh") |
-| `w12-mon-01-0` | optional_extra: Optional extra: weighted top triple if fresh (Clean pull-up TEST, "3 max-clean attempts; optional weighted top triple if fresh") |
-| `w12-mon-02-0` | missing_reps: No rep or duration target found. (Easy pull-down / hang, "2 easy sets, then stop") |
-| `w12-tue-02-0` | hspu_step_from_state: Step is not named in the plan; the current progression comes from your state. (HSPU progression, "TEST: 3–5 serious attempts; record reps + ROM / pad height") |
-| `w12-tue-02-0` | max_reps: Reps are open-ended (max clean reps); no rep number to store. (HSPU progression, "TEST: 3–5 serious attempts; record reps + ROM / pad height") |
-
-**hspu_step_from_state**: Accept: your current HSPU step decides. Add the key with `resolve: ["hspu_step_from_state"]`.
-
-```json
-"w04-tue-02-0": { "resolve": ["hspu_step_from_state"] }
-```
-
-**missing_reps**: Enter reps, or accept open reps.
-
-```json
-"w11-mon-01-1": { "reps_min": 8, "reps_max": 8, "resolve": ["missing_reps"] }
-"w11-mon-01-1": { "resolve": ["missing_reps"] }
-```
-
-**max_reps**: Accept: test = as many clean reps as possible.
-
-```json
-"w12-mon-01-0": { "resolve": ["max_reps"] }
-```
-
-**optional_extra**: Accept: the optional part stays as text.
-
-```json
-"w12-mon-01-0": { "resolve": ["optional_extra"] }
-```
-
-### Equipment (9)
-
-How to fix: Edit `seed/equipment.json`. Fill `base_kg` (empty bar or unloaded sled), `step_kg` (smallest weight step) or `discrete_values` (list of available weights), and `bands` (colour to kg) for the pull-up bar.
-
-| Ref | What |
-| --- | --- |
-| `barbell` | Barbell (total incl. bar): step_kg and discrete_values are both empty. |
-| `barbell` | Barbell (total incl. bar): base_kg is empty (weight of the empty bar or unloaded sled). |
-| `dumbbells` | Dumbbells (per hand): step_kg and discrete_values are both empty. |
-| `cable_stack` | Cable stack: step_kg and discrete_values are both empty. |
-| `row_machine` | Row machine stack: step_kg and discrete_values are both empty. |
-| `hack_squat` | Hack squat (plates on sled): step_kg and discrete_values are both empty. |
-| `hack_squat` | Hack squat (plates on sled): base_kg is empty (weight of the empty bar or unloaded sled). |
-| `pullup` | Pull-up bar (added weight, bands): step_kg and discrete_values are both empty. |
-| `pullup` | Pull-up bar (added weight, bands): bands is empty (band colour to kg of assistance). |
-
-### HSPU ladder (2)
-
-How to fix: Edit `seed/hspu-ladder.json`. Fill `default_sets`, `default_reps_min` and `default_reps_max` for the step.
-
-| Ref | What |
-| --- | --- |
-| `lower_pad_wall_hspu` | Lower-pad wall HSPU: empty default_sets, default_reps_min, default_reps_max. |
-| `full_wall_hspu` | Full wall HSPU: empty default_sets, default_reps_min, default_reps_max. |
-
-### Exercises (2)
-
-How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"exercises": { "curl": { "acknowledge": true } }`. You can also change `type`, `load_basis`, `equipment_slug` or `muscle_group` there.
-
-| Ref | What |
-| --- | --- |
-| `chest_supported_row` | Dumbbells per hand, or a machine stack? |
-| `curl` | Curl (dumbbells, per hand) and triceps extension (cable stack) equipment is a guess — confirm both |
-
-```json
-"exercises": { "chest_supported_row": { "acknowledge": true } }
-```
+None. The plan is ready to seed.
 
 ## 3. Exercise mapping
 
@@ -130,7 +50,7 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pull warm-up | pull_warmup | warmup | - | - | no | warmup |  |
 | Clean strict pull-up | pull_up | bodyweight_plus | bodyweight_plus | pullup | yes | skill_strength, vertical_pull |  |
-| Chest-supported row | chest_supported_row | weighted | per_hand | dumbbells | no | row | Dumbbells per hand, or a machine stack? |
+| Chest-supported row | ring_row | bodyweight_reps | - | - | no | row |  |
 | Romanian deadlift | romanian_deadlift | weighted | barbell_total | barbell | yes | hinge |  |
 | Lat pulldown | lat_pulldown | weighted | stack | cable_stack | no | vertical_pull |  |
 | Hanging leg raise / knee raise | hanging_leg_raise / hanging_knee_raise | bodyweight_reps / bodyweight_reps | - / - | pullup / pullup | no / no | core |  |
@@ -139,7 +59,7 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | HSPU progression | hspu | skill_ladder | - | - | no | skill_strength, vertical_press |  |
 | Overhead press | overhead_press | weighted | barbell_total | barbell | yes | vertical_press |  |
 | Bench press | bench_press | weighted | barbell_total | barbell | yes | horizontal_press |  |
-| Squat / hack squat | squat / hack_squat | weighted / weighted | barbell_total / stack | barbell / hack_squat | yes / yes | squat |  |
+| Squat / hack squat | squat / hack_squat | weighted / weighted | barbell_total / barbell_total | barbell / barbell | yes / yes | squat |  |
 | Lateral raise | lateral_raise | weighted | per_hand | dumbbells | no | accessory |  |
 | Bike warm-up | bike_warmup | warmup | - | - | no | warmup |  |
 | Bike HIIT | bike_hiit | hiit | - | - | no | hiit |  |
@@ -154,7 +74,7 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | Cable / machine row | cable_row / machine_row | weighted / weighted | stack / stack | cable_stack / row_machine | no / no | row |  |
 | Bulgarian split squat | bulgarian_split_squat | weighted | per_hand | dumbbells | no | unilateral_leg |  |
 | Face pull | face_pull | weighted | stack | cable_stack | no | prehab |  |
-| Curl OR triceps extension | curl / triceps_extension | weighted / weighted | per_hand / stack | dumbbells / cable_stack | no / no | accessory | Curl (dumbbells, per hand) and triceps extension (cable stack) equipment is a guess — confirm both |
+| Curl OR triceps extension | triceps_extension | weighted | stack | cable_stack | no | accessory |  |
 | Clean strict pull-up — deload | pull_up | bodyweight_plus | bodyweight_plus | pullup | yes | skill_strength, vertical_pull |  |
 | Weighted pull-up* | pull_up | bodyweight_plus | bodyweight_plus | pullup | yes | skill_strength, vertical_pull |  |
 | Weighted pull-up — deload* | pull_up | bodyweight_plus | bodyweight_plus | pullup | yes | skill_strength, vertical_pull |  |
@@ -172,19 +92,19 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1–12 | Pull warm-up | Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15 | (raw text only) | warmup | Prep | Prime shoulders and scapulae without fatigue. | 5 min |  |
 | 1 | Clean strict pull-up | 4 × 3 | 4×3 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
-| 1–3 | Chest-supported row | 3 × 8 | 3×8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min |  |
+| 1–3 | Chest-supported row | 3 × 8 | 3×8 | row | High | No momentum; chest stays planted. | 6–8 min |  |
 | 1–3 | Romanian deadlift | 3 × 8 | 3×8 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min |  |
 | 1–3, 5–7, 9–11 | Lat pulldown | 2 × 8–12 | 2×8–12 · RIR 1–3 | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min |  |
 | 1–3, 5–7, 9–11 | Hanging leg raise / knee raise | 2–3 × 8–12 | 2–3×8–12 | core | Low | Drop first when time or recovery is poor. | 4 min |  |
 | 2 | Clean strict pull-up | 4 × 4 | 4×4 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
 | 3 | Clean strict pull-up | 4 × 5 (or stop 1 rep before form breaks) | 4×5 · RIR 1–2 · stop_before_form_breaks | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
 | 4 | Clean strict pull-up — deload | 2 × 3 easy | 2×3 · RIR 3–4 · easy, deload | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
-| 4, 8 | Chest-supported row | 2 × 8 easy | 2×8 · RIR 3–4 · easy | row | High | No momentum; chest stays planted. | 6–8 min |  |
+| 4, 8 | Chest-supported row | 2 × 8 easy | 2×8 · easy | row | High | No momentum; chest stays planted. | 6–8 min |  |
 | 4, 8 | Romanian deadlift | 2 × 6 easy | 2×6 · RIR 3–4 · easy | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min |  |
 | 4, 8 | Lat pulldown | 1–2 × 10 easy | 1–2×10 · RIR 3–4 · easy | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min |  |
 | 4, 8 | Hanging leg raise / knee raise | 1–2 × 8 easy | 1–2×8 · easy | core | Low | Drop first when time or recovery is poor. | 4 min |  |
 | 5 | Weighted pull-up* | 4 × 3 | 4×3 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
-| 5–7, 9–11 | Chest-supported row | 3 × 6–8 | 3×6–8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min |  |
+| 5–7, 9–11 | Chest-supported row | 3 × 6–8 | 3×6–8 | row | High | No momentum; chest stays planted. | 6–8 min |  |
 | 5–7 | Romanian deadlift | 3 × 6 | 3×6 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min |  |
 | 6 | Weighted pull-up* | 4 × 3–4 | 4×3–4 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
 | 7 | Weighted pull-up* | 5 × 3 | 5×3 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
@@ -193,9 +113,9 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | 9–11 | Romanian deadlift | 3 × 5–6 | 3×5–6 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min |  |
 | 10 | Weighted pull-up | 4 × 2–3 slightly heavier | 4×2–3 · RIR 1–2 · slightly_heavier | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
 | 11 | Weighted pull-up | 3 × 2–3 + 1 easy BW set | 3×2–3 · RIR 1–2 | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
-| 11 | Weighted pull-up | 3 × 2–3 + 1 easy BW set | extra: 1×? · RIR 3–4 · easy | skill_strength, vertical_pull | PRIMARY |  | 12–16 min | **missing_reps** |
-| 12 | Clean pull-up TEST | 3 max-clean attempts; optional weighted top triple if fresh | 3×? · RIR 0–1 · test, max_attempts | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | **max_reps**, **optional_extra** |
-| 12 | Easy pull-down / hang | 2 easy sets, then stop | 2×? · RIR 3–4 · easy | vertical_pull | Recovery | Do not turn test day into a normal volume session. | 5 min | **missing_reps** |
+| 11 | Weighted pull-up | 3 × 2–3 + 1 easy BW set | extra: 1×? · RIR 3–4 · easy | skill_strength, vertical_pull | PRIMARY |  | 12–16 min |  |
+| 12 | Clean pull-up TEST | 3 max-clean attempts; optional weighted top triple if fresh | 3×? · RIR 0–1 · test, max_attempts | skill_strength, vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min |  |
+| 12 | Easy pull-down / hang | 2 easy sets, then stop | 2×? · RIR 3–4 · easy | vertical_pull | Recovery | Do not turn test day into a normal volume session. | 5 min |  |
 
 ### Tuesday
 
@@ -211,7 +131,7 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | 2 | HSPU progression | Feet-elevated pike push-up 4 × 8 | 4×8 · step feet_elevated_pike | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
 | 3 | HSPU progression | HSPU negative 3 × 3, 5s down | 3×3 · tempo 5s down · step hspu_negative | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
 | 4, 8 | Handstand practice | 4–5 min easy | 4–5 min · easy | skill_practice | High | Stay fresh; this is practice, not conditioning. | 5 min |  |
-| 4, 8 | HSPU progression | Deload: current progression 2 × 3 easy | 2×3 · deload, easy | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | **hspu_step_from_state** |
+| 4, 8 | HSPU progression | Deload: current progression 2 × 3 easy | 2×3 · deload, easy | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
 | 4, 8 | Overhead press | 2 × 6 light | 2×6 · RIR 3–4 · light | vertical_press | High | 3–4 RIR. | 6 min |  |
 | 4, 8 | Bench press | 2 × 6 light | 2×6 · RIR 3–4 · light | horizontal_press | Medium | Keep it easy. | 6 min |  |
 | 4, 8 | Squat / hack squat | 2 × 6 easy | 2×6 · RIR 3–4 · easy | squat | High | 3–4 RIR. | 7 min |  |
@@ -221,13 +141,13 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 | 5–7 | Bench press | 2–3 × 5–8 | 2–3×5–8 · RIR 1–2 | horizontal_press | Medium | Horizontal pressing strength; use weighted dips in a later block if preferred. | 7 min |  |
 | 5–7 | Squat / hack squat | 3 × 5–6 | 3×5–6 · RIR 1–2 | squat | High | Strong controlled reps; 1–2 RIR. | 8 min |  |
 | 6 | HSPU progression | Partial-ROM wall HSPU 4 × 4 | 4×4 · step partial_rom_wall_hspu | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
-| 7 | HSPU progression | Lower pad / harder progression 4 × 3 | 4×3 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | **hspu_step_from_state** |
-| 9–10 | HSPU progression | Hardest clean progression 5 × 2–4 | 5×2–4 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | **hspu_step_from_state** |
+| 7 | HSPU progression | Lower pad / harder progression 4 × 3 | 4×3 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
+| 9–10 | HSPU progression | Hardest clean progression 5 × 2–4 | 5×2–4 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
 | 9–11 | Overhead press | 3 × 4–6 | 3×4–6 · RIR 1–2 | vertical_press | High | Build the vertical-press engine for HSPU; 1–2 RIR. | 7 min |  |
 | 9–11 | Bench press | 2 × 5–6 | 2×5–6 · RIR 1–2 | horizontal_press | Medium | Horizontal pressing strength; use weighted dips in a later block if preferred. | 7 min |  |
 | 9–11 | Squat / hack squat | 3 × 4–6 | 3×4–6 · RIR 1–2 | squat | High | Strong controlled reps; 1–2 RIR. | 8 min |  |
-| 11 | HSPU progression | Hardest clean progression 4 × 2–3 | 4×2–3 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | **hspu_step_from_state** |
-| 12 | HSPU progression | TEST: 3–5 serious attempts; record reps + ROM / pad height | 3–5×? · test, max_attempts | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | **hspu_step_from_state**, **max_reps** |
+| 11 | HSPU progression | Hardest clean progression 4 × 2–3 | 4×2–3 | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
+| 12 | HSPU progression | TEST: 3–5 serious attempts; record reps + ROM / pad height | 3–5×? · test, max_attempts | skill_strength, vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min |  |
 | 12 | Easy press back-off | OHP or bench: 2 × 5 easy | 2×5 · RIR 3–4 · easy | vertical_press, horizontal_press | Low | Only if you feel good after the HSPU test. | 6 min |  |
 
 ### Wednesday
@@ -289,20 +209,20 @@ How to fix: Answer in `seed/plan-overrides.json` under `exercises`. Example: `"e
 
 | Order | Step | Sets | Reps min | Reps max | Tempo |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Feet-elevated pike push-up | 4 | 6 | 8 | - |
-| 2 | HSPU negative | 3 | 3 | 3 | 5s down |
-| 3 | Partial-ROM wall HSPU | 4 | 3 | 4 | - |
-| 4 | Lower-pad wall HSPU | **empty** | **empty** | **empty** | - |
-| 5 | Full wall HSPU | **empty** | **empty** | **empty** | - |
+| 1 | Pike push-up | 4 | 6 | 8 | - |
+| 2 | Feet-elevated pike push-up | 4 | 6 | 8 | - |
+| 3 | HSPU negative | 3 | 3 | 3 | 5s down |
+| 4 | Partial-ROM wall HSPU | 4 | 3 | 4 | - |
+| 5 | Lower-pad wall HSPU | 4 | 3 | 3 | - |
+| 6 | Full wall HSPU | 5 | 2 | 4 | - |
 
 ### Equipment
 
 | Slug | Name | Base kg | Step kg | Discrete values | Bands |
 | --- | --- | --- | --- | --- | --- |
-| barbell | Barbell (total incl. bar) | **empty** | **empty** | **empty** | **empty** |
-| dumbbells | Dumbbells (per hand) | **empty** | **empty** | **empty** | **empty** |
-| cable_stack | Cable stack | **empty** | **empty** | **empty** | **empty** |
-| row_machine | Row machine stack | **empty** | **empty** | **empty** | **empty** |
-| hack_squat | Hack squat (plates on sled) | **empty** | **empty** | **empty** | **empty** |
-| pullup | Pull-up bar (added weight, bands) | **empty** | **empty** | **empty** | **empty** |
+| barbell | Barbell (total incl. bar) | 20 | 2.5 | **empty** | **empty** |
+| dumbbells | Dumbbells (per hand) | **empty** | 2.5 | **empty** | **empty** |
+| cable_stack | Cable stack | **empty** | 2.5 | **empty** | **empty** |
+| row_machine | Row machine stack | **empty** | 2.5 | **empty** | **empty** |
+| pullup | Pull-up bar (added weight, bands) | **empty** | 2.5 | **empty** | {} |
 

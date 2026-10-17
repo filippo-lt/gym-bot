@@ -1,4 +1,67 @@
 {
   "source_hash": "54f175de445362805c26768732763d6c4b64c6bf225520f647879bada8a4da69",
-  "items": {}
+  "items": {
+    "w04-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w07-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w08-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w09-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w10-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w11-mon-01-1": {
+      "resolve": [
+        "missing_reps"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w11-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w12-mon-01-0": {
+      "resolve": [
+        "max_reps",
+        "optional_extra"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w12-mon-02-0": {
+      "resolve": [
+        "missing_reps"
+      ],
+      "comment": "Accepted as is."
+    },
+    "w12-tue-02-0": {
+      "resolve": [
+        "hspu_step_from_state",
+        "max_reps"
+      ],
+      "comment": "Accepted as is."
+    }
+  }
 }

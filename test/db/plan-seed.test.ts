@@ -390,14 +390,14 @@ describe("real plan pipeline", () => {
   const equipment = loadEquipment("seed/equipment.json");
   const ladder = loadHspuLadder("seed/hspu-ladder.json");
 
-  it("the unresolved seed files have open issues and seedPlan refuses", async () => {
+  it("the reviewed seed files resolve clean; unresolved flags make seedPlan refuse", async () => {
     const plan = buildPlan(rawPlan, { equipment, hspuLadder: ladder });
-    const resolved = applyOverrides(plan, loadOverrides("seed/plan-overrides.json"));
-    expect(
-      resolved.open_issues.length,
-      "The real seed files now resolve with zero open issues (user review done). Update this test: it should expect a clean resolve, and the 'refuses' check should use a copy with a flag.",
-    ).toBeGreaterThan(0);
-    await expect(seedPlan(db, resolved)).rejects.toBeInstanceOf(OpenIssuesError);
+    const reviewed = applyOverrides(plan, loadOverrides("seed/plan-overrides.json"));
+    expect(reviewed.open_issues).toEqual([]);
+
+    const unresolved = applyOverrides(plan, { source_hash: plan.source_hash, items: {} });
+    expect(unresolved.open_issues.length).toBeGreaterThan(0);
+    await expect(seedPlan(db, unresolved)).rejects.toBeInstanceOf(OpenIssuesError);
     expect(await counts()).toMatchObject({ plans: 0, items: 0, equipment: 0 });
   });
 
@@ -405,7 +405,7 @@ describe("real plan pipeline", () => {
     const plan = buildPlan(rawPlan, {
       equipment: equipment.map((e) => ({
         ...e,
-        base_kg: e.base_kg ?? (e.slug === "barbell" || e.slug === "hack_squat" ? 20 : null),
+        base_kg: e.base_kg ?? (e.slug === "barbell" ? 20 : null),
         bands: e.slug === "pullup" ? (e.bands ?? { red: 10, blue: 20 }) : e.bands,
         step_kg: e.step_kg === null && e.discrete_values === null ? 2.5 : e.step_kg,
       })),

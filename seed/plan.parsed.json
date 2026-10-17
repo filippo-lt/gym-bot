@@ -191,21 +191,25 @@
       "aliases": [],
       "muscle_group": "quads",
       "type": "weighted",
-      "load_basis": "stack",
-      "equipment_slug": "hack_squat",
+      "load_basis": "barbell_total",
+      "equipment_slug": "barbell",
       "is_main_lift": true,
       "review_note": null
     },
     {
-      "slug": "chest_supported_row",
-      "name": "Chest-supported row",
-      "aliases": [],
+      "slug": "ring_row",
+      "name": "Ring row (Australian pull-up)",
+      "aliases": [
+        "Australian pull-up",
+        "Chest-supported row",
+        "Ring row"
+      ],
       "muscle_group": "back",
-      "type": "weighted",
-      "load_basis": "per_hand",
-      "equipment_slug": "dumbbells",
+      "type": "bodyweight_reps",
+      "load_basis": null,
+      "equipment_slug": null,
       "is_main_lift": false,
-      "review_note": "Dumbbells per hand, or a machine stack?"
+      "review_note": null
     },
     {
       "slug": "cable_row",
@@ -289,17 +293,6 @@
       "equipment_slug": "cable_stack",
       "is_main_lift": false,
       "review_note": null
-    },
-    {
-      "slug": "curl",
-      "name": "Curl",
-      "aliases": [],
-      "muscle_group": "biceps",
-      "type": "weighted",
-      "load_basis": "per_hand",
-      "equipment_slug": "dumbbells",
-      "is_main_lift": false,
-      "review_note": "Curl (dumbbells, per hand) and triceps extension (cable stack) equipment is a guess — confirm both"
     },
     {
       "slug": "triceps_extension",
@@ -482,8 +475,8 @@
     {
       "slug": "barbell",
       "name": "Barbell (total incl. bar)",
-      "base_kg": null,
-      "step_kg": null,
+      "base_kg": 20,
+      "step_kg": 2.5,
       "discrete_values": null,
       "bands": null
     },
@@ -491,7 +484,7 @@
       "slug": "dumbbells",
       "name": "Dumbbells (per hand)",
       "base_kg": null,
-      "step_kg": null,
+      "step_kg": 2.5,
       "discrete_values": null,
       "bands": null
     },
@@ -499,7 +492,7 @@
       "slug": "cable_stack",
       "name": "Cable stack",
       "base_kg": null,
-      "step_kg": null,
+      "step_kg": 2.5,
       "discrete_values": null,
       "bands": null
     },
@@ -507,15 +500,7 @@
       "slug": "row_machine",
       "name": "Row machine stack",
       "base_kg": null,
-      "step_kg": null,
-      "discrete_values": null,
-      "bands": null
-    },
-    {
-      "slug": "hack_squat",
-      "name": "Hack squat (plates on sled)",
-      "base_kg": null,
-      "step_kg": null,
+      "step_kg": 2.5,
       "discrete_values": null,
       "bands": null
     },
@@ -523,16 +508,25 @@
       "slug": "pullup",
       "name": "Pull-up bar (added weight, bands)",
       "base_kg": null,
-      "step_kg": null,
+      "step_kg": 2.5,
       "discrete_values": null,
-      "bands": null
+      "bands": {}
     }
   ],
   "hspu_ladder": [
     {
+      "slug": "pike_push_up",
+      "name": "Pike push-up",
+      "order": 1,
+      "default_sets": 4,
+      "default_reps_min": 6,
+      "default_reps_max": 8,
+      "tempo": null
+    },
+    {
       "slug": "feet_elevated_pike",
       "name": "Feet-elevated pike push-up",
-      "order": 1,
+      "order": 2,
       "default_sets": 4,
       "default_reps_min": 6,
       "default_reps_max": 8,
@@ -541,7 +535,7 @@
     {
       "slug": "hspu_negative",
       "name": "HSPU negative",
-      "order": 2,
+      "order": 3,
       "default_sets": 3,
       "default_reps_min": 3,
       "default_reps_max": 3,
@@ -550,7 +544,7 @@
     {
       "slug": "partial_rom_wall_hspu",
       "name": "Partial-ROM wall HSPU",
-      "order": 3,
+      "order": 4,
       "default_sets": 4,
       "default_reps_min": 3,
       "default_reps_max": 4,
@@ -559,19 +553,19 @@
     {
       "slug": "lower_pad_wall_hspu",
       "name": "Lower-pad wall HSPU",
-      "order": 4,
-      "default_sets": null,
-      "default_reps_min": null,
-      "default_reps_max": null,
+      "order": 5,
+      "default_sets": 4,
+      "default_reps_min": 3,
+      "default_reps_max": 3,
       "tempo": null
     },
     {
       "slug": "full_wall_hspu",
       "name": "Full wall HSPU",
-      "order": 5,
-      "default_sets": null,
-      "default_reps_min": null,
-      "default_reps_max": null,
+      "order": 6,
+      "default_sets": 5,
+      "default_reps_min": 2,
+      "default_reps_max": 4,
       "tempo": null
     }
   ],
@@ -678,7 +672,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 8",
@@ -694,8 +688,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -1668,7 +1662,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -1801,7 +1794,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 8",
@@ -1817,8 +1810,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -2791,7 +2784,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -2926,7 +2918,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 8",
@@ -2942,8 +2934,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -3916,7 +3908,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -4052,7 +4043,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "2 × 8 easy",
@@ -4070,8 +4061,8 @@
         "easy"
       ],
       "hspu_step": null,
-      "rir_min": 3,
-      "rir_max": 4,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -4329,12 +4320,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w04-tue-03-0",
@@ -5171,7 +5157,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -5187,8 +5173,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -6161,7 +6147,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -6294,7 +6279,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -6310,8 +6295,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -7284,7 +7269,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -7417,7 +7401,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -7433,8 +7417,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -7681,12 +7665,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w07-tue-03-0",
@@ -8412,7 +8391,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -8548,7 +8526,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "2 × 8 easy",
@@ -8566,8 +8544,8 @@
         "easy"
       ],
       "hspu_step": null,
-      "rir_min": 3,
-      "rir_max": 4,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -8825,12 +8803,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w08-tue-03-0",
@@ -9669,7 +9642,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -9685,8 +9658,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -9933,12 +9906,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w09-tue-03-0",
@@ -10664,7 +10632,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -10799,7 +10766,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -10815,8 +10782,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -11063,12 +11030,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w10-tue-03-0",
@@ -11794,7 +11756,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -11972,12 +11933,7 @@
           "mode": "assisted"
         }
       },
-      "flags": [
-        {
-          "code": "missing_reps",
-          "detail": "Extra \"+ 1 easy BW set\" has no rep target."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w11-mon-02-0",
@@ -11988,7 +11944,7 @@
       "block": "Strength",
       "plan_name": "Chest-supported row",
       "exercise_options": [
-        "chest_supported_row"
+        "ring_row"
       ],
       "variant_label": null,
       "prescription_raw": "3 × 6–8",
@@ -12004,8 +11960,8 @@
       "tempo": null,
       "modifiers": [],
       "hspu_step": null,
-      "rir_min": 1,
-      "rir_max": 3,
+      "rir_min": null,
+      "rir_max": null,
       "tags": [
         "row"
       ],
@@ -12252,12 +12208,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w11-tue-03-0",
@@ -12983,7 +12934,6 @@
       "block": "Accessory",
       "plan_name": "Curl OR triceps extension",
       "exercise_options": [
-        "curl",
         "triceps_extension"
       ],
       "variant_label": null,
@@ -13108,16 +13058,7 @@
           "mode": "assisted"
         }
       },
-      "flags": [
-        {
-          "code": "max_reps",
-          "detail": "Reps are open-ended (max clean reps); no rep number to store."
-        },
-        {
-          "code": "optional_extra",
-          "detail": "Optional extra: weighted top triple if fresh"
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w12-mon-02-0",
@@ -13159,12 +13100,7 @@
       "time_min_min": 5,
       "time_min_max": 5,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "missing_reps",
-          "detail": "No rep or duration target found."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w12-tue-00-0",
@@ -13285,16 +13221,7 @@
       "time_min_min": 8,
       "time_min_max": 10,
       "fallback_prescription": null,
-      "flags": [
-        {
-          "code": "hspu_step_from_state",
-          "detail": "Step is not named in the plan; the current progression comes from your state."
-        },
-        {
-          "code": "max_reps",
-          "detail": "Reps are open-ended (max clean reps); no rep number to store."
-        }
-      ]
+      "flags": []
     },
     {
       "key": "w12-tue-03-0",

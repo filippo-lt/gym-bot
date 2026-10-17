@@ -1,7 +1,8 @@
 [
-  { "slug": "feet_elevated_pike", "name": "Feet-elevated pike push-up", "order": 1, "default_sets": 4, "default_reps_min": 6, "default_reps_max": 8, "tempo": null },
-  { "slug": "hspu_negative", "name": "HSPU negative", "order": 2, "default_sets": 3, "default_reps_min": 3, "default_reps_max": 3, "tempo": "5s down" },
-  { "slug": "partial_rom_wall_hspu", "name": "Partial-ROM wall HSPU", "order": 3, "default_sets": 4, "default_reps_min": 3, "default_reps_max": 4, "tempo": null },
-  { "slug": "lower_pad_wall_hspu", "name": "Lower-pad wall HSPU", "order": 4, "default_sets": null, "default_reps_min": null, "default_reps_max": null, "tempo": null },
-  { "slug": "full_wall_hspu", "name": "Full wall HSPU", "order": 5, "default_sets": null, "default_reps_min": null, "default_reps_max": null, "tempo": null }
+  { "slug": "pike_push_up", "name": "Pike push-up", "order": 1, "default_sets": 4, "default_reps_min": 6, "default_reps_max": 8, "tempo": null },
+  { "slug": "feet_elevated_pike", "name": "Feet-elevated pike push-up", "order": 2, "default_sets": 4, "default_reps_min": 6, "default_reps_max": 8, "tempo": null },
+  { "slug": "hspu_negative", "name": "HSPU negative", "order": 3, "default_sets": 3, "default_reps_min": 3, "default_reps_max": 3, "tempo": "5s down" },
+  { "slug": "partial_rom_wall_hspu", "name": "Partial-ROM wall HSPU", "order": 4, "default_sets": 4, "default_reps_min": 3, "default_reps_max": 4, "tempo": null },
+  { "slug": "lower_pad_wall_hspu", "name": "Lower-pad wall HSPU", "order": 5, "default_sets": 4, "default_reps_min": 3, "default_reps_max": 3, "tempo": null },
+  { "slug": "full_wall_hspu", "name": "Full wall HSPU", "order": 6, "default_sets": 5, "default_reps_min": 2, "default_reps_max": 4, "tempo": null }
 ]

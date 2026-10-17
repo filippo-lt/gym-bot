@@ -110,7 +110,7 @@ describe("full plan file", () => {
         expect(i.exercise_options.length).toBeGreaterThanOrEqual(2);
       else expect(i.exercise_options.length, i.plan_name).toBe(1);
     }
-    expect(OR_PLAN_NAMES.size).toBe(6);
+    expect(OR_PLAN_NAMES.size).toBe(5);
   });
 
   it("squat and hack squat are different exercises", () => {
@@ -149,7 +149,7 @@ describe("full plan file", () => {
     }).toMatchInlineSnapshot(`
       {
         "collapsedRows": 87,
-        "exercises": 33,
+        "exercises": 32,
         "flagCounts": {
           "hspu_step_from_state": 7,
           "max_reps": 2,
@@ -157,7 +157,7 @@ describe("full plan file", () => {
           "optional_extra": 1,
         },
         "items": 323,
-        "openIssues": 25,
+        "openIssues": 12,
       }
     `);
   });

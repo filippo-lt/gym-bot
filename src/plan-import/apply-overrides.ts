@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 
 const LOAD_TYPES = new Set(["weighted", "bodyweight_plus"]);
-const NEEDS_BASE_KG = ["barbell", "hack_squat"];
+const NEEDS_BASE_KG = ["barbell"];
 const NEEDS_BANDS = ["pullup"];
 
 const int = z.number().int();

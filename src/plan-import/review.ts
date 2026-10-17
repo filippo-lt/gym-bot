@@ -141,7 +141,7 @@ const HINTS: Record<OpenIssue["scope"], string> = {
   hspu_ladder:
     "Edit `seed/hspu-ladder.json`. Fill `default_sets`, `default_reps_min` and `default_reps_max` for the step.",
   exercise:
-    'Answer in `seed/plan-overrides.json` under `exercises`. Example: `"exercises": { "curl": { "acknowledge": true } }`. You can also change `type`, `load_basis`, `equipment_slug` or `muscle_group` there.',
+    'Answer in `seed/plan-overrides.json` under `exercises`. Example: `"exercises": { "triceps_extension": { "acknowledge": true } }`. You can also change `type`, `load_basis`, `equipment_slug` or `muscle_group` there.',
 };
 
 const SCOPE_TITLES: Record<OpenIssue["scope"], string> = {

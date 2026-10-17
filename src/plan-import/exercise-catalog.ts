@@ -63,19 +63,10 @@ export const CATALOG: CatalogExercise[] = [
   ex("squat", "Squat", "quads", "weighted", "barbell_total", "barbell", true, {
     aliases: ["back squat"],
   }),
-  ex("hack_squat", "Hack squat", "quads", "weighted", "stack", "hack_squat", true),
-  ex(
-    "chest_supported_row",
-    "Chest-supported row",
-    "back",
-    "weighted",
-    "per_hand",
-    "dumbbells",
-    false,
-    {
-      review_note: "Dumbbells per hand, or a machine stack?",
-    },
-  ),
+  ex("hack_squat", "Hack squat", "quads", "weighted", "barbell_total", "barbell", true),
+  ex("ring_row", "Ring row (Australian pull-up)", "back", "bodyweight_reps", null, null, false, {
+    aliases: ["Australian pull-up", "Chest-supported row", "Ring row"],
+  }),
   ex("cable_row", "Cable row", "back", "weighted", "stack", "cable_stack", false),
   ex("machine_row", "Machine row", "back", "weighted", "stack", "row_machine", false),
   ex("lat_pulldown", "Lat pulldown", "back", "weighted", "stack", "cable_stack", false, {
@@ -98,10 +89,6 @@ export const CATALOG: CatalogExercise[] = [
   ),
   ex("lateral_raise", "Lateral raise", "shoulders", "weighted", "per_hand", "dumbbells", false),
   ex("face_pull", "Face pull", "rear delts", "weighted", "stack", "cable_stack", false),
-  ex("curl", "Curl", "biceps", "weighted", "per_hand", "dumbbells", false, {
-    review_note:
-      "Curl (dumbbells, per hand) and triceps extension (cable stack) equipment is a guess — confirm both",
-  }),
   ex(
     "triceps_extension",
     "Triceps extension",
@@ -161,14 +148,14 @@ export const PLAN_NAME_MAP: Record<string, PlanNameEntry> = {
   "Bench press": entry(["bench_press"], ["horizontal_press"]),
   "Romanian deadlift": entry(["romanian_deadlift"], ["hinge"]),
   "Squat / hack squat": entry(["squat", "hack_squat"], ["squat"]),
-  "Chest-supported row": entry(["chest_supported_row"], ["row"]),
+  "Chest-supported row": entry(["ring_row"], ["row"]),
   "Cable / machine row": entry(["cable_row", "machine_row"], ["row"]),
   "Lat pulldown": entry(["lat_pulldown"], ["vertical_pull"]),
   "Incline DB bench": entry(["incline_db_bench"], ["horizontal_press"]),
   "Bulgarian split squat": entry(["bulgarian_split_squat"], ["unilateral_leg"]),
   "Lateral raise": entry(["lateral_raise"], ["accessory"]),
   "Face pull": entry(["face_pull"], ["prehab"]),
-  "Curl OR triceps extension": entry(["curl", "triceps_extension"], ["accessory"]),
+  "Curl OR triceps extension": entry(["triceps_extension"], ["accessory"]),
   "Hanging leg raise / knee raise": entry(["hanging_leg_raise", "hanging_knee_raise"], ["core"]),
   "Easy press back-off": entry(
     ["overhead_press", "bench_press"],
@@ -193,7 +180,6 @@ export const PLAN_NAME_MAP: Record<string, PlanNameEntry> = {
 export const OR_PLAN_NAMES: ReadonlySet<string> = new Set([
   "Squat / hack squat",
   "Cable / machine row",
-  "Curl OR triceps extension",
   "Hanging leg raise / knee raise",
   "Easy pull-down / hang",
   "Easy press back-off",

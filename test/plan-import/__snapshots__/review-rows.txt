@@ -1,18 +1,18 @@
 Monday | 1–12 | Pull warm-up | Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15 | (raw text only) | warmup | Prep | Prime shoulders and scapulae without fatigue. | 5 min | 
 Monday | 1 | Clean strict pull-up | 4 × 3 | 4×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
-Monday | 1–3 | Chest-supported row | 3 × 8 | 3×8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 1–3 | Chest-supported row | 3 × 8 | 3×8 | row | High | No momentum; chest stays planted. | 6–8 min | 
 Monday | 1–3 | Romanian deadlift | 3 × 8 | 3×8 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
 Monday | 1–3, 5–7, 9–11 | Lat pulldown | 2 × 8–12 | 2×8–12 · RIR 1–3 | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min | 
 Monday | 1–3, 5–7, 9–11 | Hanging leg raise / knee raise | 2–3 × 8–12 | 2–3×8–12 | core | Low | Drop first when time or recovery is poor. | 4 min | 
 Monday | 2 | Clean strict pull-up | 4 × 4 | 4×4 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
 Monday | 3 | Clean strict pull-up | 4 × 5 (or stop 1 rep before form breaks) | 4×5 · RIR 1–2 · stop_before_form_breaks | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
 Monday | 4 | Clean strict pull-up — deload | 2 × 3 easy | 2×3 · RIR 3–4 · easy, deload | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
-Monday | 4, 8 | Chest-supported row | 2 × 8 easy | 2×8 · RIR 3–4 · easy | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 4, 8 | Chest-supported row | 2 × 8 easy | 2×8 · easy | row | High | No momentum; chest stays planted. | 6–8 min | 
 Monday | 4, 8 | Romanian deadlift | 2 × 6 easy | 2×6 · RIR 3–4 · easy | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
 Monday | 4, 8 | Lat pulldown | 1–2 × 10 easy | 1–2×10 · RIR 3–4 · easy | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min | 
 Monday | 4, 8 | Hanging leg raise / knee raise | 1–2 × 8 easy | 1–2×8 · easy | core | Low | Drop first when time or recovery is poor. | 4 min | 
 Monday | 5 | Weighted pull-up* | 4 × 3 | 4×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
-Monday | 5–7, 9–11 | Chest-supported row | 3 × 6–8 | 3×6–8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 5–7, 9–11 | Chest-supported row | 3 × 6–8 | 3×6–8 | row | High | No momentum; chest stays planted. | 6–8 min | 
 Monday | 5–7 | Romanian deadlift | 3 × 6 | 3×6 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
 Monday | 6 | Weighted pull-up* | 4 × 3–4 | 4×3–4 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
 Monday | 7 | Weighted pull-up* | 5 × 3 | 5×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
