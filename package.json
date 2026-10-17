@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "pnpm dlx vercel dev",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run --project unit",
