@@ -112,7 +112,7 @@ The plan decides **sets × reps × RIR** for every week. The bot decides only th
 - Tuesday and Friday squat share one e1RM; different reps give different loads, which is correct.
 - `bw_kg` is stored on every log group at log time; history is never recomputed when bodyweight changes.
 - Load math only for types `weighted` and `bodyweight_plus`. `bodyweight_reps` (leg raise, pike push-up), `timed` (hang) and `skill_ladder` (HSPU) get reps / time progression only.
-- Known approximation: hack squat (sled) and Bulgarian (dumbbells) use external load only. Fine, because their rep targets barely change.
+- Known approximation: Bulgarian (dumbbells) uses external load only. Fine, because its rep targets barely change.
 
 **Derived state.** Pull-up gate, HSPU step/pad and e1RM are **recomputed from history** (pure functions) after every `/undo`, edit, import or re-import. `user_state` is only a cache.
 

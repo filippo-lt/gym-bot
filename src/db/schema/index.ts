@@ -1,2 +1,1 @@
-// M1 adds the plan tables here.
-export {};
+export * from "./plan.js";

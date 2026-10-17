@@ -9,11 +9,12 @@
   "scripts": {
     "dev": "pnpm dlx vercel dev",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run --project unit",
     "test:db": "vitest run --project db",
+    "plan:parse": "tsx scripts/plan-parse.ts",
+    "plan:seed": "tsx scripts/plan-seed.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:up": "docker compose up -d db",
