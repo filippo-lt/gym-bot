@@ -1,0 +1,2 @@
+CREATE DATABASE gymbot;
+CREATE DATABASE gymbot_test;

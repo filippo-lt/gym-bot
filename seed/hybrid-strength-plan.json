@@ -1,0 +1,3194 @@
+{
+  "schema_version": "1.0",
+  "title": "Hybrid Strength",
+  "subtitle": "Pull-Up + HSPU × traditional strength · 12 weeks",
+  "source_url": "https://filippo-hybrid-strength-tracker.filippo-tosett680853.chatgpt.site",
+  "extracted_on": "2026-10-17",
+  "start_date": "2026-09-28",
+  "duration_weeks": 12,
+  "training_days": [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday"
+  ],
+  "day_focus": {
+    "Monday": "Pull + hinge",
+    "Tuesday": "HSPU + push + squat",
+    "Wednesday": "HIIT + mobility",
+    "Thursday": "Calisthenics class",
+    "Friday": "Full-body strength"
+  },
+  "progression_rules": [
+    "Pull-Up and HSPU never go to technical failure.",
+    "Main weights stay around 1–2 RIR; deloads 3–4 RIR.",
+    "HSPU: progress only after two clean sessions at the current variation.",
+    "Weighted Pull-Up: only when you own roughly 6 clean bodyweight reps.",
+    "If recovery drops, cut optional accessories and HIIT volume before Pull-Up/HSPU skill work."
+  ],
+  "hybrid_logic": "Calisthenics is the skill layer; weights build the engine. Monday prioritises vertical pull + hinge. Tuesday prioritises HSPU/vertical press + squat. Wednesday keeps conditioning and mobility together. Thursday is exploratory skill work. Friday builds full-body strength and auto-regulates around Thursday fatigue.",
+  "weekly_progress_metrics": [
+    {
+      "id": "pullups",
+      "label": "Max clean Pull-Ups"
+    },
+    {
+      "id": "weighted",
+      "label": "Weighted Pull-Up top set"
+    },
+    {
+      "id": "hspu",
+      "label": "HSPU level / ROM"
+    },
+    {
+      "id": "hspureps",
+      "label": "Clean HSPU reps"
+    },
+    {
+      "id": "ohp",
+      "label": "OHP top set"
+    },
+    {
+      "id": "bench",
+      "label": "Bench top set"
+    },
+    {
+      "id": "squat",
+      "label": "Squat top set"
+    },
+    {
+      "id": "recovery",
+      "label": "Recovery 1–5"
+    }
+  ],
+  "adaptation_rules": {
+    "weighted_pull_up": {
+      "applies_to": "Monday exercises matching Weighted pull-up",
+      "basis": "Maximum of current and previous week logged max clean pull-ups",
+      "below_6_if_logged": "Use bodyweight 4×4–6 (or assisted 4×6) instead of adding weight.",
+      "at_least_6": "Weighted work is appropriate if technique stays strict.",
+      "missing_log": "No automatic loading gate message."
+    },
+    "friday_after_heavy_thursday": {
+      "pull": "Row: reduce to 1–2 easy sets or skip.",
+      "push": "Bench: reduce to 1–2 easy sets or skip.",
+      "legs": "Squat/Bulgarian: reduce volume; Bulgarian work can be skipped."
+    },
+    "short_on_time": {
+      "Low_priority": "Hidden",
+      "Medium_priority": "Visually dimmed"
+    }
+  },
+  "logging_fields": [
+    "status",
+    "actual",
+    "load",
+    "rir",
+    "notes"
+  ],
+  "completion_statuses": [
+    "planned",
+    "done",
+    "modified",
+    "skipped"
+  ],
+  "weeks": [
+    {
+      "week": 1,
+      "phase": "Base",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Clean strict pull-up",
+            "prescription": "4 × 3",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Feet-elevated pike push-up 4 × 6",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 6–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "6 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 2,
+      "phase": "Base",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Clean strict pull-up",
+            "prescription": "4 × 4",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Feet-elevated pike push-up 4 × 8",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 6–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "6 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 3,
+      "phase": "Base",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Clean strict pull-up",
+            "prescription": "4 × 5 (or stop 1 rep before form breaks)",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "HSPU negative 3 × 3, 5s down",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 6–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6–8",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "7 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 8–10",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 4,
+      "phase": "Deload",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Clean strict pull-up — deload",
+            "prescription": "2 × 3 easy",
+            "rest": "2 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "2 × 8 easy",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "2 × 6 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "1–2 × 10 easy",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "1–2 × 8 easy",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "4–5 min easy",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Deload: current progression 2 × 3 easy",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "2 × 6 light",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "3–4 RIR.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 6 light",
+            "rest": "2 min",
+            "priority": "Medium",
+            "note": "Keep it easy.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "2 × 6 easy",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "3–4 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "Optional 1 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Skip freely.",
+            "time": "2 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "4 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Easy class; no maximal work",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "2 × 5 easy",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Reduce further if Thursday had heavy legs.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "2 × 8 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "Reduce/skip if Thursday had heavy push.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "2 × 8 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "Reduce/skip if Thursday had heavy pull.",
+            "time": "6 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "1 × 8/leg easy",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Optional if Thursday taxed legs.",
+            "time": "4 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Easy shoulder-health work.",
+            "time": "3 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 5,
+      "phase": "Strength",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up*",
+            "prescription": "4 × 3",
+            "rest": "2:30–3:00",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Partial-ROM wall HSPU 4 × 3",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2–3 × 5–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "8 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 6,
+      "phase": "Strength",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up*",
+            "prescription": "4 × 3–4",
+            "rest": "2:30–3:00",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Partial-ROM wall HSPU 4 × 4",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2–3 × 5–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "8 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 7,
+      "phase": "Strength",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up*",
+            "prescription": "5 × 3",
+            "rest": "3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Lower pad / harder progression 4 × 3",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2–3 × 5–8",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 5–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "9 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6–8",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 8,
+      "phase": "Deload",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up — deload*",
+            "prescription": "2–3 × 3 easy",
+            "rest": "2:30",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "2 × 8 easy",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "2 × 6 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "1–2 × 10 easy",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "1–2 × 8 easy",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "4–5 min easy",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Deload: current progression 2 × 3 easy",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "2 × 6 light",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "3–4 RIR.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 6 light",
+            "rest": "2 min",
+            "priority": "Medium",
+            "note": "Keep it easy.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "2 × 6 easy",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "3–4 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "Optional 1 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Skip freely.",
+            "time": "2 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "4 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Easy class; no maximal work",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "2 × 5 easy",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Reduce further if Thursday had heavy legs.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "2 × 8 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "Reduce/skip if Thursday had heavy push.",
+            "time": "6 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "2 × 8 easy",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "Reduce/skip if Thursday had heavy pull.",
+            "time": "6 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "1 × 8/leg easy",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Optional if Thursday taxed legs.",
+            "time": "4 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Easy shoulder-health work.",
+            "time": "3 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 9,
+      "phase": "Specificity",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up",
+            "prescription": "4 × 3 heavy-clean",
+            "rest": "3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 5–6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Hardest clean progression 5 × 2–4",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 5–6",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "9 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–5",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 10,
+      "phase": "Specificity",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up",
+            "prescription": "4 × 2–3 slightly heavier",
+            "rest": "3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 5–6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Hardest clean progression 5 × 2–4",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 5–6",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "10 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–5",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 11,
+      "phase": "Specificity",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Weighted pull-up",
+            "prescription": "3 × 2–3 + 1 easy BW set",
+            "rest": "3 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Chest-supported row",
+            "prescription": "3 × 6–8",
+            "rest": "90–120s",
+            "priority": "High",
+            "note": "No momentum; chest stays planted.",
+            "time": "6–8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Romanian deadlift",
+            "prescription": "3 × 5–6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "1–2 RIR; hinge cleanly, do not chase fatigue.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Lat pulldown",
+            "prescription": "2 × 8–12",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "Different stimulus from pull-ups; stop short of failure.",
+            "time": "5 min"
+          },
+          {
+            "block": "Core",
+            "exercise": "Hanging leg raise / knee raise",
+            "prescription": "2–3 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Drop first when time or recovery is poor.",
+            "time": "4 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "Hardest clean progression 4 × 2–3",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Overhead press",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Build the vertical-press engine for HSPU; 1–2 RIR.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Bench press",
+            "prescription": "2 × 5–6",
+            "rest": "2–3 min",
+            "priority": "Medium",
+            "note": "Horizontal pressing strength; use weighted dips in a later block if preferred.",
+            "time": "7 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–6",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Strong controlled reps; 1–2 RIR.",
+            "time": "8 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Lateral raise",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional if session exceeds 50 min.",
+            "time": "3 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "8 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Normal class; self-regulate and avoid unnecessary failure",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Full-body warm-up",
+            "prescription": "5 min easy bike + squat/press/row ramp-up sets",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "No fatigue; just prepare the patterns.",
+            "time": "5 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Squat / hack squat",
+            "prescription": "3 × 4–5",
+            "rest": "2–3 min",
+            "priority": "High",
+            "note": "Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets.",
+            "time": "9–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Incline DB bench",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday push was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Cable / machine row",
+            "prescription": "3 × 6",
+            "rest": "2 min",
+            "priority": "High",
+            "note": "If Thursday pull was heavy: reduce to 1–2 easy sets or skip.",
+            "time": "8 min"
+          },
+          {
+            "block": "Single-leg",
+            "exercise": "Bulgarian split squat",
+            "prescription": "2 × 8/leg",
+            "rest": "90s",
+            "priority": "Medium",
+            "note": "If Thursday legs were heavy: skip.",
+            "time": "6 min"
+          },
+          {
+            "block": "Prehab",
+            "exercise": "Face pull",
+            "prescription": "2 × 12–15",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Scapular/rear-delt health.",
+            "time": "3 min"
+          },
+          {
+            "block": "Accessory",
+            "exercise": "Curl OR triceps extension",
+            "prescription": "2 × 8–12",
+            "rest": "60s",
+            "priority": "Low",
+            "note": "Optional; choose one and rotate as desired.",
+            "time": "4 min"
+          }
+        ]
+      }
+    },
+    {
+      "week": 12,
+      "phase": "Test",
+      "days": {
+        "Monday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Pull warm-up",
+            "prescription": "Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15",
+            "rest": "30s",
+            "priority": "Prep",
+            "note": "Prime shoulders and scapulae without fatigue.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "Clean pull-up TEST",
+            "prescription": "3 max-clean attempts; optional weighted top triple if fresh",
+            "rest": "3–4 min",
+            "priority": "PRIMARY",
+            "note": "*Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6.",
+            "time": "12–16 min"
+          },
+          {
+            "block": "Cool-down",
+            "exercise": "Easy pull-down / hang",
+            "prescription": "2 easy sets, then stop",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "Do not turn test day into a normal volume session.",
+            "time": "5 min"
+          }
+        ],
+        "Tuesday": [
+          {
+            "block": "Warm-up",
+            "exercise": "Push + handstand warm-up",
+            "prescription": "Wrist rocks · scap push-ups · wall slides · shoulder CARs",
+            "rest": "15–30s",
+            "priority": "Prep",
+            "note": "Prepare wrists and overhead position.",
+            "time": "6 min"
+          },
+          {
+            "block": "Skill",
+            "exercise": "Handstand practice",
+            "prescription": "5–7 min line/balance practice",
+            "rest": "As needed",
+            "priority": "High",
+            "note": "Stay fresh; this is practice, not conditioning.",
+            "time": "5 min"
+          },
+          {
+            "block": "Skill / Strength",
+            "exercise": "HSPU progression",
+            "prescription": "TEST: 3–5 serious attempts; record reps + ROM / pad height",
+            "rest": "2–3 min",
+            "priority": "PRIMARY",
+            "note": "Advance only after two clean sessions at the current progression.",
+            "time": "8–10 min"
+          },
+          {
+            "block": "Strength",
+            "exercise": "Easy press back-off",
+            "prescription": "OHP or bench: 2 × 5 easy",
+            "rest": "2 min",
+            "priority": "Low",
+            "note": "Only if you feel good after the HSPU test.",
+            "time": "6 min"
+          }
+        ],
+        "Wednesday": [
+          {
+            "block": "Conditioning",
+            "exercise": "Bike warm-up",
+            "prescription": "5 min progressive easy spin",
+            "rest": "—",
+            "priority": "Prep",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike HIIT",
+            "prescription": "4 × 30s hard / 90s easy",
+            "rest": "Included",
+            "priority": "PRIMARY",
+            "note": "Genuinely hard but controlled. Keep grip/lats fresh for Thursday.",
+            "time": "8–20 min"
+          },
+          {
+            "block": "Conditioning",
+            "exercise": "Bike cool-down",
+            "prescription": "4–5 min easy",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "",
+            "time": "5 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Wrists + shoulders",
+            "prescription": "Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s",
+            "rest": "15–30s",
+            "priority": "High",
+            "note": "HSPU-focused mobility.",
+            "time": "7–8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Thoracic + hips + ankles",
+            "prescription": "Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Keep it controlled, never painful.",
+            "time": "8 min"
+          },
+          {
+            "block": "Mobility",
+            "exercise": "Hamstrings + hip flexors",
+            "prescription": "Pike stretch 2×40s · couch stretch 60s/side",
+            "rest": "20–30s",
+            "priority": "Medium",
+            "note": "Finish relaxed.",
+            "time": "4 min"
+          }
+        ],
+        "Thursday": [
+          {
+            "block": "Class",
+            "exercise": "Calisthenics class",
+            "prescription": "Easy class; no maximal work",
+            "rest": "Class",
+            "priority": "PRIMARY",
+            "note": "Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals.",
+            "time": "Class"
+          },
+          {
+            "block": "Class log",
+            "exercise": "Thursday exposure",
+            "prescription": "Record whether class was heavy on PULL / PUSH / LEGS",
+            "rest": "—",
+            "priority": "Important",
+            "note": "These toggles automatically modify Friday guidance.",
+            "time": "1 min"
+          }
+        ],
+        "Friday": [
+          {
+            "block": "Recovery",
+            "exercise": "Full-body recovery",
+            "prescription": "20–30 min easy movement + mobility",
+            "rest": "—",
+            "priority": "Recovery",
+            "note": "No heavy lifting in test week.",
+            "time": "20–30 min"
+          }
+        ]
+      }
+    }
+  ],
+  "extraction_notes": [
+    "Exercise data is copied directly from the published site PLAN array, preserving its original fields and text.",
+    "Adaptation rules are transcribed from the site logic; they provide guidance rather than rewriting prescriptions.",
+    "Personal browser progress and logs are not included.",
+    "The site defines sessions Monday through Friday; no weekend sessions are present."
+  ]
+}
