@@ -9,9 +9,11 @@ import { testDatabaseUrl } from "./constants.js";
 const dir = mkdtempSync(join(tmpdir(), "gymbot-mig-"));
 const sql = postgres(testDatabaseUrl(), { max: 1, prepare: false, onnotice: () => {} });
 
+const PROBE_SCHEMA = "migrate_probe";
+const MIGRATION_OPTIONS = { migrationsSchema: PROBE_SCHEMA, migrationsTable: "probe_journal" };
+
 async function cleanup() {
-  await sql`drop table if exists m0_migration_probe`;
-  await sql`drop schema if exists drizzle cascade`;
+  await sql`drop schema if exists migrate_probe cascade`;
 }
 
 beforeAll(async () => {
@@ -19,7 +21,7 @@ beforeAll(async () => {
   mkdirSync(join(dir, "meta"));
   writeFileSync(
     join(dir, "0000_probe.sql"),
-    "CREATE TABLE m0_migration_probe (id integer primary key);\n",
+    "CREATE SCHEMA IF NOT EXISTS migrate_probe;\nCREATE TABLE migrate_probe.probe (id integer primary key);\n",
   );
   writeFileSync(
     join(dir, "meta", "_journal.json"),
@@ -40,15 +42,15 @@ afterAll(async () => {
 });
 
 test("applies a migration and is idempotent", async () => {
-  expect(await runMigrations(testDatabaseUrl(), dir)).toBe(true);
-  const first = await sql`select to_regclass('public.m0_migration_probe') as t`;
-  expect(first[0]?.t).toBe("m0_migration_probe");
+  expect(await runMigrations(testDatabaseUrl(), dir, MIGRATION_OPTIONS)).toBe(true);
+  const first = await sql`select to_regclass('migrate_probe.probe') as t`;
+  expect(first[0]?.t).toBe("migrate_probe.probe");
 
-  expect(await runMigrations(testDatabaseUrl(), dir)).toBe(true);
-  const applied = await sql`select count(*)::int as n from drizzle.__drizzle_migrations`;
+  expect(await runMigrations(testDatabaseUrl(), dir, MIGRATION_OPTIONS)).toBe(true);
+  const applied = await sql`select count(*)::int as n from migrate_probe.probe_journal`;
   expect(applied[0]?.n).toBe(1);
 });
 
 test("skips when there is no journal", async () => {
-  expect(await runMigrations(testDatabaseUrl(), join(dir, "nope"))).toBe(false);
+  expect(await runMigrations(testDatabaseUrl(), join(dir, "nope"), MIGRATION_OPTIONS)).toBe(false);
 });

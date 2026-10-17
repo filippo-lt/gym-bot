@@ -1,0 +1,87 @@
+Monday | 1–12 | Pull warm-up | Dead hang 2×25s · scapular pull-up 2×8 · band straight-arm pulldown 1×15 | (raw text only) | warmup | Prep | Prime shoulders and scapulae without fatigue. | 5 min | 
+Monday | 1 | Clean strict pull-up | 4 × 3 | 4×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 1–3 | Chest-supported row | 3 × 8 | 3×8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 1–3 | Romanian deadlift | 3 × 8 | 3×8 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
+Monday | 1–3, 5–7, 9–11 | Lat pulldown | 2 × 8–12 | 2×8–12 · RIR 1–3 | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min | 
+Monday | 1–3, 5–7, 9–11 | Hanging leg raise / knee raise | 2–3 × 8–12 | 2–3×8–12 | core | Low | Drop first when time or recovery is poor. | 4 min | 
+Monday | 2 | Clean strict pull-up | 4 × 4 | 4×4 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 3 | Clean strict pull-up | 4 × 5 (or stop 1 rep before form breaks) | 4×5 · RIR 1–2 · stop_before_form_breaks | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 4 | Clean strict pull-up — deload | 2 × 3 easy | 2×3 · RIR 3–4 · easy, deload | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 4, 8 | Chest-supported row | 2 × 8 easy | 2×8 · RIR 3–4 · easy | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 4, 8 | Romanian deadlift | 2 × 6 easy | 2×6 · RIR 3–4 · easy | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
+Monday | 4, 8 | Lat pulldown | 1–2 × 10 easy | 1–2×10 · RIR 3–4 · easy | vertical_pull | Medium | Different stimulus from pull-ups; stop short of failure. | 5 min | 
+Monday | 4, 8 | Hanging leg raise / knee raise | 1–2 × 8 easy | 1–2×8 · easy | core | Low | Drop first when time or recovery is poor. | 4 min | 
+Monday | 5 | Weighted pull-up* | 4 × 3 | 4×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 5–7, 9–11 | Chest-supported row | 3 × 6–8 | 3×6–8 · RIR 1–3 | row | High | No momentum; chest stays planted. | 6–8 min | 
+Monday | 5–7 | Romanian deadlift | 3 × 6 | 3×6 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
+Monday | 6 | Weighted pull-up* | 4 × 3–4 | 4×3–4 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 7 | Weighted pull-up* | 5 × 3 | 5×3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 8 | Weighted pull-up — deload* | 2–3 × 3 easy | 2–3×3 · RIR 3–4 · easy, deload | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 9 | Weighted pull-up | 4 × 3 heavy-clean | 4×3 · RIR 1–2 · heavy_clean | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 9–11 | Romanian deadlift | 3 × 5–6 | 3×5–6 · RIR 1–2 | hinge | High | 1–2 RIR; hinge cleanly, do not chase fatigue. | 8–10 min | 
+Monday | 10 | Weighted pull-up | 4 × 2–3 slightly heavier | 4×2–3 · RIR 1–2 · slightly_heavier | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 11 | Weighted pull-up | 3 × 2–3 + 1 easy BW set | 3×2–3 · RIR 1–2 | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | 
+Monday | 11 | Weighted pull-up | 3 × 2–3 + 1 easy BW set | extra: 1×? · RIR 3–4 · easy | skill_strength,vertical_pull | PRIMARY |  | 12–16 min | missing_reps
+Monday | 12 | Clean pull-up TEST | 3 max-clean attempts; optional weighted top triple if fresh | 3×? · RIR 0–1 · test, max_attempts | skill_strength,vertical_pull | PRIMARY | *Only use added weight once you own ~6 clean bodyweight reps. Otherwise use bodyweight 4×4–6 or assisted 4×6. | 12–16 min | max_reps,optional_extra
+Monday | 12 | Easy pull-down / hang | 2 easy sets, then stop | 2×? · RIR 3–4 · easy | vertical_pull | Recovery | Do not turn test day into a normal volume session. | 5 min | missing_reps
+Tuesday | 1–12 | Push + handstand warm-up | Wrist rocks · scap push-ups · wall slides · shoulder CARs | (raw text only) | warmup | Prep | Prepare wrists and overhead position. | 6 min | 
+Tuesday | 1–3, 5–7, 9–12 | Handstand practice | 5–7 min line/balance practice | 5–7 min | skill_practice | High | Stay fresh; this is practice, not conditioning. | 5 min | 
+Tuesday | 1 | HSPU progression | Feet-elevated pike push-up 4 × 6 | 4×6 · step feet_elevated_pike | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | 
+Tuesday | 1–3 | Overhead press | 3 × 6–8 | 3×6–8 · RIR 1–2 | vertical_press | High | Build the vertical-press engine for HSPU; 1–2 RIR. | 7 min | 
+Tuesday | 1–3 | Bench press | 2 × 6–8 | 2×6–8 · RIR 1–2 | horizontal_press | Medium | Horizontal pressing strength; use weighted dips in a later block if preferred. | 7 min | 
+Tuesday | 1–3 | Squat / hack squat | 3 × 6–8 | 3×6–8 · RIR 1–2 | squat | High | Strong controlled reps; 1–2 RIR. | 8 min | 
+Tuesday | 1–3, 5–7, 9–11 | Lateral raise | 2 × 12–15 | 2×12–15 · RIR 1–3 | accessory | Low | Optional if session exceeds 50 min. | 3 min | 
+Tuesday | 2 | HSPU progression | Feet-elevated pike push-up 4 × 8 | 4×8 · step feet_elevated_pike | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | 
+Tuesday | 3 | HSPU progression | HSPU negative 3 × 3, 5s down | 3×3 · tempo 5s down · step hspu_negative | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | 
+Tuesday | 4, 8 | Handstand practice | 4–5 min easy | 4–5 min · easy | skill_practice | High | Stay fresh; this is practice, not conditioning. | 5 min | 
+Tuesday | 4, 8 | HSPU progression | Deload: current progression 2 × 3 easy | 2×3 · deload, easy | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | hspu_step_from_state
+Tuesday | 4, 8 | Overhead press | 2 × 6 light | 2×6 · RIR 3–4 · light | vertical_press | High | 3–4 RIR. | 6 min | 
+Tuesday | 4, 8 | Bench press | 2 × 6 light | 2×6 · RIR 3–4 · light | horizontal_press | Medium | Keep it easy. | 6 min | 
+Tuesday | 4, 8 | Squat / hack squat | 2 × 6 easy | 2×6 · RIR 3–4 · easy | squat | High | 3–4 RIR. | 7 min | 
+Tuesday | 4, 8 | Lateral raise | Optional 1 × 12–15 | 1×12–15 · RIR 3–4 · optional | accessory | Low | Skip freely. | 2 min | 
+Tuesday | 5 | HSPU progression | Partial-ROM wall HSPU 4 × 3 | 4×3 · step partial_rom_wall_hspu | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | 
+Tuesday | 5–7 | Overhead press | 3 × 5–6 | 3×5–6 · RIR 1–2 | vertical_press | High | Build the vertical-press engine for HSPU; 1–2 RIR. | 7 min | 
+Tuesday | 5–7 | Bench press | 2–3 × 5–8 | 2–3×5–8 · RIR 1–2 | horizontal_press | Medium | Horizontal pressing strength; use weighted dips in a later block if preferred. | 7 min | 
+Tuesday | 5–7 | Squat / hack squat | 3 × 5–6 | 3×5–6 · RIR 1–2 | squat | High | Strong controlled reps; 1–2 RIR. | 8 min | 
+Tuesday | 6 | HSPU progression | Partial-ROM wall HSPU 4 × 4 | 4×4 · step partial_rom_wall_hspu | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | 
+Tuesday | 7 | HSPU progression | Lower pad / harder progression 4 × 3 | 4×3 | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | hspu_step_from_state
+Tuesday | 9–10 | HSPU progression | Hardest clean progression 5 × 2–4 | 5×2–4 | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | hspu_step_from_state
+Tuesday | 9–11 | Overhead press | 3 × 4–6 | 3×4–6 · RIR 1–2 | vertical_press | High | Build the vertical-press engine for HSPU; 1–2 RIR. | 7 min | 
+Tuesday | 9–11 | Bench press | 2 × 5–6 | 2×5–6 · RIR 1–2 | horizontal_press | Medium | Horizontal pressing strength; use weighted dips in a later block if preferred. | 7 min | 
+Tuesday | 9–11 | Squat / hack squat | 3 × 4–6 | 3×4–6 · RIR 1–2 | squat | High | Strong controlled reps; 1–2 RIR. | 8 min | 
+Tuesday | 11 | HSPU progression | Hardest clean progression 4 × 2–3 | 4×2–3 | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | hspu_step_from_state
+Tuesday | 12 | HSPU progression | TEST: 3–5 serious attempts; record reps + ROM / pad height | 3–5×? · test, max_attempts | skill_strength,vertical_press | PRIMARY | Advance only after two clean sessions at the current progression. | 8–10 min | hspu_step_from_state,max_reps
+Tuesday | 12 | Easy press back-off | OHP or bench: 2 × 5 easy | 2×5 · RIR 3–4 · easy | vertical_press,horizontal_press | Low | Only if you feel good after the HSPU test. | 6 min | 
+Wednesday | 1–12 | Bike warm-up | 5 min progressive easy spin | 5 min · easy | warmup | Prep |  | 5 min | 
+Wednesday | 1–2 | Bike HIIT | 6 × 30s hard / 90s easy | 6×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Wednesday | 1–12 | Bike cool-down | 4–5 min easy | 4–5 min · easy | warmup | Recovery |  | 5 min | 
+Wednesday | 1–12 | Wrists + shoulders | Wrist rocks 2×10 · wall flexion 2×8 · wall slides 2×10 · bench lat stretch 2×40s | (raw text only) | mobility | High | HSPU-focused mobility. | 7–8 min | 
+Wednesday | 1–12 | Thoracic + hips + ankles | Thoracic rotation 6/side · 90/90 2×6 · Cossack 2×6 · knee-to-wall 2×10 | (raw text only) | mobility | Medium | Keep it controlled, never painful. | 8 min | 
+Wednesday | 1–12 | Hamstrings + hip flexors | Pike stretch 2×40s · couch stretch 60s/side | (raw text only) | mobility | Medium | Finish relaxed. | 4 min | 
+Wednesday | 3 | Bike HIIT | 7 × 30s hard / 90s easy | 7×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Wednesday | 4, 8, 12 | Bike HIIT | 4 × 30s hard / 90s easy | 4×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Wednesday | 5–6, 11 | Bike HIIT | 8 × 30s hard / 90s easy | 8×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Wednesday | 7, 9 | Bike HIIT | 9 × 30s hard / 90s easy | 9×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Wednesday | 10 | Bike HIIT | 10 × 30s hard / 90s easy | 10×30s on/90s off | hiit | PRIMARY | Genuinely hard but controlled. Keep grip/lats fresh for Thursday. | 8–20 min | 
+Thursday | 1–3, 5–7, 9–11 | Calisthenics class | Normal class; self-regulate and avoid unnecessary failure | (raw text only) | class | PRIMARY | Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals. | Class | 
+Thursday | 1–12 | Thursday exposure | Record whether class was heavy on PULL / PUSH / LEGS | (raw text only) | class | Important | These toggles automatically modify Friday guidance. | 1 min | 
+Thursday | 4, 8, 12 | Calisthenics class | Easy class; no maximal work | easy | class | PRIMARY | Priority: Pull-Up → HSPU/Handstand → general skills. Enjoy other skills without turning them into extra goals. | Class | 
+Friday | 1–11 | Full-body warm-up | 5 min easy bike + squat/press/row ramp-up sets | 5 min · easy | warmup | Prep | No fatigue; just prepare the patterns. | 5 min | 
+Friday | 1–3 | Squat / hack squat | 3 × 6 | 3×6 · RIR 1–2 | squat | High | Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets. | 9–10 min | 
+Friday | 1–3 | Incline DB bench | 3 × 8–10 | 3×8–10 · RIR 1–3 | horizontal_press | High | If Thursday push was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 1–3 | Cable / machine row | 3 × 8–10 | 3×8–10 · RIR 1–3 | row | High | If Thursday pull was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 1–3, 5–7, 9–11 | Bulgarian split squat | 2 × 8/leg | 2×8/side · RIR 1–3 | unilateral_leg | Medium | If Thursday legs were heavy: skip. | 6 min | 
+Friday | 1–3, 5–7, 9–11 | Face pull | 2 × 12–15 | 2×12–15 · RIR 1–3 | prehab | Low | Scapular/rear-delt health. | 3 min | 
+Friday | 1–3, 5–7, 9–11 | Curl OR triceps extension | 2 × 8–12 | 2×8–12 · RIR 1–3 | accessory | Low | Optional; choose one and rotate as desired. | 4 min | 
+Friday | 4, 8 | Squat / hack squat | 2 × 5 easy | 2×5 · RIR 3–4 · easy | squat | High | Reduce further if Thursday had heavy legs. | 7 min | 
+Friday | 4, 8 | Incline DB bench | 2 × 8 easy | 2×8 · RIR 3–4 · easy | horizontal_press | High | Reduce/skip if Thursday had heavy push. | 6 min | 
+Friday | 4, 8 | Cable / machine row | 2 × 8 easy | 2×8 · RIR 3–4 · easy | row | High | Reduce/skip if Thursday had heavy pull. | 6 min | 
+Friday | 4, 8 | Bulgarian split squat | 1 × 8/leg easy | 1×8/side · RIR 3–4 · easy | unilateral_leg | Medium | Optional if Thursday taxed legs. | 4 min | 
+Friday | 4, 8 | Face pull | 2 × 12–15 | 2×12–15 · RIR 3–4 | prehab | Low | Easy shoulder-health work. | 3 min | 
+Friday | 5–7 | Squat / hack squat | 3 × 4–6 | 3×4–6 · RIR 1–2 | squat | High | Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets. | 9–10 min | 
+Friday | 5–7 | Incline DB bench | 3 × 6–8 | 3×6–8 · RIR 1–3 | horizontal_press | High | If Thursday push was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 5–7 | Cable / machine row | 3 × 6–8 | 3×6–8 · RIR 1–3 | row | High | If Thursday pull was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 9–11 | Squat / hack squat | 3 × 4–5 | 3×4–5 · RIR 1–2 | squat | High | Main Friday lower-body strength. If Thursday legs were heavy: reduce to 2 easy sets. | 9–10 min | 
+Friday | 9–11 | Incline DB bench | 3 × 6 | 3×6 · RIR 1–3 | horizontal_press | High | If Thursday push was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 9–11 | Cable / machine row | 3 × 6 | 3×6 · RIR 1–3 | row | High | If Thursday pull was heavy: reduce to 1–2 easy sets or skip. | 8 min | 
+Friday | 12 | Full-body recovery | 20–30 min easy movement + mobility | 20–30 min · easy | recovery | Recovery | No heavy lifting in test week. | 20–30 min | 

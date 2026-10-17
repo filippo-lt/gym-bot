@@ -1,0 +1,8 @@
+[
+  {"slug": "barbell", "name": "Barbell (total incl. bar)", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null},
+  {"slug": "dumbbells", "name": "Dumbbells (per hand)", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null},
+  {"slug": "cable_stack", "name": "Cable stack", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null},
+  {"slug": "row_machine", "name": "Row machine stack", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null},
+  {"slug": "hack_squat", "name": "Hack squat (plates on sled)", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null},
+  {"slug": "pullup", "name": "Pull-up bar (added weight, bands)", "base_kg": null, "step_kg": null, "discrete_values": null, "bands": null}
+]
