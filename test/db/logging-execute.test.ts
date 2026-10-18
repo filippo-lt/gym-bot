@@ -1,6 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { appendMessage, recentMessages } from "../../src/logging/conversation.js";
-import { executeActions, setGroupClean, setLastSetRir } from "../../src/logging/execute.js";
+import {
+  executeActions,
+  setGroupClean,
+  setLastSetRir,
+  undoWrite,
+} from "../../src/logging/execute.js";
 import { saveAlias } from "../../src/logging/memory.js";
 import {
   cancelPending,
@@ -348,6 +353,17 @@ describe("usage, conversation, prompt context", () => {
     expect(await store.totals(new Date("2026-10-20T12:00:00Z"))).toEqual({ day: 0, month: 1000 });
   });
 
+  it("recordStt and sttSecondsToday sum today's Rome date only", async () => {
+    const store = createUsageStore(db);
+    // 23:30 UTC on 31 Oct is already 1 Nov in Rome.
+    await store.recordStt(10, "groq:whisper-large-v3-turbo", new Date("2026-10-31T23:30:00Z"));
+    await store.recordStt(5, "groq:whisper-large-v3-turbo", new Date("2026-11-01T10:00:00Z"));
+    await store.recordStt(99, "groq:whisper-large-v3-turbo", new Date("2026-10-31T10:00:00Z"));
+    expect(await store.sttSecondsToday(new Date("2026-11-01T12:00:00Z"))).toBe(15);
+    expect(await store.sttSecondsToday(new Date("2026-10-31T12:00:00Z"))).toBe(99);
+    expect(await store.totals(new Date("2026-11-01T12:00:00Z"))).toEqual({ day: 0, month: 0 });
+  });
+
   it("returns the last 10 messages within 6 h, truncated, oldest first", async () => {
     const now = new Date();
     for (let i = 0; i < 12; i += 1) await appendMessage(db, CHAT, "user", `m${i}`);
@@ -382,5 +398,105 @@ describe("usage, conversation, prompt context", () => {
     expect(ctx.pending?.summary).toContain("bench_press");
     const sat = await buildPromptContext(db, CHAT, new Date("2026-10-04T10:00:00Z"));
     expect(sat.todayLabel).toBe("Sun 4 Oct 2026 · rest day");
+  });
+});
+
+describe("Thursday class with moves", () => {
+  const THU = "2026-10-01";
+  const moves = [
+    { name: "Pistol", sets: 5, reps: 10, groups: ["legs" as const] },
+    { name: "Pull-up", sets: 4, reps: 8, groups: ["pull" as const] },
+  ];
+  const cls = (
+    input: { heavy_groups?: ("pull" | "push" | "legs")[]; moves?: typeof moves },
+    extra: { photoFileId?: string; rawText?: string } = {},
+  ): StagedAction => ({ kind: "log_class", input, date: THU, ...extra });
+  const row = async () =>
+    (
+      await sql`select heavy_groups, photo_file_id, raw_text, parsed from class_logs where date = ${THU}`
+    )[0];
+
+  it("class with moves replaces moves and photo; heavy-only keeps them", async () => {
+    await executeActions(db, "u:300", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
+      now: MON,
+    });
+    await executeActions(db, "u:301", [cls({ heavy_groups: ["legs"] })], { now: MON });
+    const kept = await row();
+    expect(kept?.heavy_groups).toEqual(["legs"]);
+    expect(kept?.photo_file_id).toBe("F1");
+    expect(kept?.parsed.moves).toHaveLength(2);
+    await executeActions(db, "u:302", [cls({ moves: [moves[0] as (typeof moves)[0]] })], {
+      now: MON,
+    });
+    const replaced = await row();
+    expect(replaced?.photo_file_id).toBeNull();
+    expect(replaced?.parsed.moves).toHaveLength(1);
+  });
+
+  it("undo restores the whole previous class row", async () => {
+    await executeActions(
+      db,
+      "u:310",
+      [cls({ moves, heavy_groups: ["pull"] }, { photoFileId: "F1" })],
+      {
+        now: MON,
+      },
+    );
+    await executeActions(
+      db,
+      "u:311",
+      [cls({ moves: [moves[0] as (typeof moves)[0]], heavy_groups: ["legs"] }, { rawText: "t" })],
+      {
+        now: MON,
+      },
+    );
+    const u = await undoWrite(db, "u:311", 0, MON);
+    expect(u.status).toBe("undone");
+    const r = await row();
+    expect(r?.heavy_groups).toEqual(["pull"]);
+    expect(r?.photo_file_id).toBe("F1");
+    expect(r?.raw_text).toBeNull();
+    expect(r?.parsed.moves).toHaveLength(2);
+  });
+
+  it("undo deletes a class row that did not exist", async () => {
+    await executeActions(db, "u:320", [cls({ moves, heavy_groups: [] })], { now: MON });
+    expect(await count("class_logs")).toBe(1);
+    const u = await undoWrite(db, "u:320", 0, MON);
+    expect(u.status).toBe("undone");
+    expect(await count("class_logs")).toBe(0);
+  });
+
+  it("undo of an older moves write is stale after a newer one with the same heavy groups", async () => {
+    const m2 = [{ name: "Squat", sets: 3, reps: 5, groups: ["legs" as const] }];
+    await executeActions(db, "u:330", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
+      now: MON,
+    });
+    await executeActions(
+      db,
+      "u:331",
+      [cls({ moves: m2, heavy_groups: [] }, { photoFileId: "F2" })],
+      {
+        now: MON,
+      },
+    );
+    const u = await undoWrite(db, "u:330", 0, MON);
+    expect(u.status).toBe("stale");
+    const r = await row();
+    expect(r?.photo_file_id).toBe("F2");
+    expect(r?.parsed.moves).toHaveLength(1);
+  });
+
+  it("undo of a heavy-only write restores heavy groups and leaves moves alone", async () => {
+    await executeActions(db, "u:340", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
+      now: MON,
+    });
+    await executeActions(db, "u:341", [cls({ heavy_groups: ["legs"] })], { now: MON });
+    const u = await undoWrite(db, "u:341", 0, MON);
+    expect(u.status).toBe("undone");
+    const r = await row();
+    expect(r?.heavy_groups).toEqual([]);
+    expect(r?.photo_file_id).toBe("F1");
+    expect(r?.parsed.moves).toHaveLength(2);
   });
 });

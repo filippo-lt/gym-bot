@@ -3,7 +3,7 @@
  * Writes go through the same executor (write_ledger, Undo) as logs; every number comes from DB rows or parsed input.
  */
 import { and, desc, eq, gt } from "drizzle-orm";
-import { type Context, InlineKeyboard } from "grammy";
+import type { Context } from "grammy";
 import { logGroups } from "../db/schema/log.js";
 import { exercises } from "../db/schema/plan.js";
 import { proposals } from "../db/schema/progression.js";
@@ -17,7 +17,13 @@ import type { SessionAdvice } from "../progression/session-advice.js";
 import { refreshUserState } from "../progression/store.js";
 import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
 import { day, esc } from "./format.js";
-import { directWriteSaved, type Message } from "./log-format.js";
+import {
+  directWriteSaved,
+  CLASS_HEAVY_GROUPS as GROUPS,
+  inlineKeyboard,
+  type Message,
+  maskToGroups,
+} from "./log-format.js";
 
 const HTML = { parse_mode: "HTML" as const };
 
@@ -25,22 +31,9 @@ export const BW_USAGE = "Send your bodyweight in kg, for example: /bw 78.5";
 export const READINESS_QUESTION = "How do you feel today?";
 
 const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
-const GROUPS = [
-  { bit: 1, key: "pull", label: "Pull" },
-  { bit: 2, key: "push", label: "Push" },
-  { bit: 4, key: "legs", label: "Legs" },
-] as const;
 
-function markup(m: Message): InlineKeyboard {
-  const k = new InlineKeyboard();
-  m.keyboard.forEach((row, i) => {
-    for (const b of row) k.text(b.text, b.data);
-    if (i < m.keyboard.length - 1) k.row();
-  });
-  return k;
-}
-
-const opts = (m: Message) => (m.keyboard.length ? { ...HTML, reply_markup: markup(m) } : HTML);
+const opts = (m: Message) =>
+  m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
 
 /** "78.5", "78,5", "78.5kg" -> 78.5; null when it is not a plausible bodyweight. */
 export function parseKg(arg: string): number | null {
@@ -52,8 +45,8 @@ export function parseKg(arg: string): number | null {
   return parsed.success ? parsed.data.kg : null;
 }
 
-export const maskToGroups = (mask: number): ("pull" | "push" | "legs")[] =>
-  GROUPS.filter((g) => (mask & g.bit) !== 0).map((g) => g.key);
+// Shared with the class-with-moves card (log-format.ts); re-exported so callers keep this import.
+export { maskToGroups };
 
 export function readinessCard(): Message {
   return {

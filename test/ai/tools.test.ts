@@ -26,6 +26,12 @@ describe("tool schemas", () => {
     }
   });
 
+  it("log_class tool schema has moves", () => {
+    const t = TOOLS.find((x) => x.name === "log_class");
+    expect(t?.input_schema.properties).toHaveProperty("moves");
+    expect(t?.description).toContain("moves");
+  });
+
   it("does not make defaulted fields required", () => {
     const log = TOOLS.find((t) => t.name === "log_sets");
     expect(log?.input_schema.required).toEqual(["exercise", "sets"]);

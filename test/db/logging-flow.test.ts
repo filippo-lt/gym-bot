@@ -736,3 +736,19 @@ describe("backend", () => {
     );
   });
 });
+
+describe("input source", () => {
+  it("voice log saves with source voice", async () => {
+    const a = await stage(input());
+    await executeActions(db, "p:1", [a], { now: MON, source: "voice" });
+    const rows = await sql`select source from log_groups`;
+    expect(rows.map((r) => r.source)).toEqual(["voice"]);
+  });
+
+  it("a log without a source saves as text", async () => {
+    const a = await stage(input());
+    await executeActions(db, "u:9", [a], { now: MON });
+    const rows = await sql`select source from log_groups`;
+    expect(rows.map((r) => r.source)).toEqual(["text"]);
+  });
+});

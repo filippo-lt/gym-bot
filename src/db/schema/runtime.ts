@@ -2,13 +2,16 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
+  date,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  serial,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -45,3 +48,20 @@ export const chatLease = pgTable("chat_lease", {
   owner: uuid("owner"),
   until: timestamp("until", { withTimezone: true }).notNull().default(new Date(0)),
 }).enableRLS();
+
+export const JOB_STATUSES = ["claimed", "done"] as const;
+export const jobStatus = pgEnum("job_status", JOB_STATUSES);
+
+/** One row per scheduled job per day: the unique (job, date) is the claim that stops a double run. */
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    id: serial("id").primaryKey(),
+    job: text("job").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    status: jobStatus("status").notNull().default("claimed"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("job_runs_job_date_unique").on(t.job, t.date)],
+).enableRLS();

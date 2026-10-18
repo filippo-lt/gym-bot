@@ -123,7 +123,9 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "clarify_exercise":
     case "log_readiness":
     case "log_bodyweight":
+      break;
     case "log_class":
+      if (a.input.moves) out.push("class_moves");
       break;
   }
   if (farOffLoad(a) !== null) out.push("load_far_off");
@@ -136,6 +138,8 @@ export interface PolicyContext {
   openPending?: boolean;
   /** A tool call errored during this intent, so part of the message was not understood. */
   partlyUnderstood?: boolean;
+  /** The message came from a voice note (always a card, never a direct write). */
+  voiceInput?: boolean;
 }
 
 export function decidePolicy(actions: StagedAction[], ctx: PolicyContext = {}): PolicyDecision {
@@ -144,6 +148,7 @@ export function decidePolicy(actions: StagedAction[], ctx: PolicyContext = {}): 
   const reasons: ConfirmReason[] = [];
   if (ctx.openPending) reasons.push("replaces_pending");
   if (ctx.partlyUnderstood) reasons.push("partly_understood");
+  if (ctx.voiceInput && actions.length > 0) reasons.push("voice_input");
   if (actions.length > 1) reasons.push("multiple_writes");
   for (const a of actions) {
     for (const r of actionReasons(a)) if (!reasons.includes(r)) reasons.push(r);

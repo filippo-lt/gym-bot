@@ -22,6 +22,7 @@ import { writeSkip } from "./skip.js";
 import type {
   BeforeGroup,
   GroupSnapshot,
+  InputSource,
   LedgerResult,
   ResolvedEntry,
   SessionItemBefore,
@@ -216,7 +217,12 @@ const groupFields = (g: typeof logGroups.$inferSelect): BeforeGroup => ({
   note: g.note,
 });
 
-async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerResult> {
+async function writeAction(
+  tx: Tx,
+  a: StagedAction,
+  now: Date,
+  source: InputSource = "text",
+): Promise<LedgerResult> {
   switch (a.kind) {
     case "log_sets": {
       const r = a.resolved;
@@ -242,7 +248,7 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
           // The level frozen for the group's own session day; a make-up never takes today's.
           readinessLevel: await loadFrozenLevel(tx, r.sessionDate),
           bwKg: r.bwKg,
-          source: "text",
+          source,
           note: r.note,
           hspuStepId: await ladderId(tx, r.hspuStep?.slug),
         })
@@ -405,24 +411,53 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
       };
     }
     case "log_class": {
+      const heavy = a.input.heavy_groups ?? [];
       const [prev] = await tx
-        .select({ id: classLogs.id, heavy: classLogs.heavyGroups })
+        .select({
+          id: classLogs.id,
+          heavy: classLogs.heavyGroups,
+          parsed: classLogs.parsed,
+          photoFileId: classLogs.photoFileId,
+          rawText: classLogs.rawText,
+        })
         .from(classLogs)
         .where(eq(classLogs.date, a.date));
+      // Heavy-only touches just heavy_groups: moves and photo from an earlier write stay.
+      const moves = a.input.moves
+        ? {
+            parsed: { moves: a.input.moves },
+            photoFileId: a.photoFileId ?? null,
+            rawText: a.rawText ?? null,
+          }
+        : {};
       const [row] = await tx
         .insert(classLogs)
-        .values({ date: a.date, heavyGroups: a.input.heavy_groups, source: "bot" })
+        .values({ date: a.date, heavyGroups: heavy, source: "bot", ...moves })
         .onConflictDoUpdate({
           target: classLogs.date,
-          set: { heavyGroups: a.input.heavy_groups, source: "bot" },
+          set: { heavyGroups: heavy, source: "bot", ...moves },
         })
         .returning({ id: classLogs.id });
       return {
         kind: "class",
         id: (row as { id: number }).id,
         date: a.date,
-        heavyGroups: a.input.heavy_groups,
+        heavyGroups: heavy,
+        ...(a.input.moves ? { moveCount: a.input.moves.length } : {}),
         previousGroups: prev?.heavy ?? null,
+        written: {
+          parsed: a.input.moves ? moves.parsed : (prev?.parsed ?? null),
+          photoFileId: a.input.moves ? (moves.photoFileId ?? null) : (prev?.photoFileId ?? null),
+          rawText: a.input.moves ? (moves.rawText ?? null) : (prev?.rawText ?? null),
+        },
+        previousRow: prev
+          ? {
+              heavyGroups: prev.heavy,
+              parsed: prev.parsed ?? null,
+              photoFileId: prev.photoFileId,
+              rawText: prev.rawText,
+            }
+          : null,
       };
     }
     case "skip_items":
@@ -493,6 +528,8 @@ export async function executeActions(
     now?: Date;
     replaceActions?: StagedAction[];
     replaceReasons?: string[];
+    /** Where the request came from; stored on the log group. */
+    source?: InputSource;
   } = {},
 ): Promise<ExecuteResult> {
   const now = opts.now ?? new Date();
@@ -527,7 +564,12 @@ function runActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number; replaceActions?: StagedAction[]; replaceReasons?: string[] },
+  opts: {
+    pendingId?: number;
+    replaceActions?: StagedAction[];
+    replaceReasons?: string[];
+    source?: InputSource;
+  },
   now: Date,
 ): Promise<ExecuteResult> {
   return db.transaction(async (tx): Promise<ExecuteResult> => {
@@ -589,7 +631,7 @@ function runActions(
         results.push((existing as { result: LedgerResult }).result);
         continue;
       }
-      const result = await writeAction(tx, action, now);
+      const result = await writeAction(tx, action, now, opts.source);
       await tx
         .update(writeLedger)
         .set({ result })
@@ -830,11 +872,40 @@ export async function undoWrite(
     if ([...cur.heavyGroups].sort().join() !== [...r.heavyGroups].sort().join()) {
       return { status: "stale" };
     }
-    if (r.previousGroups === null) {
+    // A newer write changed moves, photo or text: restoring would overwrite it.
+    if (
+      r.written &&
+      (JSON.stringify(cur.parsed ?? null) !== JSON.stringify(r.written.parsed ?? null) ||
+        cur.photoFileId !== r.written.photoFileId ||
+        cur.rawText !== r.written.rawText)
+    ) {
+      return { status: "stale" };
+    }
+    if (r.previousRow === undefined) {
+      // Ledger row from before previousRow: only the heavy groups were tracked.
+      if (r.previousGroups === null) {
+        await db.delete(classLogs).where(eq(classLogs.id, r.id));
+        return { status: "undone", text: "Class report removed." };
+      }
+      await db
+        .update(classLogs)
+        .set({ heavyGroups: r.previousGroups })
+        .where(eq(classLogs.id, r.id));
+      return { status: "undone", text: "Class report restored." };
+    }
+    if (r.previousRow === null) {
       await db.delete(classLogs).where(eq(classLogs.id, r.id));
       return { status: "undone", text: "Class report removed." };
     }
-    await db.update(classLogs).set({ heavyGroups: r.previousGroups }).where(eq(classLogs.id, r.id));
+    await db
+      .update(classLogs)
+      .set({
+        heavyGroups: r.previousRow.heavyGroups,
+        parsed: r.previousRow.parsed,
+        photoFileId: r.previousRow.photoFileId,
+        rawText: r.previousRow.rawText,
+      })
+      .where(eq(classLogs.id, r.id));
     return { status: "undone", text: "Class report restored." };
   }
   return { status: "none" };

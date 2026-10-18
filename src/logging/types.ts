@@ -5,6 +5,10 @@
  */
 import { z } from "zod";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
+import { classMoveSchema } from "./class-moves.js";
+
+/** Where a staged input came from (pending_actions.input_source). */
+export type InputSource = "text" | "voice" | "photo";
 
 export const DAY_VALUES = ["today", "mon", "tue", "wed", "thu", "fri"] as const;
 export type Day = (typeof DAY_VALUES)[number];
@@ -119,10 +123,16 @@ export const logBodyweightInputSchema = z.strictObject({
 export type LogBodyweightInput = z.infer<typeof logBodyweightInputSchema>;
 
 export const HEAVY_GROUP_VALUES = ["pull", "push", "legs"] as const;
-export const logClassInputSchema = z.strictObject({
-  /** Groups the Thursday class loaded heavily; empty = not heavy. */
-  heavy_groups: z.array(z.enum(HEAVY_GROUP_VALUES)).max(3),
-});
+export const logClassInputSchema = z
+  .strictObject({
+    /** Groups the Thursday class loaded heavily; empty = not heavy. Missing = [] for the executor and cards. */
+    heavy_groups: z.array(z.enum(HEAVY_GROUP_VALUES)).max(3).optional(),
+    /** The class's moves, from a photo or a description. Always goes through a card. */
+    moves: z.array(classMoveSchema).min(1).max(30).optional(),
+  })
+  .refine((v) => v.heavy_groups !== undefined || v.moves !== undefined, {
+    message: "Give heavy_groups, moves, or both.",
+  });
 export type LogClassInput = z.infer<typeof logClassInputSchema>;
 
 export const setBandKgInputSchema = z.strictObject({
@@ -360,7 +370,13 @@ export type StagedAction =
       button?: "t" | "o" | "s";
     }
   | { kind: "log_bodyweight"; input: LogBodyweightInput; date: string }
-  | { kind: "log_class"; input: LogClassInput; date: string }
+  | {
+      kind: "log_class";
+      input: LogClassInput;
+      date: string;
+      photoFileId?: string;
+      rawText?: string;
+    }
   /** Marks planned items skipped; a PRIMARY item or the whole session goes through a card. */
   | {
       kind: "skip_items";
@@ -421,6 +437,10 @@ export type ConfirmReason =
   | "skip_primary"
   | "skip_session"
   | "skip_ambiguous"
+  /** Voice can mishear numbers and names: a voice note always goes through a card. */
+  | "voice_input"
+  /** A class log that moves planned sessions (later task). */
+  | "class_moves"
   /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
   | "memory"
   /** Band kg changes the equipment table: always a tap. */
@@ -492,8 +512,19 @@ export type LedgerResult =
       id: number;
       date: string;
       heavyGroups: string[];
-      /** null = there was no row before. */
+      /** Number of moves saved with this write; absent for a heavy-only write. */
+      moveCount?: number;
+      /** null = there was no row before. Kept for ledger rows written before `previousRow`. */
       previousGroups: string[] | null;
+      /** moves/photo/text as this write left them: Undo is stale when the row differs. Absent on older rows. */
+      written?: { parsed: unknown; photoFileId: string | null; rawText: string | null };
+      /** The whole row as it was (null = no row): Undo restores all of it. */
+      previousRow?: {
+        heavyGroups: string[];
+        parsed: unknown;
+        photoFileId: string | null;
+        rawText: string | null;
+      } | null;
     }
   /** Only the items this write skipped; Undo restores each to its `before`. */
   | {
@@ -545,6 +576,10 @@ export interface TokenUsage {
 export interface UsageStore {
   totals(now: Date): Promise<{ day: number; month: number }>;
   record(usage: TokenUsage, now: Date): Promise<void>;
+  /** Voice seconds transcribed today (Europe/Rome date). */
+  sttSecondsToday(now: Date): Promise<number>;
+  /** Records one transcription: `provider` goes in `model`, tokens 0. */
+  recordStt(seconds: number, provider: string, now: Date): Promise<void>;
 }
 
 export interface ReadRecord {

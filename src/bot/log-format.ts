@@ -2,9 +2,11 @@
  * Telegram texts and keyboards for logging (M3). Pure: every number here comes from DB rows or
  * parsed input, never from model text. Output is Telegram HTML, so user-provided text is escaped.
  */
+import { InlineKeyboard } from "grammy";
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
 import { trainingDate } from "../domain/calendar.js";
+import { classBreakdown } from "../logging/class-moves.js";
 import { dateLabel, describeAction } from "../logging/describe.js";
 import type { MemoryItem } from "../logging/memory.js";
 import type { Pending } from "../logging/pending.js";
@@ -20,13 +22,23 @@ import type {
 } from "../logging/types.js";
 import type { ExerciseType, LoadBasis, Weekday } from "../plan-import/types.js";
 import { cb } from "./callbacks.js";
-import { esc } from "./format.js";
+import { day, esc } from "./format.js";
 
 export interface Button {
   text: string;
   data: string;
 }
 export type Keyboard = Button[][];
+/** Telegram inline keyboard for a Keyboard (one row per inner array). */
+export function inlineKeyboard(kb: Keyboard): InlineKeyboard {
+  const k = new InlineKeyboard();
+  kb.forEach((row, i) => {
+    for (const b of row) k.text(b.text, b.data);
+    if (i < kb.length - 1) k.row();
+  });
+  return k;
+}
+
 export interface Message {
   text: string;
   keyboard: Keyboard;
@@ -57,6 +69,8 @@ export const HELP_TEXT = [
   "• I skipped Bulgarian today",
   "• undo that",
   "",
+  "You can also send a voice note, or a photo of the class board.",
+  "",
   "Or ask me, for example:",
   "• what did I squat last week?",
   "• alternative to dips?",
@@ -68,7 +82,15 @@ export const HELP_TEXT = [
   "• show me Monday's session",
 ].join("\n");
 
-export const TEXT_ONLY = "I can read text only for now.";
+export const TEXT_ONLY = "I can read text, voice notes and class board photos.";
+export const VOICE_NOT_CONFIGURED = "Voice isn't configured yet. Text still works.";
+export const VOICE_TOO_LONG = "That voice note is too long. Please keep it under 2 minutes.";
+export const VOICE_BUDGET = "Voice budget reached. Text still works.";
+export const VOICE_BLANK = "I couldn't hear that. Please try again or type it.";
+export const VOICE_FAILED = "Sorry, I couldn't transcribe that. Please try again or type it.";
+export const BOARD_UNREADABLE =
+  "I couldn't read a class board in that photo. Please type or say the class instead.";
+export const PHOTO_FAILED = "Sorry, I couldn't read that photo. Please try again.";
 export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";
@@ -421,6 +443,12 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         if (guessed.length) out.push(`${guessed.join(", ")} ${plural ? "were" : "was"} guessed`);
         break;
       }
+      case "class_moves":
+        out.push("class report");
+        break;
+      case "voice_input":
+        out.push("from a voice note");
+        break;
       case "partly_understood":
         out.push("part of your message couldn't be saved");
         break;
@@ -534,6 +562,20 @@ export function stripMarkdown(text: string): string {
     .replace(/^[ \t]*#{1,6}[ \t]*/gm, "");
 }
 
+const HEARD_MAX = 300;
+
+/** The "🎤 heard:" line (capped, escaped) and a blank line, first on every voice-origin card. */
+export function heardLine(heard: string): string {
+  const chars = Array.from(heard);
+  const text = chars.length > HEARD_MAX ? `${chars.slice(0, HEARD_MAX).join("")}…` : heard;
+  return `🎤 heard: ${esc(text)}`;
+}
+
+function pushHeard(lines: string[], heard: string | null | undefined): void {
+  if (!heard) return;
+  lines.push(heardLine(heard), "");
+}
+
 export function confirmCard(args: {
   id: number;
   kind: Pending["kind"];
@@ -541,9 +583,12 @@ export function confirmCard(args: {
   reasons: string[];
   /** Summary of an older request this one replaced. */
   replacedSummary?: string | null;
+  /** Voice transcript or photo read-out, shown first. */
+  heard?: string | null;
 }): Message {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
+  pushHeard(lines, args.heard);
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
@@ -558,6 +603,69 @@ export function confirmCard(args: {
   return { text: lines.join("\n"), keyboard: [keyboard] };
 }
 
+/** The three heavy-group toggles of the class cards (mask bits: pull 1, push 2, legs 4). */
+export const CLASS_HEAVY_GROUPS = [
+  { bit: 1, key: "pull", label: "Pull" },
+  { bit: 2, key: "push", label: "Push" },
+  { bit: 4, key: "legs", label: "Legs" },
+] as const;
+
+export const maskToGroups = (mask: number): ("pull" | "push" | "legs")[] =>
+  CLASS_HEAVY_GROUPS.filter((g) => (mask & g.bit) !== 0).map((g) => g.key);
+
+export const groupsToMask = (groups: readonly string[]): number =>
+  CLASS_HEAVY_GROUPS.reduce((m, g) => (groups.includes(g.key) ? m | g.bit : m), 0);
+
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** "2 moves, 6 sets", "2 moves, 6+ sets" (some moves without sets) or "2 moves" (none had sets). */
+export function classRowText(row: ReturnType<typeof classBreakdown>[number]): string {
+  const moves = plural(row.moves, "move");
+  if (row.setMoves === 0) return moves;
+  return row.setMoves === row.moves
+    ? `${moves}, ${plural(row.sets, "set")}`
+    : `${moves}, ${row.sets}+ sets`;
+}
+
+/** A pending class log with moves: breakdown per group, heavy toggles (nothing ticked until the user taps), Save. */
+export function classMovesCard(args: {
+  id: number;
+  action: Extract<StagedAction, { kind: "log_class" }>;
+  mask: number;
+  heard?: string | null;
+  replacedSummary?: string | null;
+}): Message {
+  const { id, action, mask } = args;
+  const lines: string[] = [];
+  pushHeard(lines, args.heard);
+  if (args.replacedSummary) lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
+  lines.push(`Thursday class (${day(action.date, "ccc d LLL")}):`);
+  for (const row of classBreakdown(action.input.moves ?? [])) {
+    const label = row.group.charAt(0).toUpperCase() + row.group.slice(1);
+    lines.push(`${label}: ${classRowText(row)}`);
+  }
+  const picked = maskToGroups(mask);
+  lines.push(
+    "",
+    "Which parts were heavy?",
+    `Selected: ${picked.length ? picked.join(", ") : "none (= not heavy)"}. Tap to change, then Save.`,
+  );
+  return {
+    text: lines.join("\n"),
+    keyboard: [
+      CLASS_HEAVY_GROUPS.map((g) => ({
+        text: `${(mask & g.bit) !== 0 ? "✓ " : ""}${g.label}`,
+        data: cb.classMoves(id, mask ^ g.bit),
+      })),
+      [
+        { text: "Not heavy", data: cb.classMovesSave(id, 0) },
+        { text: "Save", data: cb.classMovesSave(id, mask) },
+        { text: "❌", data: cb.pending(id, "no") },
+      ],
+    ],
+  };
+}
+
 export function clarifyCard(args: {
   id: number;
   /** Position of the clarify action in the request, carried by its buttons. */
@@ -566,8 +674,10 @@ export function clarifyCard(args: {
   candidates: Candidate[];
   replacedSummary?: string | null;
   partlyUnderstood?: boolean;
+  heard?: string | null;
 }): Message {
   const lines: string[] = [];
+  pushHeard(lines, args.heard);
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
@@ -663,6 +773,10 @@ export function directWriteSaved(
     case "class":
       return {
         text: `✓ Thursday class: ${
+          result.moveCount !== undefined
+            ? `${result.moveCount} ${result.moveCount === 1 ? "move" : "moves"}; `
+            : ""
+        }${
           result.heavyGroups.length
             ? `heavy ${result.heavyGroups.map((g) => g.toUpperCase()).join(", ")}`
             : "not heavy"

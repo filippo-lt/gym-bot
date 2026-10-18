@@ -86,6 +86,7 @@ const sttSchema = z
     }),
     GROQ_API_KEY: optionalString,
     OPENAI_API_KEY: optionalString,
+    STT_DAILY_SECONDS_CAP: strictInt(1800),
   })
   .superRefine((env, ctx) => {
     const keyName = env.STT_PROVIDER === "groq" ? "GROQ_API_KEY" : "OPENAI_API_KEY";

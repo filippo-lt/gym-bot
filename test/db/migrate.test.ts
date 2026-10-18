@@ -54,3 +54,29 @@ test("applies a migration and is idempotent", async () => {
 test("skips when there is no journal", async () => {
   expect(await runMigrations(testDatabaseUrl(), join(dir, "nope"), MIGRATION_OPTIONS)).toBe(false);
 });
+
+test("has job_runs with a unique (job, date)", async () => {
+  await sql`delete from job_runs where job = 'class_question' and date = '2026-10-22'`;
+  await sql`insert into job_runs (job, date) values ('class_question', '2026-10-22')`;
+  await expect(
+    sql`insert into job_runs (job, date) values ('class_question', '2026-10-22')`,
+  ).rejects.toMatchObject({ code: "23505" });
+  const rows = await sql`select status, done_at from job_runs where job = 'class_question'`;
+  expect(rows[0]?.status).toBe("claimed");
+  expect(rows[0]?.done_at).toBeNull();
+  await sql`delete from job_runs where job = 'class_question' and date = '2026-10-22'`;
+});
+
+test("pending_actions defaults input_source to text", async () => {
+  const rows = await sql`
+    insert into pending_actions (chat_id, kind, actions, expires_at)
+    values (1, 'confirm', '[]'::jsonb, now() + interval '1 hour')
+    returning id, input_source, transcript`;
+  expect(rows[0]?.input_source).toBe("text");
+  expect(rows[0]?.transcript).toBeNull();
+  await expect(
+    sql`insert into pending_actions (chat_id, kind, actions, expires_at, input_source)
+        values (1, 'confirm', '[]'::jsonb, now(), 'fax')`,
+  ).rejects.toMatchObject({ code: "23514" });
+  await sql`delete from pending_actions where id = ${rows[0]?.id}`;
+});

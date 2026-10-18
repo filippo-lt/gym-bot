@@ -321,7 +321,12 @@ const promptContext: PromptContext = {
   lastSaved: [],
   recent: [],
 };
-const usage: UsageStore = { totals: async () => ({ day: 0, month: 0 }), record: async () => {} };
+const usage: UsageStore = {
+  totals: async () => ({ day: 0, month: 0 }),
+  record: async () => {},
+  sttSecondsToday: async () => 0,
+  recordStt: async () => {},
+};
 
 async function run(text: string) {
   const { backend, calls } = recordingBackend();
@@ -399,6 +404,26 @@ describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
     expect(l?.exercise.slug).toBe("face_pull");
     const single = Array.isArray(l?.sets) && l.sets.length === 1;
     expect(single || l?.guessed_fields.includes("sets")).toBe(true);
+  });
+
+  it.each([
+    "[voice] quindici face pull con venti chili",
+    "[voice] fifteen face pulls at twenty kilos",
+  ])("%s", async (phrase) => {
+    const [l] = logs((await run(phrase)).calls);
+    expect(l?.exercise.slug).toBe("face_pull");
+    const first = l && Array.isArray(l.sets) ? l.sets[0] : l && uniform(l);
+    expect(first?.reps).toBe(15);
+    expect(first?.load_kg).toBe(20);
+  });
+
+  it("class described with moves", async () => {
+    const { calls } = await run(
+      "class today: 5x10 pistol squats, 4x8 pull-ups, 3 rounds of 20 push-ups",
+    );
+    const c = calls.find((x) => x.tool === "log_class");
+    expect(c && "input" in c && c.input.moves).toHaveLength(3);
+    expect(c && "input" in c && (c.input.heavy_groups ?? [])).toEqual([]);
   });
 
   it("bench 55 then lateral raises 2x15 6kg", async () => {

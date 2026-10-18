@@ -11,6 +11,7 @@ export interface IntentRequest {
   messages: MessageParam[];
   tools: ToolDef[];
   max_tokens: number;
+  tool_choice?: Anthropic.Messages.ToolChoice;
   signal: AbortSignal;
 }
 
@@ -50,6 +51,7 @@ export function createAnthropicModel(): IntentModel {
           messages: params.messages,
           tools: params.tools,
           max_tokens: params.max_tokens,
+          ...(params.tool_choice ? { tool_choice: params.tool_choice } : {}),
         },
         { signal: params.signal },
       );

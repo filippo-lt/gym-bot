@@ -3,6 +3,7 @@ import {
   BUDGET_REACHED,
   cancelledText,
   clarifyCard,
+  classMovesCard,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
@@ -11,6 +12,7 @@ import {
   echoMessage,
   editEchoMessage,
   HELP_TEXT,
+  heardLine,
   MEMORY_EMPTY,
   memoryList,
   NO_AI_KEY,
@@ -356,6 +358,41 @@ describe("cards", () => {
     expect(m.keyboard[0]).toHaveLength(2);
   });
 
+  it("confirmCard shows the heard line first", () => {
+    const a = logAction();
+    const m = confirmCard({
+      id: 5,
+      kind: "confirm",
+      actions: [a],
+      reasons: ["voice_input"],
+      heard: "fifteen face pulls",
+    });
+    expect(m.text.startsWith("🎤 heard: fifteen face pulls\n\nSave this?")).toBe(true);
+    expect(m.text).toContain("Why I'm asking: from a voice note");
+    const long = confirmCard({
+      id: 5,
+      kind: "confirm",
+      actions: [a],
+      reasons: [],
+      heard: "x".repeat(400),
+    });
+    expect(long.text.split("\n")[0]).toBe(`🎤 heard: ${"x".repeat(300)}…`);
+    const esc = confirmCard({ id: 5, kind: "confirm", actions: [a], reasons: [], heard: "a < b" });
+    expect(esc.text.split("\n")[0]).toBe("🎤 heard: a &lt; b");
+  });
+
+  it("clarifyCard shows the heard line first", () => {
+    const m = clarifyCard({
+      id: 8,
+      actionIndex: 0,
+      said: "fp",
+      candidates: [{ slug: "face_pull", name: "Face pull" }],
+      replacedSummary: "Bench",
+      heard: "fp two by fifteen",
+    });
+    expect(m.text.startsWith("🎤 heard: fp two by fifteen\n\nReplaces: Bench")).toBe(true);
+  });
+
   it("clarify message", () => {
     const m = clarifyCard({
       id: 8,
@@ -526,5 +563,85 @@ describe("skip texts", () => {
 
   it("help lists /skip", () => {
     expect(HELP_TEXT).toContain("/skip");
+  });
+});
+
+describe("heardLine", () => {
+  it("cuts by code points, never inside an emoji", () => {
+    const text = `${"a".repeat(299)}😀tail`;
+    const line = heardLine(text);
+    expect(line).toBe(`🎤 heard: ${"a".repeat(299)}😀…`);
+  });
+});
+
+describe("classMovesCard", () => {
+  const action: Extract<StagedAction, { kind: "log_class" }> = {
+    kind: "log_class",
+    date: "2026-10-01",
+    input: {
+      moves: [
+        { name: "Pistol", sets: 5, reps: 10, groups: ["legs"] },
+        { name: "Pull-up", sets: 4, reps: 8, groups: ["pull"] },
+        { name: "Burpee", sets: 1, groups: ["legs", "push"] },
+      ],
+    },
+  };
+
+  it("shows breakdown, nothing ticked at mask 0", () => {
+    const m = classMovesCard({ id: 9, action, mask: 0, heard: "pistols and pull-ups" });
+    expect(m.text).toContain("🎤 heard: pistols and pull-ups");
+    expect(m.text).toContain("Thursday class (Thu 1 Oct):");
+    expect(m.text).toContain("Legs: 2 moves, 6 sets");
+    expect(m.text).toContain("Pull: 1 move, 4 sets");
+    expect(m.text).toContain("Push: 1 move, 1 set");
+    expect(m.text).toContain("Which parts were heavy?");
+    expect(m.keyboard.flat().some((b) => b.text.includes("✓"))).toBe(false);
+    expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:1", "cm:9:2", "cm:9:4"]);
+    expect(m.keyboard[1]?.map((b) => b.data)).toEqual(["cm:9:0:ok", "cm:9:0:ok", "pa:9:no"]);
+  });
+
+  it("never invents sets", () => {
+    const some = {
+      ...action,
+      input: {
+        moves: [
+          { name: "Pistol", sets: 5, groups: ["legs" as const] },
+          { name: "Burpee", groups: ["legs" as const] },
+          { name: "Pull-up", groups: ["pull" as const] },
+        ],
+      },
+    };
+    const m = classMovesCard({ id: 9, action: some, mask: 0 });
+    expect(m.text).toContain("Legs: 2 moves, 5+ sets");
+    expect(m.text).toContain("Pull: 1 move\n");
+  });
+
+  it("Not heavy saves in one tap", () => {
+    const m = classMovesCard({ id: 9, action, mask: 5 });
+    expect(m.keyboard[1]?.[0]).toEqual({ text: "Not heavy", data: "cm:9:0:ok" });
+  });
+
+  it("a class with moves in a multi-action card states heavy groups", () => {
+    const line = (heavy: ("legs" | "pull" | "push")[]) =>
+      confirmCard({
+        id: 1,
+        kind: "confirm",
+        actions: [
+          { ...action, input: { ...action.input, heavy_groups: heavy } },
+          { kind: "log_bodyweight", input: { kg: 70 }, date: "2026-10-01" },
+        ],
+        reasons: ["multiple_writes", "class_moves"],
+      }).text;
+    expect(line([])).toContain("Thursday class: 3 moves; heavy: none");
+    expect(line(["legs"])).toContain("Thursday class: 3 moves; heavy: legs");
+    expect(line([])).toContain("class report");
+    expect(line([])).not.toContain("you pick");
+  });
+
+  it("ticks the selected groups", () => {
+    const m = classMovesCard({ id: 9, action, mask: 5 });
+    expect(m.keyboard[0]?.map((b) => b.text)).toEqual(["✓ Pull", "Push", "✓ Legs"]);
+    expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:4", "cm:9:7", "cm:9:1"]);
+    expect(m.keyboard[1]?.[1]?.data).toBe("cm:9:5:ok");
   });
 });

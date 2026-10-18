@@ -12,7 +12,11 @@ const chatsWithOpenRows = vi.fn(async () => [11, 22]);
 vi.mock("../../src/db/client.js", () => ({ getDb: () => ({ execute }) }));
 vi.mock("../../src/runtime/inbox.js", () => ({ chatsWithOpenRows }));
 vi.mock("../../src/runtime/process-chat.js", () => ({ processChat }));
+const runDueJobs = vi.fn(async () => [] as unknown[]);
+vi.mock("../../src/jobs/runner.js", () => ({ runDueJobs }));
+vi.mock("../../src/jobs/index.js", () => ({ JOBS: [] }));
 vi.mock("../../src/runtime/telegram-runtime.js", () => ({
+  sendToOwner: async () => {},
   botHandlers: async () => ({
     handle: async () => {},
     sendTyping: async () => {},
@@ -52,5 +56,12 @@ describe("GET /api/cron/tick", () => {
     expect(body.swept.map((s) => s.chatId)).toEqual([11, 22]);
     expect(processChat).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalled();
+  });
+
+  it("a failing job runner does not stop the sweeper", async () => {
+    runDueJobs.mockRejectedValueOnce(new Error("boom"));
+    const res = await GET(get({ authorization: `Bearer ${secret}` }));
+    expect(res.status).toBe(200);
+    expect(processChat).toHaveBeenCalledTimes(2);
   });
 });

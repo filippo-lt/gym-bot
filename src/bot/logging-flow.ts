@@ -4,7 +4,9 @@
  * All numbers in replies are formatted by log-format.ts from DB or parsed values.
  */
 import { eq } from "drizzle-orm";
-import { type Context, InlineKeyboard } from "grammy";
+import type { Context } from "grammy";
+import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
+import { overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
@@ -12,7 +14,8 @@ import { buildDynamicText } from "../ai/prompt.js";
 import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
-import { trainingDate } from "../domain/calendar.js";
+import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { classBreakdown } from "../logging/class-moves.js";
 import { appendMessage } from "../logging/conversation.js";
 import { describeSnapshot } from "../logging/describe.js";
 import {
@@ -49,17 +52,32 @@ import {
   createLoggingBackend,
   resolveClarified,
 } from "../logging/resolve.js";
-import type { GroupSnapshot, LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
+import type {
+  GroupSnapshot,
+  InputSource,
+  LedgerResult,
+  PromptStatic,
+  StagedAction,
+} from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import {
+  MAX_VOICE_SECONDS,
+  type SpeechToText,
+  STT_TIMEOUT_MS,
+  sttVocabularyPrompt,
+} from "../stt/stt.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
+  BOARD_UNREADABLE,
   BUDGET_REACHED,
   bandQuestion,
   bandSaved,
   cancelledText,
   clarifyCard,
+  classMovesCard,
+  classRowText,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
@@ -69,18 +87,28 @@ import {
   echoMessage,
   editEchoMessage,
   expiredText,
+  groupsToMask,
+  heardLine,
+  inlineKeyboard,
   type Keyboard,
   type Message,
+  maskToGroups,
   memoryList,
   memorySaved,
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
+  PHOTO_FAILED,
   type Place,
   removedText,
   replacedText,
   STALE,
   stripMarkdown,
   summarize,
+  VOICE_BLANK,
+  VOICE_BUDGET,
+  VOICE_FAILED,
+  VOICE_NOT_CONFIGURED,
+  VOICE_TOO_LONG,
   viewFromSnapshot,
 } from "./log-format.js";
 import { createSkipFlow } from "./skip-flow.js";
@@ -94,14 +122,27 @@ export interface AiConfig {
 /** A function so the key is only read when free text arrives; it may throw when not configured. */
 export type AiSource = AiConfig | (() => AiConfig);
 
+/** Voice notes: the speech-to-text provider (throws when not configured) and the file download. */
+export interface MediaSource {
+  stt?: () => { stt: SpeechToText; dailySecondsCap: number };
+  download(fileId: string, maxBytes: number): Promise<Uint8Array>;
+}
+
 export interface FlowDeps {
   db: Db;
   now: () => Date;
   ai?: AiSource;
+  media?: MediaSource;
 }
+
+const VOICE_MAX_BYTES = 20 * 1024 * 1024;
+/** The API takes images up to 5 MB and base64 adds ~33%, so cap the download below 3.75 MB. */
+const PHOTO_MAX_BYTES = 3.5 * 1024 * 1024;
 
 export interface Flow {
   text(ctx: Context): Promise<void>;
+  voice(ctx: Context): Promise<void>;
+  photo(ctx: Context): Promise<void>;
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
@@ -112,17 +153,8 @@ const PARTLY = "partly_understood";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
 const HTML = { parse_mode: "HTML" as const };
 
-function markup(kb: Keyboard): InlineKeyboard {
-  const k = new InlineKeyboard();
-  kb.forEach((row, i) => {
-    for (const b of row) k.text(b.text, b.data);
-    if (i < kb.length - 1) k.row();
-  });
-  return k;
-}
-
 function opts(m: { keyboard: Keyboard }) {
-  return m.keyboard.length ? { ...HTML, reply_markup: markup(m.keyboard) } : HTML;
+  return m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
 }
 
 /** Sends a message and returns its id (undefined when the API result carries none). */
@@ -420,7 +452,7 @@ export function createFlow(deps: FlowDeps): Flow {
 
   function renderPending(p: Pending, replacedSummary: string | null): Message {
     if (p.kind === "clarify_exercise") {
-      const d = decidePolicy(p.actions);
+      const d = decidePolicy(p.actions, { voiceInput: p.inputSource === "voice" });
       const a = d.mode === "clarify" ? p.actions[d.index] : undefined;
       if (a?.kind === "clarify_exercise") {
         return clarifyCard({
@@ -430,8 +462,19 @@ export function createFlow(deps: FlowDeps): Flow {
           candidates: a.candidates,
           replacedSummary,
           partlyUnderstood: p.reasons.includes(PARTLY),
+          heard: p.transcript,
         });
       }
+    }
+    const only = p.actions.length === 1 ? p.actions[0] : undefined;
+    if (only?.kind === "log_class" && only.input.moves) {
+      return classMovesCard({
+        id: p.id,
+        action: only,
+        mask: groupsToMask(only.input.heavy_groups ?? []),
+        replacedSummary,
+        heard: p.transcript,
+      });
     }
     return confirmCard({
       id: p.id,
@@ -439,6 +482,7 @@ export function createFlow(deps: FlowDeps): Flow {
       actions: p.actions,
       reasons: p.reasons,
       replacedSummary,
+      heard: p.transcript,
     });
   }
 
@@ -450,6 +494,8 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: string[];
       updateId: number | null;
       now: Date;
+      inputSource?: InputSource;
+      transcript?: string | null;
     },
   ): Promise<Pending> {
     const chatId = (ctx.chat as { id: number }).id;
@@ -460,6 +506,8 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: args.reasons,
       sourceUpdateId: args.updateId,
       now: args.now,
+      inputSource: args.inputSource,
+      transcript: args.transcript,
     });
     // The handler ran twice for one update: the first run already sent (or finished) the card.
     if (reused && (pending.messageId !== null || pending.status !== "open")) return pending;
@@ -537,10 +585,51 @@ export function createFlow(deps: FlowDeps): Flow {
   // -------------------------------------------------------------------------
   // Free text
 
+  /**
+   * The inbox can run a handler twice. Never ask the model (or STT) again for work already done.
+   * True when this update was already handled (its echoes or card are re-sent when needed).
+   */
+  async function alreadyHandled(ctx: Context, chatId: number, key: string): Promise<boolean> {
+    const updateId = ctx.update.update_id;
+    const prior = await ledgerResults(db, key);
+    if (prior.length > 0) {
+      await sendEchoes(ctx, key, [], prior);
+      return true;
+    }
+    const existing = await getPendingBySourceUpdate(db, chatId, updateId);
+    if (existing) {
+      if (existing.status === "open" && existing.messageId === null) {
+        // The first run crashed before its card went out: do what it would have done, including
+        // the "Replaces: …" notice and retiring the older card.
+        await sendPendingCard(ctx, chatId, existing, await getReplacedPredecessor(db, existing));
+      }
+      return true;
+    }
+    return false;
+  }
+
   async function text(ctx: Context): Promise<void> {
     const body = ctx.message?.text;
     const chatId = ctx.chat?.id;
     if (body === undefined || chatId === undefined) return;
+    if (!aiConfig()) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    await handleInput(ctx, { body, source: "text" });
+  }
+
+  /** The intent pipeline for one message, typed or transcribed. */
+  async function handleInput(
+    ctx: Context,
+    input: { body: string; source: InputSource; transcript?: string },
+  ): Promise<void> {
+    const { body, source } = input;
+    const voice = source === "voice";
+    const transcript = input.transcript ?? null;
+    const heard = voice && transcript ? `${heardLine(transcript)}\n\n` : "";
+    const chatId = (ctx.chat as { id: number }).id;
     const ai = aiConfig();
     if (!ai) {
       await send(ctx, NO_AI_KEY);
@@ -550,31 +639,15 @@ export function createFlow(deps: FlowDeps): Flow {
     const key = `u:${updateId}`;
     const now = deps.now();
 
-    // The inbox can run a handler twice. Never ask the model again for work already done.
-    const prior = await ledgerResults(db, key);
-    if (prior.length > 0) {
-      await sendEchoes(ctx, key, [], prior);
-      return;
-    }
-    const existing = await getPendingBySourceUpdate(db, chatId, updateId);
-    if (existing) {
-      if (existing.status === "open" && existing.messageId === null) {
-        // The first run crashed before its card went out: do what it would have done, including
-        // the "Replaces: …" notice and retiring the older card.
-        await sendPendingCard(ctx, chatId, existing, await getReplacedPredecessor(db, existing));
-      }
-      return;
-    }
-
     // One query at a time (session pooler rule).
     const staticBlock = await promptStatic();
     const context = await buildPromptContext(db, chatId, now);
-    await appendMessage(db, chatId, "user", body);
+    await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
-        text: body,
+        text: voice ? `[voice] ${body}` : body,
         model: ai.model,
         backend: createLoggingBackend(db, now, { openPending: context.pending }),
         usage: createUsageStore(db),
@@ -604,7 +677,7 @@ export function createFlow(deps: FlowDeps): Flow {
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
         await send(ctx, {
-          text: html ? html : esc(NUMBER_GUARD_FALLBACK),
+          text: heard + (html ? html : esc(NUMBER_GUARD_FALLBACK)),
           keyboard: [],
         });
         await appendMessage(
@@ -627,7 +700,7 @@ export function createFlow(deps: FlowDeps): Flow {
           await sendFallback(fallback?.fallbackHtml ?? null);
           return;
         }
-        await send(ctx, { text: esc(guardLength(reply, 3000)), keyboard: [] });
+        await send(ctx, { text: heard + esc(guardLength(reply, 3000)), keyboard: [] });
         await appendMessage(db, chatId, "assistant", reply);
         return;
       }
@@ -639,7 +712,7 @@ export function createFlow(deps: FlowDeps): Flow {
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
         : DIDNT_GET_IT;
-      await send(ctx, { text: esc(reply), keyboard: [] });
+      await send(ctx, { text: heard + esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
       return;
     }
@@ -647,9 +720,14 @@ export function createFlow(deps: FlowDeps): Flow {
     // With an unsaved request open nothing is written directly: the new actions go to a card
     // that replaces it (and says so).
     const open = await getOpenPending(db, chatId, now);
+    // A typed correction of a voice card (after tapping ✏️) keeps the voice origin and its transcript.
+    const inherit = !voice && open?.awaitingEdit === true && open.inputSource === "voice";
+    const cardSource: InputSource = inherit ? "voice" : source;
+    const cardTranscript = inherit ? (open?.transcript ?? null) : transcript;
     const decision = decidePolicy(staged, {
       openPending: open !== null,
       partlyUnderstood: partly,
+      voiceInput: cardSource === "voice",
     });
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
@@ -673,6 +751,8 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: partly ? [PARTLY] : [],
         updateId,
         now,
+        inputSource: cardSource,
+        transcript: cardTranscript,
       });
       const a = staged[decision.index];
       await appendMessage(
@@ -691,9 +771,133 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: decision.reasons,
         updateId,
         now,
+        inputSource: cardSource,
+        transcript: cardTranscript,
       });
       await appendMessage(db, chatId, "assistant", `Asked to confirm: ${plainSummary(staged)}`);
     }
+  }
+
+  async function voice(ctx: Context): Promise<void> {
+    const note = ctx.message?.voice;
+    const chatId = ctx.chat?.id;
+    if (!note || chatId === undefined) return;
+    if (!aiConfig()) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    let sttConfig: { stt: SpeechToText; dailySecondsCap: number } | undefined;
+    try {
+      sttConfig = deps.media?.stt?.();
+    } catch (error) {
+      console.error(`stt: not configured (${error instanceof Error ? error.name : "error"})`);
+    }
+    if (!sttConfig || !deps.media) {
+      await send(ctx, VOICE_NOT_CONFIGURED);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    if (note.duration > MAX_VOICE_SECONDS) {
+      await send(ctx, VOICE_TOO_LONG);
+      return;
+    }
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    if ((await usage.sttSecondsToday(now)) + note.duration > sttConfig.dailySecondsCap) {
+      await send(ctx, VOICE_BUDGET);
+      return;
+    }
+    let transcript: string;
+    try {
+      const staticBlock = await promptStatic();
+      const audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
+      transcript = (
+        await sttConfig.stt.transcribe(audio, {
+          filename: "voice.ogg",
+          prompt: sttVocabularyPrompt(staticBlock.catalog.map((e) => e.name)),
+          signal: AbortSignal.timeout(STT_TIMEOUT_MS),
+        })
+      ).trim();
+    } catch (error) {
+      console.error(`stt: failed (${error instanceof Error ? error.name : "error"})`);
+      await send(ctx, VOICE_FAILED);
+      return;
+    }
+    await usage.recordStt(note.duration, sttConfig.stt.name, now);
+    if (!/[\p{L}\p{N}]/u.test(transcript)) {
+      await send(ctx, VOICE_BLANK);
+      return;
+    }
+    await handleInput(ctx, { body: transcript, source: "voice", transcript });
+  }
+
+  /** A blackboard photo: Claude vision reads the moves, the class card asks what was heavy. */
+  async function photo(ctx: Context): Promise<void> {
+    const sizes = ctx.message?.photo;
+    const chatId = ctx.chat?.id;
+    const largest = sizes?.at(-1);
+    if (!largest || chatId === undefined) return;
+    const ai = aiConfig();
+    if (!ai) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    if (await overTokenBudget(usage, now, ai)) {
+      await send(ctx, BUDGET_REACHED);
+      return;
+    }
+    const caption = ctx.message?.caption?.trim() || undefined;
+    let board: Awaited<ReturnType<typeof readBoard>>;
+    try {
+      if (!deps.media) throw new Error("no media source");
+      const image = await deps.media.download(largest.file_id, PHOTO_MAX_BYTES);
+      board = await readBoard({
+        model: ai.model,
+        image,
+        caption,
+        signal: AbortSignal.timeout(BOARD_TIMEOUT_MS),
+      });
+    } catch (error) {
+      console.error(`photo: failed (${error instanceof Error ? error.name : "error"})`);
+      await send(ctx, PHOTO_FAILED);
+      return;
+    }
+    await usage.record(board.usage, now);
+    await appendMessage(db, chatId, "user", `[photo] ${caption ?? "class board"}`);
+    if (board.result.kind === "not_board") {
+      await send(ctx, BOARD_UNREADABLE);
+      await appendMessage(db, chatId, "assistant", BOARD_UNREADABLE);
+      return;
+    }
+    const { moves, heavyGroups } = board.result;
+    await presentPending(ctx, {
+      kind: "confirm",
+      actions: [
+        {
+          kind: "log_class",
+          input: { moves, heavy_groups: heavyGroups },
+          date: thursdayOnOrBefore(trainingDate(now)),
+          photoFileId: largest.file_id,
+          rawText: caption,
+        },
+      ],
+      reasons: ["class_moves"],
+      updateId: ctx.update.update_id,
+      now,
+      inputSource: "photo",
+    });
+    const breakdown = classBreakdown(moves)
+      .map((r) => `${r.group} ${classRowText(r)}`)
+      .join(", ");
+    await appendMessage(
+      db,
+      chatId,
+      "assistant",
+      `Asked which class parts were heavy: ${breakdown}`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -768,6 +972,8 @@ export function createFlow(deps: FlowDeps): Flow {
     switch (a.t) {
       case "pa":
         return pendingButton(ctx, a.id, a.act, answer, now);
+      case "cm":
+        return classMovesButton(ctx, a.id, a.mask, a.save, answer, now);
       case "ex":
         return exerciseButton(ctx, a.pendingId, a.index, a.action, answer, now);
       case "rir":
@@ -954,7 +1160,11 @@ export function createFlow(deps: FlowDeps): Flow {
           ? SKIPPED_DONE
           : "Saved ✓";
     const key = `p:${id}`;
-    const r = await executeActions(db, key, pending.actions, { pendingId: id, now });
+    const r = await executeActions(db, key, pending.actions, {
+      pendingId: id,
+      now,
+      source: pending.inputSource,
+    });
     if (r.status === "stale") {
       await editQuietly(ctx, STALE);
       await answer(STALE);
@@ -983,6 +1193,77 @@ export function createFlow(deps: FlowDeps): Flow {
         ? "Nothing skipped (user confirmed): already done or skipped."
         : `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
     );
+  }
+
+  /** Toggles and Save of a class-with-moves card: the heavy mask rides in the button, the pending holds the moves. */
+  async function classMovesButton(
+    ctx: Context,
+    id: number,
+    mask: number,
+    save: boolean,
+    answer: Answer,
+    now: Date,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const pending = await getPending(db, id);
+    const action =
+      pending?.actions.length === 1 && pending.actions[0]?.kind === "log_class"
+        ? pending.actions[0]
+        : undefined;
+    if (!pending || !action?.input.moves) {
+      await answer(EXPIRED);
+      await remember(chatId, "A tapped request was not found (expired); nothing changed.");
+      return;
+    }
+    if (pending.status === "executed") {
+      await answer("Already saved.");
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      return;
+    }
+    if (pending.status !== "open" || pending.expiresAt.getTime() <= now.getTime()) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped class button found the request expired; nothing changed.");
+      return;
+    }
+    if (!save) {
+      await edit(
+        ctx,
+        classMovesCard({
+          id,
+          action: { ...action, input: { ...action.input, heavy_groups: maskToGroups(mask) } },
+          mask,
+          heard: pending.transcript,
+        }),
+      );
+      await answer();
+      return;
+    }
+    const toSave = {
+      ...action,
+      input: { ...action.input, heavy_groups: maskToGroups(mask) },
+    };
+    const key = `p:${id}`;
+    const r = await executeActions(db, key, [toSave], {
+      pendingId: id,
+      now,
+      source: pending.inputSource,
+      replaceActions: [toSave],
+      replaceReasons: pending.reasons,
+    });
+    if (r.status !== "done") {
+      await answer(r.status === "stale" ? STALE : EXPIRED);
+      if (r.status === "stale") await editQuietly(ctx, STALE);
+      else await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
+      await remember(chatId, "The tapped class card could not be saved; nothing changed.");
+      return;
+    }
+    const result = r.results[0];
+    if (result?.kind === "class") await editQuietly(ctx, directWriteSaved(result, key, 0));
+    else await editQuietly(ctx, "Saved ✓");
+    await answer("Saved.");
+    await remember(chatId, `Saved (user confirmed): ${plainSummary([toSave])}`);
   }
 
   async function exerciseButton(
@@ -1043,7 +1324,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await remember(chatId, "A tapped exercise choice had expired; nothing saved.");
       return;
     }
-    const d = decidePolicy(pending.actions);
+    const d = decidePolicy(pending.actions, { voiceInput: pending.inputSource === "voice" });
     const clarify = d.mode === "clarify" ? pending.actions[d.index] : undefined;
     const chosen = clarify?.kind === "clarify_exercise" ? clarify.candidates[index] : undefined;
     if (d.mode === "clarify" && d.index !== tappedAction) {
@@ -1111,7 +1392,10 @@ export function createFlow(deps: FlowDeps): Flow {
 
     const actions = pending.actions.map((x, i) => (i === d.index ? resolved : x));
     const partly = pending.reasons.includes(PARTLY);
-    const next = decidePolicy(actions, { partlyUnderstood: partly });
+    const next = decidePolicy(actions, {
+      partlyUnderstood: partly,
+      voiceInput: pending.inputSource === "voice",
+    });
     if (next.mode === "clarify") {
       if (!(await replacePendingActions(db, pendingId, actions))) {
         await answer(EXPIRED);
@@ -1128,6 +1412,7 @@ export function createFlow(deps: FlowDeps): Flow {
             said: q.said,
             candidates: q.candidates,
             partlyUnderstood: partly,
+            heard: pending.transcript,
           }),
         );
         await remember(chatId, `${chose} Asked which exercise "${q.said}" is.`);
@@ -1150,7 +1435,16 @@ export function createFlow(deps: FlowDeps): Flow {
         await remember(chatOf(ctx), "The request had expired; nothing saved.");
         return;
       }
-      await edit(ctx, confirmCard({ id: pendingId, kind, actions, reasons: next.reasons }));
+      await edit(
+        ctx,
+        confirmCard({
+          id: pendingId,
+          kind,
+          actions,
+          reasons: next.reasons,
+          heard: pending.transcript,
+        }),
+      );
       await remember(chatId, `${chose} Asked to confirm: ${plainSummary(actions)}`);
       const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);
@@ -1164,6 +1458,7 @@ export function createFlow(deps: FlowDeps): Flow {
       now,
       replaceActions: actions,
       replaceReasons: pending.reasons,
+      source: pending.inputSource,
     });
     if (r.status !== "done") {
       await answer(r.status === "stale" ? STALE : EXPIRED);
@@ -1191,5 +1486,13 @@ export function createFlow(deps: FlowDeps): Flow {
     presentPending,
   });
 
-  return { text, callback, undoCommand, memoryCommand, skipCommand: skip.skipCommand };
+  return {
+    text,
+    voice,
+    photo,
+    callback,
+    undoCommand,
+    memoryCommand,
+    skipCommand: skip.skipCommand,
+  };
 }

@@ -1143,6 +1143,30 @@ describe("round 4", () => {
     });
   });
 
+  it("voice origin survives clarify: confirm card with heard line, no write", async () => {
+    const said = {
+      exercise: { said: "fp" },
+      sets: { count: 2, reps: 15, load_kg: 25 },
+      guessed_fields: [],
+      needs_confirmation: false,
+    };
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("fp 2x15 25");
+    await sql`update pending_actions set input_source = 'voice', transcript = 'face pull two by fifteen'`;
+    const face = t.buttons(t.lastSent()).find((b) => b.text === "Face pull");
+    await t.tap(face?.data as string, 1001);
+    const card = String(t.edits().at(-1)?.payload.text);
+    expect(card.startsWith("🎤 heard: face pull two by fifteen")).toBe(true);
+    expect(card).toContain("from a voice note");
+    expect(await count("log_groups")).toBe(0);
+    expect((await sql`select kind, status from pending_actions`)[0]).toMatchObject({
+      kind: "confirm",
+      status: "open",
+    });
+    await t.tap("pa:1:ok", 1001);
+    expect((await sql`select source from log_groups`).map((r) => r.source)).toEqual(["voice"]);
+  });
+
   it("a truncated turn: confirm card for what was staged, nothing written (MAJOR-1)", async () => {
     const t = setup([
       tool("log_sets", benchLog()),
@@ -1428,5 +1452,73 @@ describe("removed groups retire their echo (M4)", () => {
     t.fail.edits = true;
     await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1002);
     expect(await count("log_groups")).toBe(0);
+  });
+});
+
+describe("class card with moves", () => {
+  const classAction: StagedAction = {
+    kind: "log_class",
+    date: "2026-10-01",
+    input: {
+      heavy_groups: [],
+      moves: [
+        { name: "Pistol", sets: 5, reps: 10, groups: ["legs"] },
+        { name: "Pull-up", sets: 4, reps: 8, groups: ["pull"] },
+        { name: "Burpee", groups: ["legs", "push"] },
+      ],
+    },
+  };
+  const open = async (updateId: number) =>
+    (
+      await createPending(db, {
+        chatId: CHAT,
+        kind: "confirm",
+        actions: [classAction],
+        reasons: ["class_moves"],
+        sourceUpdateId: updateId,
+        now: clock,
+      })
+    ).pending;
+
+  it("Save writes heavy groups from the tapped mask", async () => {
+    const t = setup();
+    const p = await open(8001);
+    await t.tap(`cm:${p.id}:2`);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain("Selected: push");
+    expect(await count("class_logs")).toBe(0);
+    await t.tap(`cm:${p.id}:4:ok`);
+    const [r] = await sql`select heavy_groups, parsed->'moves' as moves from class_logs`;
+    expect(r?.heavy_groups).toEqual(["legs"]);
+    expect(r?.moves).toHaveLength(3);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("✓ Thursday class: 3 moves; heavy LEGS");
+    // a repeated tap writes nothing more
+    await t.tap(`cm:${p.id}:4:ok`);
+    expect(await count("class_logs")).toBe(1);
+  });
+
+  it("Not heavy saves in one tap with no heavy groups", async () => {
+    const t = setup();
+    const p = await open(8005);
+    await t.tap(`cm:${p.id}:0:ok`);
+    const [r] = await sql`select heavy_groups, parsed->'moves' as moves from class_logs`;
+    expect(r?.heavy_groups).toEqual([]);
+    expect(r?.moves).toHaveLength(3);
+    expect(await count("class_logs")).toBe(1);
+  });
+
+  it("replaced or expired: Save answers the expired text and writes nothing", async () => {
+    const t = setup();
+    const old = await open(8002);
+    await open(8003); // a newer pending replaces it
+    await t.tap(`cm:${old.id}:4:ok`);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("class_logs")).toBe(0);
+
+    const t2 = setup();
+    const p = await open(8004);
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t2.tap(`cm:${p.id}:4:ok`);
+    expect(t2.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("class_logs")).toBe(0);
   });
 });

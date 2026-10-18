@@ -35,5 +35,24 @@ export function createUsageStore(db: Q): UsageStore {
         cacheWriteTokens: usage.cacheWriteTokens,
       });
     },
+    async sttSecondsToday(now) {
+      const day = romeDate(now).toISODate() as string;
+      const [row] = await db
+        .select({ s: sql<number>`coalesce(sum(${usageLogs.sttSeconds}), 0)::float8` })
+        .from(usageLogs)
+        .where(sql`${usageLogs.date} = ${day}`);
+      return Number(row?.s ?? 0);
+    },
+    async recordStt(seconds, provider, now) {
+      await db.insert(usageLogs).values({
+        date: romeDate(now).toISODate() as string,
+        model: provider,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        sttSeconds: Math.round(seconds),
+      });
+    },
   };
 }

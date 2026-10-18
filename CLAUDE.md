@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-GymBot is a single-user Telegram workout bot. `SPEC.md` is the source of truth for behaviour, domain rules and milestones. Read the relevant section before changing anything domain-related. Manual setup (BotFather, Supabase, Vercel, keys) is in `docs/SETUP.md`.
+GymBot is a single-user Telegram workout bot. `SPEC.md` is the source of truth for behaviour, domain rules and milestones. Read the relevant section before changing anything domain-related. Manual setup (BotFather, Supabase, Vercel, keys) is in `docs/SETUP.md`. Progress, open items and the live-testing playbook are in `docs/STATUS.md`: read it first and update it at the end of each milestone.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 
 - `src/ai/`: Anthropic client, tool schemas, prompt, loop (6 turns, 40 s), cost guard, fake model for tests. `src/logging/`: resolver, units, policy, executor, pending actions, aliases, memory. `src/bot/logging-flow.ts`: the Telegram flow and callbacks.
 - **write_ledger** makes writes idempotent. Source key `u:<update_id>` for a direct write, `p:<pending_id>` for a confirmed card. A retry returns the stored results and writes nothing. A pending request is created once per update (`source_update_id`), and ✅ is claimed in the same transaction as the writes.
-- Callback prefixes (data <= 64 bytes, see `src/bot/callbacks.ts`): `pa:<id>:ok|ed|no`, `ex:<pendingId>:<i>`, `rir:<groupId>:<0-4>` (4 = 4+), `cl:<groupId>:1|0`, `ug:<groupId>`, `ue:<sourceKey>:<idx>`, `uw:<sourceKey>:<idx>` (undo of a readiness / bodyweight / class write), `md:<memoryId>`, `sk:<yyyymmdd>:<plannedItemId|all>` (/skip list tap), `us:<sourceKey>:<idx>` (undo a skip), `rd:t|o|s` (/readiness 😴 🙂 💪), `cg:<mask>:<YYYYMMDD>` / `cg:<mask>:<YYYYMMDD>:ok` (/class toggles and Save for that Thursday; mask = pull 1 + push 2 + legs 4), `pr:<id>:ok|no` (HSPU advance proposal; `rd`, `cg`, `pr` are handled by `src/bot/inputs-flow.ts` before the generic handler), `hx:<exerciseId>` (/history choice; handled in `bot.ts` before the generic callback handler, parsed by `parseHistoryCallback`, not part of the `CallbackAction` union).
+- Callback prefixes (data <= 64 bytes, see `src/bot/callbacks.ts`): `pa:<id>:ok|ed|no`, `ex:<pendingId>:<i>`, `rir:<groupId>:<0-4>` (4 = 4+), `cl:<groupId>:1|0`, `ug:<groupId>`, `ue:<sourceKey>:<idx>`, `uw:<sourceKey>:<idx>` (undo of a readiness / bodyweight / class write), `md:<memoryId>`, `sk:<yyyymmdd>:<plannedItemId|all>` (/skip list tap), `us:<sourceKey>:<idx>` (undo a skip), `rd:t|o|s` (/readiness 😴 🙂 💪), `cg:<mask>:<YYYYMMDD>` / `cg:<mask>:<YYYYMMDD>:ok` (/class toggles and Save for that Thursday; mask = pull 1 + push 2 + legs 4), `cm:<pendingId>:<mask>` / `cm:<pendingId>:<mask>:ok` (class-with-moves card toggles and Save), `pr:<id>:ok|no` (HSPU advance proposal; `rd`, `cg`, `pr` are handled by `src/bot/inputs-flow.ts` before the generic handler), `hx:<exerciseId>` (/history choice; handled in `bot.ts` before the generic callback handler, parsed by `parseHistoryCallback`, not part of the `CallbackAction` union).
 - AI is built lazily (`aiEnv()` is read only when free text arrives), so commands work without the key.
 
 ### Progression in the bot (M5, `src/progression/`, `src/bot/inputs-flow.ts`)
@@ -62,7 +62,15 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 - Before a log is written, `executeActions` freezes the day's readiness and stores today's suggestions (outside the transaction). The log group then gets `suggestion_id` and `readiness_level`. The far-off check compares with the stored suggestion first, then the last session. After every write, undo, edit, RIR/clean tap and history import, `refreshUserState` rebuilds the pull-up gate and the HSPU step.
 - Band colours live in `log_entries.band` (`assist_kg` null while unmapped) and map to kg through `equipment.bands`. The first saved log with an unmapped colour triggers one question; the answer is the `set_band_kg` tool (confirm card).
 - An accepted `hspu_advance` proposal counts as the current HSPU step until a newer HSPU log (`acceptedHspuStep`).
-- `log_readiness`, `log_bodyweight`, `log_class` save directly with an Undo (`uw:`), like a log.
+- `log_readiness`, `log_bodyweight` and a heavy-only text `log_class` save directly with an Undo (`uw:`), like a log. A `log_class` with moves, or any voice-origin write, goes through a card.
+
+### Voice, photo, scheduled jobs (M6, `src/stt/`, `src/ai/board.ts`, `src/jobs/`)
+
+- **Voice.** `message:voice` → `flow.voice` (`src/bot/logging-flow.ts`) → download (`src/telegram/files.ts`, never log the file URL) → `src/stt/stt.ts` (Groq `whisper-large-v3-turbo` default, OpenAI `whisper-1`; no language forced; vocabulary prompt from the catalog; `sttEnv()` read lazily) → `handleInput` with source voice. Every voice write goes through a confirm card (`voice_input` policy reason) that starts with "🎤 heard: …" (`heardLine`); reads get the heard prefix. Memory stores `[voice] <transcript>`; the prompt tells the model such turns may be misheard. Limits: 120 s per note and `STT_DAILY_SECONDS_CAP` (default 1800, counted as `stt_seconds` in `usage_logs`).
+- **Photo.** `message:photo` → `flow.photo` → `readBoard` (`src/ai/board.ts`, forced `record_board` tool) → a `log_class` pending with `moves` → `classMovesCard` (per-group breakdown from `classBreakdown`; toggles start unticked unless a non-blank caption names heavy groups; `cm:` callbacks). 3.5 MB cap. Memory stores `[photo] <caption or "class board">`.
+- **Class rows.** Heavy-only writes keep moves, photo and raw text; a moves write replaces them; undo restores the whole previous row (stale if the row changed since).
+- **Jobs.** `src/jobs/` (`runDueJobs`): `job_runs` claim → send → done, with a 5-minute reclaim. First job `class_question` (Thu 21:00–23:00 Rome; skipped if the class is logged or outside the plan). Runs in `/api/cron/tick` before the inbox sweeper.
+- Shared helpers in `src/bot/log-format.ts`: `inlineKeyboard`, `heardLine`.
 
 ## Domain rules that are easy to break
 
