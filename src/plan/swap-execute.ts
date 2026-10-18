@@ -24,14 +24,6 @@ export interface PlanChangeResult {
 
 export type SwapOutcome = PlanChangeResult | { refused: string };
 
-const WEEKDAY_NAMES: Record<string, string> = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-};
-
 function dateWords(date: string, today: string): string {
   if (date === today) return "today";
   const d = new Date(`${date}T00:00:00Z`);

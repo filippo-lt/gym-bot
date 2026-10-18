@@ -82,7 +82,7 @@ export async function undoPlanChange(
     .where(and(eq(writeLedger.sourceKey, sourceKey), eq(writeLedger.actionIndex, index)))
     .for("update");
   const r = row?.result as PlanChangeResult | undefined;
-  if (!r || r.kind !== "plan_change") return { ok: false, reply: "Nothing to undo." };
+  if (r?.kind !== "plan_change") return { ok: false, reply: "Nothing to undo." };
   if (r.undone) return { ok: false, reply: "Already undone." };
 
   if (r.versionId !== null && (await versionInUse(tx, r.versionId))) {
