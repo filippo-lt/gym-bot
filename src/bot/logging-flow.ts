@@ -97,6 +97,7 @@ import {
   NUMBER_GUARD_FALLBACK,
   PHOTO_FAILED,
   type Place,
+  plural,
   removedText,
   replacedText,
   STALE,
@@ -134,7 +135,8 @@ export interface FlowDeps {
 }
 
 const VOICE_MAX_BYTES = 20 * 1024 * 1024;
-const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+/** The API takes images up to 5 MB and base64 adds ~33%, so cap the download below 3.75 MB. */
+const PHOTO_MAX_BYTES = 3.5 * 1024 * 1024;
 
 export interface Flow {
   text(ctx: Context): Promise<void>;
@@ -892,7 +894,7 @@ export function createFlow(deps: FlowDeps): Flow {
       inputSource: "photo",
     });
     const breakdown = classBreakdown(moves)
-      .map((r) => `${r.group} ${r.moves} moves ${r.sets} sets`)
+      .map((r) => `${r.group} ${plural(r.moves, "move")} ${plural(r.sets, "set")}`)
       .join(", ");
     await appendMessage(
       db,

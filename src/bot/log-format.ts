@@ -602,7 +602,7 @@ export const maskToGroups = (mask: number): ("pull" | "push" | "legs")[] =>
 export const groupsToMask = (groups: readonly string[]): number =>
   CLASS_HEAVY_GROUPS.reduce((m, g) => (groups.includes(g.key) ? m | g.bit : m), 0);
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** A pending class log with moves: breakdown per group, heavy toggles (nothing ticked until the user taps), Save. */
 export function classMovesCard(args: {

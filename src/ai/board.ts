@@ -76,7 +76,10 @@ export async function readBoard(args: {
     result: {
       kind: "board",
       moves: parsed.data.moves,
-      heavyGroups: [...new Set(parsed.data.heavy_groups_from_caption ?? [])],
+      // Only a caption can say a group was heavy: never trust the model without one.
+      heavyGroups: args.caption?.trim()
+        ? [...new Set(parsed.data.heavy_groups_from_caption ?? [])]
+        : [],
     },
     usage,
   };

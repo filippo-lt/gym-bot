@@ -145,7 +145,7 @@ describe("blackboard photo", () => {
     const [r] = await sql`select heavy_groups, photo_file_id from class_logs`;
     expect(r?.heavy_groups).toEqual([]);
     expect(r?.photo_file_id).toBe("big");
-    expect(t.download).toHaveBeenCalledWith("big", 10 * 1024 * 1024);
+    expect(t.download).toHaveBeenCalledWith("big", 3.5 * 1024 * 1024);
   });
 
   it("caption naming legs starts with Legs ticked and raw_text is saved", async () => {
@@ -158,6 +158,15 @@ describe("blackboard photo", () => {
     const [r] = await sql`select heavy_groups, raw_text from class_logs`;
     expect(r?.heavy_groups).toEqual(["legs"]);
     expect(r?.raw_text).toBe("legs were heavy");
+  });
+
+  it("no caption: model-claimed heavy groups are ignored", async () => {
+    for (const caption of [undefined, "   "]) {
+      await resetAndSeed(db, sql);
+      const t = setup([board({ heavy_groups_from_caption: ["legs"] })]);
+      await t.photo(caption);
+      expect(t.buttons(t.sent().at(-1)).some((b) => b.text.includes("✓"))).toBe(false);
+    }
   });
 
   it("not a board: BOARD_UNREADABLE, no pending row", async () => {

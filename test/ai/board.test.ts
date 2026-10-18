@@ -37,6 +37,27 @@ describe("readBoard", () => {
     expect(res.usage.inputTokens).toBe(100);
   });
 
+  it("no or blank caption: heavy groups are dropped", async () => {
+    for (const caption of [undefined, "  "]) {
+      const model = createFakeModel([
+        turn(
+          toolUse("record_board", {
+            is_board: true,
+            moves: [move],
+            heavy_groups_from_caption: ["legs"],
+          }),
+        ),
+      ]);
+      const res = await readBoard({
+        model,
+        image: new Uint8Array([1]),
+        caption,
+        signal: new AbortController().signal,
+      });
+      expect(res.result).toEqual({ kind: "board", moves: [move], heavyGroups: [] });
+    }
+  });
+
   it("is_board false -> not_board", async () => {
     const { out } = run([turn(toolUse("record_board", { is_board: false }))]);
     expect((await out).result).toEqual({ kind: "not_board" });
