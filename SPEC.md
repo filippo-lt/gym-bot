@@ -190,6 +190,11 @@ The plan decides **sets × reps × RIR** for every week. The bot decides only th
 ### 5.6 Morning message
 - 06:00 Europe/Rome on training days (Mon–Fri). Quiet on Sat/Sun.
 - Content: week + phase, day focus, exercises with sets × reps and suggested load (or "baseline — tell me your weight"), estimated duration, and any Friday adjustment from Thursday. Short.
+- Built in M8 (design: `docs/superpowers/specs/2026-10-18-m8-morning-charts-design.md`):
+  - Sent by the 15-min tick when Rome time is 06:00–10:00 Mon–Fri; a missed morning is not sent after 10:00. Skipped when something is already logged for the day, before the plan starts and after it ends, except one "plan finished" message on the first weekday after the plan.
+  - The text is exactly `/today` at that moment (greeting on top, the 😴 / 🙂 / 💪 buttons at the bottom), so rendering it freezes the day's readiness like a 06:00 `/today`.
+  - A button tap re-freezes the level until the first log of the day (the 5.6c rule) and edits the morning message in place ("Noted: 😴" + the re-rendered session). After the first log the tap counts for tomorrow ("Noted: 😴 · counts for tomorrow"). A tap from another day writes nothing.
+  - Friday with Thursday not reported: the class card comes first, then the session; saving the card on that Friday sends the session again with the Friday adjustments.
 
 ### 5.6b Weekly check-in
 - Triggered by `/done` on Friday, or Friday 20:00 Europe/Rome if not done (weekends stay quiet): ask for the weekly metrics in `weekly_progress_metrics` that weren't already logged (the plan's `weekly_progress_metrics`: max clean pull-ups, weighted top set, HSPU level/ROM + reps, OHP / bench / squat top sets, recovery 1–5) **plus bodyweight**, which is my addition — not in the plan file.
@@ -278,7 +283,7 @@ Chat is the main interface; commands are fast shortcuts and a fallback when pars
 | `/readiness` | How I feel today (😴 / 🙂 / 💪) → adjusted session |
 | `/memory` | What the bot knows about me; delete items |
 | `/history <exercise>` | Last sessions for an exercise |
-| `/chart <exercise>` | Progress chart as an image |
+| `/chart <exercise>` | Progress chart as an image; `/chart volume` = weekly sets per muscle group; `/chart` alone shows buttons |
 | `/plan` | Plan overview: week, phase, what's coming next |
 | `/export` | Send me a JSON + CSV backup of all data (also sent automatically every Sunday — Supabase free has no point-in-time restore) |
 | `/help` | List of commands and example phrases |
@@ -286,6 +291,8 @@ Chat is the main interface; commands are fast shortcuts and a fallback when pars
 ### 5.8 Replies
 - Short, simple English (I'm not a native speaker). Reply in the language I write in.
 - Charts when I ask about trends: load over time, reps over time, weekly volume per muscle group.
+  - Load over time = e1RM per session (the engine's valid-set rules; deload/test weeks shaded, imported sessions drawn as estimates; pull-ups on system load). Reps over time = most reps in one set (HSPU: one series per ladder step; timed: longest hold). Pull-ups show both panels. Weekly volume = hard sets per plan week per muscle group (weighted, bodyweight_plus, bodyweight_reps, skill_ladder).
+  - Rendered in the webhook: Vega-Lite spec → SVG (Vega, headless, pure JS) → PNG with `@resvg/resvg-js` (prebuilt binaries, no native build) and a bundled OFL font (Inter). No hosted chart service: the data never leaves the app.
 
 ## 6. Data model (starting point — refine in plan mode)
 
@@ -316,7 +323,7 @@ Chat is the main interface; commands are fast shortcuts and a fallback when pars
 
 ## 7. Claude tools (starting point)
 
-`get_session(date)`, `log_readiness(...)`, `propose_adjustment(date)`, `save_memory(...)`, `list_memory()`, `get_exercise_history(exercise, range)`, `suggest_load(exercise, date)`, `log_sets(...)`, `edit_last_entry(...)`, `undo_last_entry()`, `swap_exercise(exercise, replacement, scope)`, `get_alternatives(exercise)`, `log_class(...)`, `render_chart(metric, exercise, range)`.
+`get_session(date)`, `log_readiness(...)`, `propose_adjustment(date)`, `save_memory(...)`, `list_memory()`, `get_exercise_history(exercise, range)`, `suggest_load(exercise, date)`, `log_sets(...)`, `edit_last_entry(...)`, `undo_last_entry()`, `swap_exercise(exercise, replacement, scope)`, `get_alternatives(exercise)`, `log_class(...)`, `render_chart(metric: load | reps | volume, exercise?, weeks?)` (read tool: returns the computed numbers, the image is sent after the reply; one chart per message).
 
 Tool results return computed facts. Claude never invents a number that isn't in a tool result.
 
