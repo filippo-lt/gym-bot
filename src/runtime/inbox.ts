@@ -107,3 +107,14 @@ export async function chatsWithOpenRows(db: Db): Promise<number[]> {
   );
   return rows.map((r) => Number(r.chat_id));
 }
+
+/** Deletes finished (done/failed) rows older than `days`. Returns how many were removed. */
+export async function purgeOldRows(db: Db, now: Date, days = 30): Promise<number> {
+  const rows = await db.execute(
+    sql`DELETE FROM inbox
+        WHERE status IN ('done', 'failed')
+          AND received_at < ${now.toISOString()}::timestamptz - make_interval(days => ${days})
+        RETURNING id`,
+  );
+  return rows.length;
+}

@@ -9,7 +9,15 @@ export interface JobContext {
   db: Db;
   now: Date;
   send(m: Message): Promise<void>;
+  sendFile(file: {
+    kind: "document" | "photo";
+    name: string;
+    data: Uint8Array;
+    caption?: string;
+  }): Promise<void>;
 }
+
+export type SendFile = JobContext["sendFile"];
 
 export interface Job {
   name: string;

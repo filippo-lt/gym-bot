@@ -55,6 +55,35 @@ This starts Postgres 17 on port 54329 with databases `gymbot` and `gymbot_test`.
 Test URL: `postgres://postgres:postgres@localhost:54329/gymbot_test`.
 `docker/init-db.sql` runs only when the volume is first created. To reset, run `docker compose down -v`.
 
+## Restore from a backup
+Use this when the Supabase project is lost. The restore script writes only into an empty database that is already migrated. It refuses anything else.
+
+1. Create a new Supabase project. Copy its session pooler URI (port 5432).
+2. Migrate it: `MIGRATION_DATABASE_URL=<new URI> pnpm db:migrate`.
+3. Download the latest backup file from the Telegram chat (the Sunday message).
+4. Dry run. It does everything and rolls back:
+   ```
+   RESTORE_DATABASE_URL=<new URI> pnpm backup:restore <file> --allow-remote --dry-run
+   ```
+   Check the target, the backup date and age, and the row counts.
+5. Ask yourself if the age is acceptable: data written after the backup date is lost. Then run the same command without `--dry-run`.
+6. In Vercel, set `DATABASE_URL` to the new URI and redeploy.
+7. Check `/api/health` (see Verify).
+
+Each remote write (migrate, restore, Vercel change, redeploy) needs your explicit OK.
+
+`RESTORE_DATABASE_URL` has no fallback, so a restore can never hit the database in `DATABASE_URL` by mistake. A host that is not local needs `--allow-remote`.
+
+Local rehearsal (restore into a third, empty database, never the one you backed up):
+1. `pnpm db:up`. If the local `gymbot` database is empty, migrate it: `MIGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:54329/gymbot pnpm db:migrate`.
+2. `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot pnpm backup` (writes a file in `backups/`). Set `DATABASE_URL` here because `.env.local` holds production. Backing up production instead is read-only, but only do it with your OK.
+3. Create an empty database: `docker compose exec db psql -U postgres -c "create database gymbot_restore"`.
+4. Migrate it: `MIGRATION_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot_restore pnpm db:migrate`.
+5. Dry run: `RESTORE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot_restore pnpm backup:restore backups/<file>.json --dry-run`.
+6. The same command without `--dry-run`.
+
+After deploying M9, run `pnpm telegram:setup <url>` so `/usage` and `/export` appear in the command menu.
+
 ## Verify
 1. `pnpm check:setup`. Every line should show a green check.
 2. Deploy: `pnpm dlx vercel deploy --prod` (or push to the connected Git branch).

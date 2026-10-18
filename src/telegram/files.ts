@@ -1,3 +1,5 @@
+export const DOWNLOAD_TIMEOUT_MS = 15_000;
+
 export class FileTooLargeError extends Error {
   constructor(readonly maxBytes: number) {
     super(`file is larger than ${maxBytes} bytes`);

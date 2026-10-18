@@ -1,6 +1,7 @@
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { AiTimeoutError } from "../../src/ai/errors.js";
 import {
   createFakeModel,
   type ScriptedTurn,
@@ -11,12 +12,13 @@ import {
 import { createBot } from "../../src/bot/bot.js";
 import {
   VOICE_BLANK,
-  VOICE_BUDGET,
-  VOICE_FAILED,
   VOICE_NOT_CONFIGURED,
   VOICE_TOO_LONG,
+  voiceBudgetText,
 } from "../../src/bot/log-format.js";
 import type { MediaSource } from "../../src/bot/logging-flow.js";
+import { runWithDeadline } from "../../src/runtime/deadline.js";
+import { SttError } from "../../src/stt/stt.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -55,6 +57,7 @@ function setup(
   script: ScriptedTurn[],
   opts: {
     transcript?: string | (() => Promise<string>);
+    sttName?: string;
     stt?: boolean;
     dailySecondsCap?: number;
   } = {},
@@ -89,7 +92,7 @@ function setup(
             throw new Error("no key");
           }
         : () => ({
-            stt: { name: "fake", transcribe },
+            stt: { name: opts.sttName ?? "fake", transcribe },
             dailySecondsCap: opts.dailySecondsCap ?? 600,
           }),
     download,
@@ -272,24 +275,85 @@ describe("voice notes", () => {
   it("budget reached", async () => {
     const t = setup([ok], { transcript: "hello", dailySecondsCap: 10 });
     await t.voice(11);
-    expect(t.texts()).toEqual([VOICE_BUDGET]);
+    expect(t.texts()).toEqual([voiceBudgetText(0, 10)]);
     expect(t.transcribe).not.toHaveBeenCalled();
   });
 
-  it("STT throws: VOICE_FAILED, no usage recorded; success records seconds", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("the STT timeout is clamped to the invocation deadline", async () => {
+    const t = setup([ok], { transcript: "" });
+    // 6 s left minus the 5 s margin: the 20 s STT timeout becomes the 1 s floor.
+    await runWithDeadline(Date.now() + 6_000, () => t.voice(5));
+    const call = t.transcribe.mock.calls[0] as unknown as [unknown, { signal: AbortSignal }];
+    const { signal } = call[1];
+    expect(signal.aborted).toBe(false);
+    await new Promise((r) => setTimeout(r, 1_300));
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("STT throws: specific text naming the provider, no usage recorded; success records seconds", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const bad = setup([ok], {
+      sttName: "groq:whisper-large-v3-turbo",
       transcript: async () => {
-        throw new Error("boom");
+        throw new SttError(429, "groq");
       },
     });
     await bad.voice(7);
-    expect(bad.texts()).toEqual([VOICE_FAILED]);
+    expect(bad.texts()).toEqual([
+      "Too many voice notes for Groq right now. Wait a minute or type it.",
+    ]);
     expect(await count("usage_logs")).toBe(0);
+    expect(JSON.stringify(err.mock.calls)).not.toContain("transcription failed (HTTP");
 
     const good = setup([tool("log_sets", facePulls), ok], { transcript: "15 face pulls at 20 kg" });
     await good.voice(7);
     const rows = await sql`select stt_seconds from usage_logs where stt_seconds > 0`;
     expect(rows.map((r) => r.stt_seconds)).toEqual([7]);
+  });
+
+  it("download throws a plain Error: download text", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([ok], { transcript: "hi" });
+    t.download.mockRejectedValueOnce(new Error("secret"));
+    await t.voice(7);
+    expect(t.texts()).toEqual([
+      "I couldn't download that file from Telegram. Please send it again.",
+    ]);
+    expect(t.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("text path: model timeout gives the timeout text and logs no message text", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([ok]);
+    vi.spyOn(t.model, "create").mockRejectedValue(new AiTimeoutError());
+    await t.typed("how many sets today");
+    expect(t.texts()).toEqual([
+      "Claude took too long to answer. Please try again. Commands still work.",
+    ]);
+    expect(JSON.stringify(err.mock.calls)).not.toContain("AI budget exceeded");
+    expect(JSON.stringify(err.mock.calls)).toContain("ai_timeout");
+  });
+
+  it("the AI loop budget is clamped to the invocation deadline", async () => {
+    const t = setup([ok]);
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    await runWithDeadline(Date.now() + 20_000, () => t.typed("how many sets today"));
+    const delays = spy.mock.calls.map((c) => c[1]);
+    // 20 s left minus the 5 s margin: 15 s, not the 40 s budget.
+    expect(delays.some((d) => typeof d === "number" && d > 14_000 && d <= 15_000)).toBe(true);
+    expect(delays).not.toContain(40_000);
+  });
+
+  it("a DB failure reading the catalog is not reported as a transcription failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([ok], { transcript: "hi" });
+    await sql`alter table exercises rename to exercises_gone`;
+    try {
+      await expect(t.voice(7)).rejects.toThrow();
+    } finally {
+      await sql`alter table exercises_gone rename to exercises`;
+    }
+    expect(t.texts().join("\n")).not.toContain("transcribe");
+    expect(t.transcribe).not.toHaveBeenCalled();
   });
 });

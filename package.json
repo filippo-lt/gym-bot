@@ -24,15 +24,20 @@
     "db:up": "docker compose up -d db",
     "telegram:setup": "tsx scripts/telegram-setup.ts",
     "check:setup": "tsx scripts/check-setup.ts",
+    "backup": "tsx scripts/backup.ts",
+    "backup:restore": "tsx scripts/backup-restore.ts",
     "demo:m0": "tsx scripts/demo-m0.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@vercel/functions": "^3.10.1",
     "drizzle-orm": "^0.45.4",
     "grammy": "^1.46.0",
     "luxon": "^3.7.2",
     "postgres": "^3.4.9",
+    "vega": "^6.4.0",
+    "vega-lite": "^6.5.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

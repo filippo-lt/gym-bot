@@ -41,8 +41,11 @@ try {
     { command: "swap", description: "Swap an exercise" },
     { command: "plan", description: "Plan overview" },
     { command: "history", description: "Last sessions of an exercise" },
+    { command: "chart", description: "Progress chart" },
     { command: "undo", description: "Remove my last log" },
     { command: "memory", description: "What I remember" },
+    { command: "usage", description: "AI and voice usage" },
+    { command: "export", description: "Backup of all data" },
     { command: "help", description: "Commands" },
   ]);
 

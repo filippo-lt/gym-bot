@@ -4,6 +4,7 @@
  */
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { Context } from "grammy";
+import { DateTime } from "luxon";
 import { logGroups } from "../db/schema/log.js";
 import { exercises } from "../db/schema/plan.js";
 import { proposals } from "../db/schema/progression.js";
@@ -34,13 +35,13 @@ import {
   maskToGroups,
 } from "./log-format.js";
 import { deloadAppliedText, deloadProposalText } from "./plan-change-format.js";
+import { morningMessage, renderTodayText } from "./morning.js";
+import { READINESS_EMOJI, READINESS_QUESTION } from "./readiness-text.js";
 
 const HTML = { parse_mode: "HTML" as const };
 
 export const BW_USAGE = "Send your bodyweight in kg, for example: /bw 78.5";
-export const READINESS_QUESTION = "How do you feel today?";
-
-const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
+export { READINESS_EMOJI, READINESS_QUESTION };
 
 const opts = (m: Message) =>
   m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
@@ -119,6 +120,9 @@ export function deloadCard(
   };
 }
 
+const nextDay = (iso: string): string =>
+  DateTime.fromISO(iso, { zone: "utc" }).plus({ days: 1 }).toISODate() as string;
+
 export interface InputsDeps {
   db: Db;
   now: () => Date;
@@ -177,9 +181,17 @@ export function createInputs(deps: InputsDeps): Inputs {
     await reply(ctx, classCard(thursdayOnOrBefore(trainingDate(deps.now())), 0));
   }
 
-  async function readinessTap(ctx: Context, level: "t" | "o" | "s"): Promise<void> {
+  async function readinessTap(
+    ctx: Context,
+    level: "t" | "o" | "s",
+    morningDate?: string,
+  ): Promise<void> {
     const now = deps.now();
     const date = trainingDate(now);
+    if (morningDate !== undefined && morningDate !== date) {
+      await ctx.answerCallbackQuery({ text: "That button is from another day." });
+      return;
+    }
     // Through the ledger: a double tap or a redelivered update writes one row.
     await executeActions(
       db,
@@ -194,8 +206,6 @@ export function createInputs(deps: InputsDeps): Inputs {
       ],
       { now },
     );
-    await edit(ctx, { text: `Noted: ${READINESS_EMOJI[level]}`, keyboard: [] });
-    await ctx.answerCallbackQuery();
     // The signal moves the level only while it is frozen and nothing is logged; later it counts for the next day.
     const [started] = await db
       .select({ id: logGroups.id })
@@ -203,12 +213,21 @@ export function createInputs(deps: InputsDeps): Inputs {
       .where(eq(logGroups.sessionDate, date))
       .limit(1);
     const frozen = await loadFrozenLevel(db, date);
+    const forTomorrow = Boolean(started && frozen);
+    if (morningDate === undefined) {
+      await edit(ctx, { text: `Noted: ${READINESS_EMOJI[level]}`, keyboard: [] });
+    } else {
+      // The re-freeze already ran inside executeActions: re-render the session with the current level.
+      const { text } = await renderTodayText(db, date, now);
+      await edit(ctx, morningMessage(text, date, level, { forTomorrow }));
+    }
+    await ctx.answerCallbackQuery();
     if (started && frozen) {
       await ctx.reply(
         `You already started today, so today stays ${frozen}. I'll use this tomorrow.`,
       );
     }
-    await deps.sendToday(ctx);
+    if (morningDate === undefined) await deps.sendToday(ctx);
   }
 
   async function classTap(ctx: Context, mask: number, date: string, save: boolean): Promise<void> {
@@ -232,6 +251,8 @@ export function createInputs(deps: InputsDeps): Inputs {
     const result: LedgerResult | undefined = r.status === "done" ? r.results[0] : undefined;
     if (result?.kind === "class") await edit(ctx, directWriteSaved(result, key, 0));
     await ctx.answerCallbackQuery({ text: "Saved." });
+    // Saved on the Friday right after that Thursday: show the session again with the Friday adjustments.
+    if (result?.kind === "class" && trainingDate(now) === nextDay(date)) await deps.sendToday(ctx);
   }
 
   async function proposalTap(ctx: Context, id: number, act: "ok" | "no"): Promise<void> {
@@ -309,7 +330,7 @@ export function createInputs(deps: InputsDeps): Inputs {
 
   async function callback(ctx: Context): Promise<void> {
     const a: CallbackAction | null = parseCallback(ctx.callbackQuery?.data ?? "");
-    if (a?.t === "rd") return readinessTap(ctx, a.level);
+    if (a?.t === "rd") return readinessTap(ctx, a.level, a.morningDate);
     if (a?.t === "cg") return classTap(ctx, a.mask, a.date, a.save);
     if (a?.t === "pr") return proposalTap(ctx, a.id, a.act);
     await ctx.answerCallbackQuery({ text: "That button is no longer valid." });

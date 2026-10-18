@@ -349,7 +349,10 @@ describe("usage, conversation, prompt context", () => {
       { model: "m", inputTokens: 1000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
       new Date("2026-10-15T10:00:00Z"),
     );
-    expect(await store.totals(new Date("2026-11-01T12:00:00Z"))).toEqual({ day: 165, month: 165 });
+    expect(await store.totals(new Date("2026-11-01T12:00:00Z"))).toEqual({
+      day: 165.5,
+      month: 165.5,
+    });
     expect(await store.totals(new Date("2026-10-20T12:00:00Z"))).toEqual({ day: 0, month: 1000 });
   });
 
