@@ -21,6 +21,8 @@ export interface RepsPoint {
   seconds: number | null;
   step: string | null;
   flagged: boolean;
+  /** Import-only session (`source === "import"`): drawn hollow. */
+  estimate: boolean;
 }
 
 export type ChartKind = "load" | "load_reps" | "reps" | "hspu" | "timed" | "none";
@@ -94,6 +96,7 @@ export function repsSeries(
       seconds,
       step: s.hspuStepOrder != null ? (stepNames?.get(s.hspuStepOrder) ?? null) : null,
       flagged: s.isDeload || s.isTest,
+      estimate: s.source === "import",
     });
   }
   return out;

@@ -5,7 +5,9 @@ import { plans } from "../db/schema/index.js";
 import { planWeekFor, trainingDate } from "../domain/calendar.js";
 import type { Db } from "../logging/db.js";
 import {
+  distinctSessions,
   exerciseCaption,
+  MIN_SESSIONS,
   notEnoughText,
   nothingToChartText,
   panelPoints,
@@ -26,7 +28,7 @@ export type ChartResult =
   | { ok: true; png: Buffer; caption: string; facts: Record<string, unknown> }
   | { ok: false; reason: "no_numbers" | "not_enough_data" | "unknown_exercise"; text: string };
 
-export const MIN_SESSIONS = 2;
+export { MIN_SESSIONS };
 
 function sinceFor(now: Date, weeks?: number): string | undefined {
   if (!weeks || weeks <= 0) return undefined;
@@ -50,21 +52,27 @@ export async function buildChart(db: Db, req: ChartRequest, now: Date): Promise<
   const load = loadSeries(sessions, ex);
   const reps = repsSeries(sessions, ex, stepNames);
   let metric = req.metric;
+  let fallbackNote: string | undefined;
   if (kind === "load_reps" && metric === "auto") {
     // No usable e1RM (e.g. no known bodyweight): chart the reps panel alone instead of giving up.
     const e1rm = panelPoints("e1rm", load, reps).length;
     if (e1rm < MIN_SESSIONS && panelPoints("reps", load, reps).length >= MIN_SESSIONS) {
       metric = "reps";
+      fallbackNote = "No usable e1RM (no known bodyweight), showing most reps instead.";
     }
   }
   const cap = exerciseCaption(name, ex, kind, load, reps, metric);
   if (!cap) {
-    const primary = resolvePanels(kind, metric).panels[0];
-    const n = primary ? panelPoints(primary, load, reps).length : 0;
+    const n = distinctSessions(resolvePanels(kind, metric).panels, load, reps);
     return { ok: false, reason: "not_enough_data", text: notEnoughText(name, n) };
   }
   const png = await renderPng(exerciseSpec(name, ex, kind, load, reps, metric));
-  return { ok: true, png, caption: cap.caption, facts: cap.facts };
+  return {
+    ok: true,
+    png,
+    caption: cap.caption,
+    facts: fallbackNote ? { ...cap.facts, note: fallbackNote } : cap.facts,
+  };
 }
 
 async function buildVolume(db: Db, since: string | undefined, now: Date): Promise<ChartResult> {

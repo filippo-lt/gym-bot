@@ -45,14 +45,25 @@ export function resolvePanels(
   return { panels: [hasLoad ? "e1rm" : repsPanel] };
 }
 
-export function dateLabel(date: string): string {
-  return DateTime.fromISO(date, { zone: "utc" }).setLocale("en").toFormat("d LLL");
+/** True when the dates cover more than one calendar year (labels then carry the year). */
+export function spansYears(dates: string[]): boolean {
+  return new Set(dates.map((d) => d.slice(0, 4))).size > 1;
+}
+
+export function dateLabel(date: string, withYear = false): string {
+  return DateTime.fromISO(date, { zone: "utc" })
+    .setLocale("en")
+    .toFormat(withYear ? "d LLL yyyy" : "d LLL");
 }
 
 const COLOR = "#2563eb";
 const SHADE = "#e5e7eb";
 const STEP_COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
 
+/**
+ * Styling rule, same in every panel: hollow = import-only estimate; deload/test weeks are shown by the shaded
+ * band only (their points, where they exist, stay solid).
+ */
 interface Row {
   label: string;
   value: number | null;
@@ -61,13 +72,16 @@ interface Row {
   step: string | null;
 }
 
-function xEncoding(labels: string[]) {
+/** The ordinal key is the ISO date (one entry per session date, so the same day-month in two years never collides); `labelExpr` shows the formatted label. */
+function xEncoding(dates: string[]) {
+  const withYear = spansYears(dates);
+  const map = JSON.stringify(Object.fromEntries(dates.map((d) => [d, dateLabel(d, withYear)])));
   return {
     field: "label",
     type: "ordinal" as const,
     sort: null,
-    scale: { domain: labels },
-    axis: { title: null, labelAngle: -45, labelFontSize: 13 },
+    scale: { domain: dates },
+    axis: { title: null, labelAngle: -45, labelFontSize: 13, labelExpr: `${map}[datum.value]` },
   };
 }
 
@@ -75,7 +89,7 @@ function panelSpec(
   panel: Panel,
   title: string | null,
   unit: string,
-  labels: string[],
+  dates: string[],
   rows: Row[],
   byStep: boolean,
   height: number,
@@ -112,13 +126,13 @@ function panelSpec(
       {
         data: { values: shaded },
         mark: { type: "rect" as const, color: SHADE, opacity: 0.8 },
-        encoding: { x: xEncoding(labels) },
+        encoding: { x: xEncoding(dates) },
       },
       {
         data: { values: data },
         mark: { type: "line" as const, strokeWidth: 2, color: byStep ? undefined : COLOR },
         encoding: {
-          x: xEncoding(labels),
+          x: xEncoding(dates),
           y,
           ...(byStep ? { color, detail: { field: "stepName" } } : {}),
         },
@@ -133,7 +147,7 @@ function panelSpec(
           ...(byStep ? {} : { color: COLOR, stroke: COLOR }),
         },
         encoding: {
-          x: xEncoding(labels),
+          x: xEncoding(dates),
           y,
           ...(byStep ? { stroke: color } : {}),
           fill: {
@@ -159,12 +173,11 @@ export function exerciseSpec(
   const { panels } = resolvePanels(kind, metric);
   const unit = axisUnit(ex);
   const dates = [...new Set([...load.map((p) => p.date), ...reps.map((p) => p.date)])].sort();
-  const labels = dates.map(dateLabel);
   const built = panels.map((panel, i) => {
     let rows: Row[];
     if (panel === "e1rm") {
       rows = load.map((p) => ({
-        label: dateLabel(p.date),
+        label: p.date,
         value: p.flagged ? null : p.e1rm,
         flagged: p.flagged,
         hollow: p.estimate,
@@ -172,10 +185,10 @@ export function exerciseSpec(
       }));
     } else {
       rows = reps.map((p) => ({
-        label: dateLabel(p.date),
+        label: p.date,
         value: panel === "seconds" ? p.seconds : p.bestSet,
         flagged: p.flagged,
-        hollow: false,
+        hollow: p.estimate,
         step: p.step,
       }));
     }
@@ -183,7 +196,7 @@ export function exerciseSpec(
       panel,
       i === 0 ? name : null,
       unit,
-      labels,
+      dates,
       rows,
       kind === "hspu" && panel === "reps",
       panels.length > 1 ? 220 : 380,

@@ -1,18 +1,36 @@
-/** Chart captions and facts (M8): plain text, HTML-escaped, code-formatted numbers, capped at Telegram's 1024. */
+/** Chart captions and facts (M8): plain text, HTML-escaped, code-formatted numbers, bounded well under Telegram's 1024 by cutting names before escaping. */
 import { esc } from "../bot/format.js";
 import { fmt } from "../history-import/build.js";
 import type { ExerciseInfo } from "../progression/types.js";
 import type { ChartKind, LoadPoint, RepsPoint } from "./series.js";
-import { axisUnit, type ChartMetric, dateLabel, type Panel, resolvePanels } from "./spec.js";
+import {
+  axisUnit,
+  type ChartMetric,
+  dateLabel,
+  type Panel,
+  resolvePanels,
+  spansYears,
+} from "./spec.js";
 
-const CAPTION_MAX = 1024;
+const NAME_MAX = 100;
+export const MIN_SESSIONS = 2;
+
+/** Names are cut before escaping, so the 1024 cap can never split an HTML entity. */
+export function safeName(name: string): string {
+  return esc(name.slice(0, NAME_MAX));
+}
+
+/** Distinct session dates with data on any of the panels in use. */
+export function distinctSessions(panels: Panel[], load: LoadPoint[], reps: RepsPoint[]): number {
+  return new Set(panels.flatMap((p) => panelPoints(p, load, reps).map((x) => x.date))).size;
+}
 
 export function notEnoughText(name: string, n: number): string {
-  return `Not enough data to chart ${name} yet (${n} ${n === 1 ? "session" : "sessions"}).`;
+  return `Not enough data to chart ${safeName(name)} yet (${n} ${n === 1 ? "session" : "sessions"}).`;
 }
 
 export function nothingToChartText(name: string): string {
-  return `Nothing to chart for ${name}: it's logged as done / skipped.`;
+  return `Nothing to chart for ${safeName(name)}: it's logged as done / skipped.`;
 }
 
 export interface ExerciseCaption {
@@ -55,7 +73,7 @@ export function exerciseCaption(
   const pts = panelPoints(panel, load, reps);
   const first = pts[0];
   const last = pts[pts.length - 1];
-  if (!first || !last || pts.length < 2) return null;
+  if (!first || !last || pts.length < MIN_SESSIONS) return null;
   const a = Math.round(first.value * 100) / 100;
   const b = Math.round(last.value * 100) / 100;
   const unit = axisUnit(ex);
@@ -65,8 +83,12 @@ export function exerciseCaption(
       : panel === "seconds"
         ? `${fmt(a)} → ${fmt(b)} s`
         : `best set ${fmt(a)} → ${fmt(b)} reps`;
-  const parts = [esc(name), what, `${pts.length} sessions since ${dateLabel(first.date)}`];
-  if (kind === "hspu" && last.step) parts.push(`step ${esc(last.step)}`);
+  const parts = [
+    safeName(name),
+    what,
+    `${pts.length} sessions since ${dateLabel(first.date, spansYears(pts.map((p) => p.date)))}`,
+  ];
+  if (kind === "hspu" && last.step) parts.push(`step ${esc(last.step.slice(0, 50))}`);
   const facts: Record<string, unknown> = {
     exercise: name,
     metric: panel === "e1rm" ? "e1rm" : panel === "seconds" ? "hold_seconds" : "best_set_reps",
@@ -80,7 +102,7 @@ export function exerciseCaption(
     ...(kind === "hspu" && last.step ? { step: last.step } : {}),
     ...(note ? { note } : {}),
   };
-  return { caption: parts.join(" · ").slice(0, CAPTION_MAX), facts };
+  return { caption: parts.join(" · "), facts };
 }
 
 export function volumeCaption(

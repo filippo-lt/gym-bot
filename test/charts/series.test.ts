@@ -153,6 +153,13 @@ describe("repsSeries", () => {
     ]);
   });
 
+  it("marks import-only sessions as estimates", () => {
+    const ex = info({ type: "bodyweight_reps", loadBasis: null });
+    const a = session({ date: "2026-09-28", source: "import", sets: [set({ reps: 10 })] });
+    const b = session({ date: "2026-10-05", sets: [set({ reps: 11 })] });
+    expect(repsSeries([a, b], ex).map((p) => p.estimate)).toEqual([true, false]);
+  });
+
   it("carries the HSPU step name", () => {
     const ex = info({ type: "skill_ladder", loadBasis: null });
     const s = session({ hspuStepOrder: 2, sets: [set({ reps: 3 })] });

@@ -66,8 +66,24 @@ describe("exerciseCaption", () => {
 
   it("names reps and the HSPU step", () => {
     const reps: RepsPoint[] = [
-      { date: "2026-09-29", week: 1, bestSet: 3, seconds: null, step: "negatives", flagged: false },
-      { date: "2026-10-06", week: 2, bestSet: 5, seconds: null, step: "wall", flagged: false },
+      {
+        date: "2026-09-29",
+        week: 1,
+        bestSet: 3,
+        seconds: null,
+        step: "negatives",
+        flagged: false,
+        estimate: false,
+      },
+      {
+        date: "2026-10-06",
+        week: 2,
+        bestSet: 5,
+        seconds: null,
+        step: "wall",
+        flagged: false,
+        estimate: false,
+      },
     ];
     const r = exerciseCaption(
       "HSPU",
@@ -79,6 +95,24 @@ describe("exerciseCaption", () => {
     );
     expect(r?.caption).toContain("best set 3 → 5 reps");
     expect(r?.caption).toContain("wall");
+  });
+});
+
+describe("year spans and escaping", () => {
+  it("adds the year to the since date when the series spans years", () => {
+    const r = exerciseCaption(
+      "Squat",
+      info,
+      "load",
+      [pt("2025-12-29", 85), pt("2026-01-06", 90)],
+      [],
+      "auto",
+    );
+    expect(r?.caption).toContain("since 29 Dec 2025");
+  });
+
+  it("escapes the name in the not-enough text", () => {
+    expect(notEnoughText("A<b>", 1)).toBe("Not enough data to chart A&lt;b&gt; yet (1 session).");
   });
 });
 

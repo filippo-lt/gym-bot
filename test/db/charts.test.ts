@@ -130,4 +130,57 @@ describe("buildChart", () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.png.subarray(0, 4).equals(PNG)).toBe(true);
   });
+
+  it("honours metric reps and the weeks option", async () => {
+    const squat = await exId(sql, "squat");
+    const r = await buildChart(db, { kind: "exercise", exerciseId: squat, metric: "reps" }, NOW);
+    expect(r.ok && r.caption).toContain("best set");
+    // NOW is 2026-10-08: weeks 1 keeps only sessions on/after 2026-10-01, leaving one point.
+    const w = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: squat, metric: "auto", weeks: 1 },
+      NOW,
+    );
+    expect(w).toMatchObject({ ok: false, reason: "not_enough_data" });
+    expect(!w.ok && w.text).toContain("(1 session)");
+  });
+
+  it("notes the load -> reps fallback", async () => {
+    await group("pull_up", "2026-10-13", [{ reps: 8, load: 0 }]);
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "pull_up"), metric: "load" },
+      NOW,
+    );
+    // pull-ups have load math: "load" stays on e1RM (no bodyweight -> not enough), so use a reps-only exercise
+    expect(r.ok).toBe(false);
+    await sql`update exercises set type = 'bodyweight_reps', load_basis = null where slug = 'hack_squat'`;
+    await group("hack_squat", "2026-10-06", [{ reps: 12, load: 0 }]);
+    const h = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "hack_squat"), metric: "load" },
+      NOW,
+    );
+    expect(h.ok && h.facts.note).toMatch(/No load math/);
+  });
+
+  it("notes the pull-up auto fallback to reps", async () => {
+    await group("pull_up", "2026-10-13", [{ reps: 8, load: 0 }]);
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "pull_up"), metric: "auto" },
+      NOW,
+    );
+    expect(r.ok && r.facts.note).toMatch(/showing most reps/);
+  });
+
+  it("charts a series that spans two years", async () => {
+    await group("squat", "2025-10-06", [{ reps: 5, load: 70, rir: 2 }]);
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "squat"), metric: "auto" },
+      NOW,
+    );
+    expect(r.ok && r.caption).toContain("since 6 Oct 2025");
+  });
 });

@@ -19,8 +19,24 @@ const load: LoadPoint[] = [
   { date: "2026-10-13", week: 3, e1rm: null, flagged: true, estimate: false },
 ];
 const reps: RepsPoint[] = [
-  { date: "2026-09-29", week: 1, bestSet: 6, seconds: null, step: null, flagged: false },
-  { date: "2026-10-06", week: 2, bestSet: 8, seconds: null, step: null, flagged: false },
+  {
+    date: "2026-09-29",
+    week: 1,
+    bestSet: 6,
+    seconds: null,
+    step: null,
+    flagged: false,
+    estimate: false,
+  },
+  {
+    date: "2026-10-06",
+    week: 2,
+    bestSet: 8,
+    seconds: null,
+    step: null,
+    flagged: false,
+    estimate: true,
+  },
 ];
 
 describe("axisUnit", () => {
@@ -54,14 +70,30 @@ describe("exerciseSpec", () => {
 
   it("uses an ordinal x axis of formatted date strings", () => {
     const s = JSON.stringify(exerciseSpec("Squat", info(), "load", load, reps, "auto"));
-    expect(s).toContain('"29 Sep"');
+    expect(s).toContain("29 Sep");
     expect(s).toContain('"type":"ordinal"');
     expect(s).toContain('"font":"Inter"');
   });
 
+  it("keeps one domain entry per date across years and shows the year", () => {
+    const l: LoadPoint[] = [
+      { date: "2025-10-06", week: 1, e1rm: 80, flagged: false, estimate: false },
+      { date: "2026-10-06", week: 1, e1rm: 90, flagged: false, estimate: false },
+    ];
+    const s = JSON.stringify(exerciseSpec("Squat", info(), "load", l, [], "auto"));
+    expect(s).toContain('"domain":["2025-10-06","2026-10-06"]');
+    expect(s).toContain("6 Oct 2025");
+    expect(s).toContain("6 Oct 2026");
+  });
+
+  it("marks estimate points hollow in the reps panel too", () => {
+    const s = JSON.stringify(exerciseSpec("Chin", info(), "reps", [], reps, "auto"));
+    expect(s).toContain('"hollow":true');
+  });
+
   it("shades flagged weeks and gives them no e1RM value", () => {
     const s = JSON.stringify(exerciseSpec("Squat", info(), "load", load, reps, "auto"));
-    expect(s).toContain('"13 Oct"');
+    expect(s).toContain('{"label":"2026-10-13"}');
     expect(s).toContain('"rect"');
   });
 });
