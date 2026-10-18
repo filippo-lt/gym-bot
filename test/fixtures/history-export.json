@@ -1,0 +1,152 @@
+{
+  "weeks": {
+    "1": {
+      "progress": {
+        "pullups": "4",
+        "weighted": "2.5",
+        "hspu": "Feet up ",
+        "hspureps": "12",
+        "bench": "9",
+        "squat": "10",
+        "recovery": "3"
+      },
+      "exposure": {
+        "pull": true,
+        "push": false,
+        "legs": true
+      },
+      "days": {
+        "Monday": {
+          "0": {
+            "status": "done",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          },
+          "1": {
+            "status": "done",
+            "actual": "13",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          },
+          "2": {
+            "status": "done",
+            "actual": "21",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          },
+          "3": {
+            "status": "modified",
+            "actual": "14",
+            "load": "50",
+            "rir": "4+",
+            "notes": ""
+          },
+          "4": {
+            "status": "done",
+            "actual": "24",
+            "load": "42.5",
+            "rir": "",
+            "notes": ""
+          },
+          "5": {
+            "status": "done",
+            "actual": "30",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          },
+          "6": {
+            "status": "done",
+            "actual": "28",
+            "load": "8",
+            "rir": "2",
+            "notes": ""
+          },
+          "7": {
+            "status": "done",
+            "actual": "27",
+            "load": "35",
+            "rir": "",
+            "notes": ""
+          },
+          "8": {
+            "status": "done",
+            "actual": "16",
+            "load": "5",
+            "rir": "1",
+            "notes": "kipping on the last"
+          }
+        },
+        "Tuesday": {
+          "0": {
+            "status": "skipped",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          }
+        },
+        "Thursday": {
+          "0": {
+            "status": "done",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          },
+          "1": {
+            "status": "done",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          }
+        }
+      }
+    },
+    "2": {
+      "progress": {},
+      "exposure": {
+        "pull": false,
+        "push": false,
+        "legs": false
+      },
+      "days": {
+        "Thursday": {
+          "1": {
+            "status": "done",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          }
+        }
+      }
+    },
+    "3": {
+      "exposure": {
+        "pull": false,
+        "push": false,
+        "legs": false
+      },
+      "days": {
+        "Thursday": {
+          "1": {
+            "status": "skipped",
+            "actual": "",
+            "load": "",
+            "rir": "",
+            "notes": ""
+          }
+        }
+      }
+    }
+  },
+  "ui": {
+    "tab": 1
+  }
+}

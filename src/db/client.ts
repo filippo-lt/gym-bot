@@ -3,7 +3,7 @@ import postgres from "postgres";
 import { dbEnv } from "../config/env.js";
 import * as schema from "./schema/index.js";
 
-type Db = ReturnType<typeof drizzle<typeof schema>>;
+export type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 let client: postgres.Sql | undefined;
 let db: Db | undefined;

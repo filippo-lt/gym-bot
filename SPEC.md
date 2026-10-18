@@ -112,7 +112,7 @@ The plan decides **sets × reps × RIR** for every week. The bot decides only th
 - Tuesday and Friday squat share one e1RM; different reps give different loads, which is correct.
 - `bw_kg` is stored on every log group at log time; history is never recomputed when bodyweight changes.
 - Load math only for types `weighted` and `bodyweight_plus`. `bodyweight_reps` (leg raise, pike push-up), `timed` (hang) and `skill_ladder` (HSPU) get reps / time progression only.
-- Known approximation: Bulgarian (dumbbells) uses external load only. Fine, because its rep targets barely change.
+- Known approximation: hack squat (sled) and Bulgarian (dumbbells) use external load only. Fine, because their rep targets barely change.
 
 **Derived state.** Pull-up gate, HSPU step/pad and e1RM are **recomputed from history** (pure functions) after every `/undo`, edit, import or re-import. `user_state` is only a cache.
 
@@ -303,6 +303,7 @@ Chat is the main interface; commands are fast shortcuts and a fallback when pars
 - `hspu_ladder` (step, name, order, default_sets, default_reps_min, default_reps_max, tempo)
 - `log_entries` (id, group_id, set_index, reps, load_kg (non-BW lifts), added_kg, assist_kg, duration_s, distance_m, pad_height, rir, clean, note)
 - `bodyweight_logs` (date, kg)
+- `weekly_metrics` (plan_week, metric, value_num, value_text, unit, source, import_row_key) — weekly check-in values (5.6b) and imported progress
 - `equipment` (id, name, step_kg, discrete_values[] for stacks/dumbbells, bands jsonb colour → kg) — the only source of rounding steps
 - `inbox` (update_id unique, payload, status: pending|processing|done|failed, claimed_at, claimed_by, attempts, error) · `chat_lease` (chat_id, owner, until) · `job_runs` (job, date, status, claimed_at)
 - `usage_logs` (date, input_tokens, output_tokens, stt_seconds) — cost guard

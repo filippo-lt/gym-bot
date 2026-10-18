@@ -17,6 +17,11 @@ export function hasValidBearer(request: Request, secret: string): boolean {
   return match?.[1] !== undefined && safeEqual(match[1], secret);
 }
 
+export function hasValidSecretHeader(request: Request, header: string, secret: string): boolean {
+  const value = request.headers.get(header);
+  return value !== null && safeEqual(value, secret);
+}
+
 export function requireCronAuth(request: Request): Response | null {
   if (hasValidBearer(request, cronEnv().CRON_SECRET)) return null;
   return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });

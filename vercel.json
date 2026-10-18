@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["dub1"],
   "functions": {
-    "api/**/*.ts": { "maxDuration": 30 }
+    "api/health.ts": { "maxDuration": 30 },
+    "api/telegram.ts": { "maxDuration": 60 },
+    "api/cron/tick.ts": { "maxDuration": 60 }
   }
 }

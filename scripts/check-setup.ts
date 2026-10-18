@@ -2,7 +2,7 @@ import "./load-env.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { Api } from "grammy";
 import postgres from "postgres";
-import { aiEnv, cronEnv, dbEnv, telegramEnv } from "../src/config/env.js";
+import { aiEnv, cronEnv, dbEnv, telegramEnv, webhookEnv } from "../src/config/env.js";
 
 type Check = { name: string; run: () => Promise<string | undefined> };
 
@@ -24,6 +24,7 @@ async function selectOne(url: string): Promise<string | undefined> {
 const checks: Check[] = [
   { name: "env: db", run: async () => void dbEnv() },
   { name: "env: telegram", run: async () => void telegramEnv() },
+  { name: "env: webhook", run: async () => void webhookEnv() },
   { name: "env: ai", run: async () => void aiEnv() },
   { name: "env: cron", run: async () => void cronEnv() },
   { name: "db: DATABASE_URL select 1", run: () => selectOne(dbEnv().DATABASE_URL) },

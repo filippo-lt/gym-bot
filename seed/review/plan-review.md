@@ -59,7 +59,7 @@ None. The plan is ready to seed.
 | HSPU progression | hspu | skill_ladder | - | - | no | skill_strength, vertical_press |  |
 | Overhead press | overhead_press | weighted | barbell_total | barbell | yes | vertical_press |  |
 | Bench press | bench_press | weighted | barbell_total | barbell | yes | horizontal_press |  |
-| Squat / hack squat | squat / hack_squat | weighted / weighted | barbell_total / barbell_total | barbell / barbell | yes / yes | squat |  |
+| Squat / hack squat | squat / hack_squat | weighted / weighted | barbell_total / stack | barbell / hack_squat | yes / yes | squat |  |
 | Lateral raise | lateral_raise | weighted | per_hand | dumbbells | no | accessory |  |
 | Bike warm-up | bike_warmup | warmup | - | - | no | warmup |  |
 | Bike HIIT | bike_hiit | hiit | - | - | no | hiit |  |
@@ -220,9 +220,10 @@ None. The plan is ready to seed.
 
 | Slug | Name | Base kg | Step kg | Discrete values | Bands |
 | --- | --- | --- | --- | --- | --- |
-| barbell | Barbell (total incl. bar) | 20 | 2.5 | **empty** | **empty** |
+| barbell | Barbell (total incl. bar) | 15 | 2.5 | **empty** | **empty** |
 | dumbbells | Dumbbells (per hand) | **empty** | 2.5 | **empty** | **empty** |
 | cable_stack | Cable stack | **empty** | 2.5 | **empty** | **empty** |
 | row_machine | Row machine stack | **empty** | 2.5 | **empty** | **empty** |
+| hack_squat | Hack squat (plates on sled) | **empty** | 2.5 | **empty** | **empty** |
 | pullup | Pull-up bar (added weight, bands) | **empty** | 2.5 | **empty** | {} |
 

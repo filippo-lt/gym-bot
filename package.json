@@ -15,9 +15,12 @@
     "test:db": "vitest run --project db",
     "plan:parse": "tsx scripts/plan-parse.ts",
     "plan:seed": "tsx scripts/plan-seed.ts",
+    "history:review": "tsx scripts/history-import.ts --review",
+    "history:import": "tsx scripts/history-import.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:up": "docker compose up -d db",
+    "telegram:setup": "tsx scripts/telegram-setup.ts",
     "check:setup": "tsx scripts/check-setup.ts",
     "demo:m0": "tsx scripts/demo-m0.ts"
   },
