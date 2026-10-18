@@ -1,10 +1,12 @@
+import Anthropic from "@anthropic-ai/sdk";
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeModel, type ScriptedTurn, toolUse, turn } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
-import { BOARD_UNREADABLE, PHOTO_FAILED } from "../../src/bot/log-format.js";
+import { BOARD_UNREADABLE } from "../../src/bot/log-format.js";
 import type { MediaSource } from "../../src/bot/logging-flow.js";
+import { FileTooLargeError } from "../../src/telegram/files.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -39,7 +41,15 @@ beforeEach(async () => {
 
 type Call = { method: string; payload: Record<string, unknown> };
 
-function setup(script: ScriptedTurn[], opts: { now?: Date; downloadFails?: boolean } = {}) {
+function setup(
+  script: ScriptedTurn[],
+  opts: {
+    now?: Date;
+    downloadFails?: boolean;
+    downloadError?: Error;
+    sizes?: { file_id: string; file_size?: number }[];
+  } = {},
+) {
   const calls: Call[] = [];
   let mid = 1000;
   const transformer: Transformer = async (_prev, method, payload) => {
@@ -59,6 +69,7 @@ function setup(script: ScriptedTurn[], opts: { now?: Date; downloadFails?: boole
   };
   const model = createFakeModel(script);
   const download = vi.fn(async () => {
+    if (opts.downloadError) throw opts.downloadError;
     if (opts.downloadFails) throw new Error("boom");
     return new Uint8Array([1, 2, 3]);
   });
@@ -81,10 +92,12 @@ function setup(script: ScriptedTurn[], opts: { now?: Date; downloadFails?: boole
         date: 0,
         chat: CHAT_OBJ,
         from: FROM,
-        photo: [
-          { file_id: "small", file_unique_id: "s", width: 90, height: 90 },
-          { file_id: "big", file_unique_id: "b", width: 1280, height: 960 },
-        ],
+        photo: opts.sizes
+          ? opts.sizes.map((x) => ({ ...x, file_unique_id: x.file_id, width: 1, height: 1 }))
+          : [
+              { file_id: "small", file_unique_id: "s", file_size: 2000, width: 90, height: 90 },
+              { file_id: "big", file_unique_id: "b", file_size: 200000, width: 1280, height: 960 },
+            ],
         ...(caption ? { caption } : {}),
       },
     });
@@ -125,6 +138,8 @@ const board = (extra: Record<string, unknown> = {}) =>
   );
 const count = async (table: string) =>
   ((await sql.unsafe(`select count(*)::int as n from ${table}`))[0]?.n ?? -1) as number;
+const TOO_LARGE =
+  "That photo is too large (max 3.5 MB). Send it compressed (not as a file) or crop it.";
 const FRI = new Date("2026-10-23T08:00:00Z");
 
 describe("blackboard photo", () => {
@@ -192,14 +207,59 @@ describe("blackboard photo", () => {
     expect((p?.actions as { date: string }[] | undefined)?.[0]?.date).toBe("2026-10-22");
   });
 
-  it("download or vision failure: PHOTO_FAILED, no pending", async () => {
+  it("download failure: download text, no pending", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const t = setup([board()], { downloadFails: true });
     await t.photo();
-    expect(t.texts()).toEqual([PHOTO_FAILED]);
-    const v = setup([]);
-    await v.photo();
-    expect(v.texts()).toEqual([PHOTO_FAILED]);
+    expect(t.texts()).toEqual([
+      "I couldn't download that file from Telegram. Please send it again.",
+    ]);
     expect(await count("pending_actions")).toBe(0);
+  });
+
+  it("vision API 529: names Claude, no pending", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([]);
+    vi.spyOn(t.model, "create").mockRejectedValue(
+      new Anthropic.APIError(529, undefined, "secret body", undefined),
+    );
+    await t.photo();
+    expect(t.texts()).toEqual([
+      "I couldn't read the photo: Claude (Anthropic) is having problems right now. Try again in a few minutes.",
+    ]);
+    expect(await count("pending_actions")).toBe(0);
+  });
+
+  it("FileTooLargeError from the download gives the too-large text", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([board()], { downloadError: new FileTooLargeError(1) });
+    await t.photo();
+    expect(t.texts()).toEqual([TOO_LARGE]);
+  });
+
+  it("all sizes over the cap: too-large text, no download", async () => {
+    const t = setup([board()], {
+      sizes: [
+        { file_id: "a", file_size: 4_000_000 },
+        { file_id: "b", file_size: 5_000_000 },
+      ],
+    });
+    await t.photo();
+    expect(t.texts()).toEqual([TOO_LARGE]);
+    expect(t.download).not.toHaveBeenCalled();
+  });
+
+  it("largest size over the cap: the smaller one is downloaded and saved", async () => {
+    const t = setup([board()], {
+      sizes: [
+        { file_id: "small", file_size: 20_000 },
+        { file_id: "mid", file_size: 2_000_000 },
+        { file_id: "huge", file_size: 4_000_000 },
+      ],
+    });
+    await t.photo();
+    expect(t.download).toHaveBeenCalledWith("mid", expect.any(Number));
+    const [p] = await sql`select actions from pending_actions`;
+    expect((p?.actions as { photoFileId?: string }[] | undefined)?.[0]?.photoFileId).toBe("mid");
   });
 });

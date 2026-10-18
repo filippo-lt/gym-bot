@@ -17,6 +17,8 @@ import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { classify, describeFailure } from "../failures/classify.js";
+import { failureText, providerLabel } from "../failures/messages.js";
 import { classBreakdown } from "../logging/class-moves.js";
 import { appendMessage } from "../logging/conversation.js";
 import { describeSnapshot } from "../logging/describe.js";
@@ -99,7 +101,6 @@ import {
   memorySaved,
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
-  PHOTO_FAILED,
   type Place,
   removedText,
   replacedText,
@@ -107,12 +108,12 @@ import {
   stripMarkdown,
   summarize,
   VOICE_BLANK,
-  VOICE_FAILED,
   VOICE_NOT_CONFIGURED,
   VOICE_TOO_LONG,
   viewFromSnapshot,
   voiceBudgetText,
 } from "./log-format.js";
+import { pickPhoto } from "./pick-photo.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
 import { formatUsage } from "./usage-format.js";
@@ -667,9 +668,10 @@ export function createFlow(deps: FlowDeps): Flow {
       });
     } catch (error) {
       // Timeouts and API errors: tell the user once instead of burning the inbox retries.
-      console.error(`ai: intent failed (${error instanceof Error ? error.name : "error"})`);
-      const reply = "Sorry, I couldn't process that. Please try again.";
-      await send(ctx, reply);
+      const failure = classify(error, "ai");
+      console.error("ai: intent failed", describeFailure(failure));
+      const reply = failureText(failure, source);
+      await send(ctx, heard ? { text: heard + esc(reply), keyboard: [] } : reply);
       await appendMessage(db, chatId, "assistant", reply);
       return;
     }
@@ -816,10 +818,18 @@ export function createFlow(deps: FlowDeps): Flow {
       await send(ctx, voiceBudgetText(usedSeconds, sttConfig.dailySecondsCap));
       return;
     }
+    let audio: Uint8Array;
+    try {
+      audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
+    } catch (error) {
+      const failure = classify(error, "download");
+      console.error("voice: download failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "voice"));
+      return;
+    }
     let transcript: string;
     try {
       const staticBlock = await promptStatic();
-      const audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
       transcript = (
         await sttConfig.stt.transcribe(audio, {
           filename: "voice.ogg",
@@ -828,8 +838,9 @@ export function createFlow(deps: FlowDeps): Flow {
         })
       ).trim();
     } catch (error) {
-      console.error(`stt: failed (${error instanceof Error ? error.name : "error"})`);
-      await send(ctx, VOICE_FAILED);
+      const failure = classify(error, "stt");
+      console.error("stt: failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "voice", providerLabel(sttConfig.stt.name)));
       return;
     }
     await usage.recordStt(note.duration, sttConfig.stt.name, now);
@@ -844,8 +855,7 @@ export function createFlow(deps: FlowDeps): Flow {
   async function photo(ctx: Context): Promise<void> {
     const sizes = ctx.message?.photo;
     const chatId = ctx.chat?.id;
-    const largest = sizes?.at(-1);
-    if (!largest || chatId === undefined) return;
+    if (!sizes?.length || chatId === undefined) return;
     const ai = aiConfig();
     if (!ai) {
       await send(ctx, NO_AI_KEY);
@@ -859,11 +869,24 @@ export function createFlow(deps: FlowDeps): Flow {
       await send(ctx, budgetReachedText(overCap, capValue(ai, overCap), now));
       return;
     }
+    const picked = pickPhoto(sizes, PHOTO_MAX_BYTES);
+    if (!picked) {
+      await send(ctx, failureText({ kind: "file_too_large", detail: "photo" }, "photo"));
+      return;
+    }
     const caption = ctx.message?.caption?.trim() || undefined;
-    let board: Awaited<ReturnType<typeof readBoard>>;
+    let image: Uint8Array;
     try {
       if (!deps.media) throw new Error("no media source");
-      const image = await deps.media.download(largest.file_id, PHOTO_MAX_BYTES);
+      image = await deps.media.download(picked.file_id, PHOTO_MAX_BYTES);
+    } catch (error) {
+      const failure = classify(error, "download");
+      console.error("photo: download failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "photo"));
+      return;
+    }
+    let board: Awaited<ReturnType<typeof readBoard>>;
+    try {
       board = await readBoard({
         model: ai.model,
         image,
@@ -871,8 +894,9 @@ export function createFlow(deps: FlowDeps): Flow {
         signal: AbortSignal.timeout(BOARD_TIMEOUT_MS),
       });
     } catch (error) {
-      console.error(`photo: failed (${error instanceof Error ? error.name : "error"})`);
-      await send(ctx, PHOTO_FAILED);
+      const failure = classify(error, "vision");
+      console.error("photo: vision failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "photo"));
       return;
     }
     await usage.record(board.usage, now);
@@ -890,7 +914,7 @@ export function createFlow(deps: FlowDeps): Flow {
           kind: "log_class",
           input: { moves, heavy_groups: heavyGroups },
           date: thursdayOnOrBefore(trainingDate(now)),
-          photoFileId: largest.file_id,
+          photoFileId: picked.file_id,
           rawText: caption,
         },
       ],
