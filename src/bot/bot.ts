@@ -8,6 +8,7 @@ import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.
 import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
 import { parseHistoryCallback } from "./callbacks.js";
+import { createExportCommand } from "./export-command.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
@@ -114,6 +115,7 @@ export function createBot(deps: BotDeps): Bot {
   bot.command("readiness", (ctx) => inputs.readinessCommand(ctx));
   bot.command("bw", (ctx) => inputs.bodyweightCommand(ctx));
   bot.command("class", (ctx) => inputs.classCommand(ctx));
+  bot.command("export", createExportCommand({ db: deps.db, now: deps.now }));
 
   bot.command("week", async (ctx) => {
     const week = await queries.getWeek(deps.db, trainingDate(deps.now()));

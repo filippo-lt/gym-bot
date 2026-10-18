@@ -43,6 +43,7 @@ try {
     { command: "undo", description: "Remove my last log" },
     { command: "memory", description: "What I remember" },
     { command: "usage", description: "AI and voice usage" },
+    { command: "export", description: "Backup of all data" },
     { command: "help", description: "Commands" },
   ]);
 

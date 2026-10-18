@@ -8,3 +8,6 @@ dist
 
 # Personal history exports (never commit; repo is public)
 /import/
+
+# Generated backups (never commit)
+/backups/

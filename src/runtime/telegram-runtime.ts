@@ -1,4 +1,4 @@
-import type { Bot } from "grammy";
+import { type Bot, InputFile } from "grammy";
 import type { Update } from "grammy/types";
 import { createAnthropicModel } from "../ai/model.js";
 import { inlineKeyboard, type Message } from "../bot/log-format.js";
@@ -6,6 +6,7 @@ import type { AiConfig, MediaSource } from "../bot/logging-flow.js";
 import { aiEnv, telegramEnv } from "../config/env.js";
 import { getDb } from "../db/client.js";
 import { failedText, retryingText } from "../failures/messages.js";
+import type { SendFile } from "../jobs/runner.js";
 import { createStt } from "../stt/stt.js";
 import { DOWNLOAD_TIMEOUT_MS, downloadTelegramFile } from "../telegram/files.js";
 import { clampTimeout } from "./deadline.js";
@@ -100,3 +101,13 @@ export async function sendToOwner(m: Message): Promise<void> {
     : { parse_mode: "HTML" as const };
   await bot.api.sendMessage(telegramEnv().ALLOWED_TELEGRAM_USER_ID, m.text, opts);
 }
+
+/** Send a file to the bot's single owner chat. */
+export const sendFileToOwner: SendFile = async (file) => {
+  const bot = await getBot();
+  const chatId = telegramEnv().ALLOWED_TELEGRAM_USER_ID;
+  const input = new InputFile(file.data, file.name);
+  const opts = file.caption ? { caption: file.caption } : {};
+  if (file.kind === "photo") await bot.api.sendPhoto(chatId, input, opts);
+  else await bot.api.sendDocument(chatId, input, opts);
+};

@@ -62,6 +62,7 @@ export const HELP_TEXT = [
   "/undo — remove your last log",
   "/memory — what I remember about you",
   "/usage — AI and voice usage",
+  "/export — backup of all your data",
   "/help — this message",
   "",
   "Just tell me what you did, for example:",

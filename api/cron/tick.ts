@@ -6,7 +6,7 @@ import { runDueJobs } from "../../src/jobs/runner.js";
 import { STOP_TAKING_AT_S } from "../../src/runtime/constants.js";
 import { chatsWithOpenRows, purgeOldRows } from "../../src/runtime/inbox.js";
 import { type ProcessSummary, processChat } from "../../src/runtime/process-chat.js";
-import { botHandlers, sendToOwner } from "../../src/runtime/telegram-runtime.js";
+import { botHandlers, sendFileToOwner, sendToOwner } from "../../src/runtime/telegram-runtime.js";
 
 function errorCode(error: unknown): string {
   const code = (error as { code?: unknown } | null)?.code;
@@ -30,7 +30,10 @@ export async function GET(request: Request): Promise<Response> {
     // Scheduled jobs must never block the sweeper.
     let jobs: Awaited<ReturnType<typeof runDueJobs>> = [];
     try {
-      jobs = await runDueJobs({ db, now: new Date(), send: sendToOwner }, JOBS);
+      jobs = await runDueJobs(
+        { db, now: new Date(), send: sendToOwner, sendFile: sendFileToOwner },
+        JOBS,
+      );
     } catch (error) {
       console.error("tick: jobs failed", error instanceof Error ? error.name : "");
     }

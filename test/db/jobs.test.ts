@@ -23,6 +23,7 @@ const ctxAt = (iso: string): JobContext => ({
   send: async (m) => {
     sent.push(m);
   },
+  sendFile: async () => {},
 });
 const tick = (iso: string) => runDueJobs(ctxAt(iso), [classQuestionJob]);
 beforeEach(() => {
