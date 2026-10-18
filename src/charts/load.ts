@@ -55,6 +55,7 @@ export async function loadExerciseChartData(
 /**
  * One row per log group: its plan week, the exercise's muscle group and type, and its set count (= `log_entries`
  * rows). `log_groups` has no stated set count, so an imported group without entry rows counts 0.
+ * A `per_set_unknown` import group stores its total as a single entry row, so it counts as 1 set.
  */
 export async function loadVolumeRows(
   db: Db,
