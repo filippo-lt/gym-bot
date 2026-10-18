@@ -10,6 +10,7 @@ import {
   type StagedAction,
   type StageResult,
   saveMemoryInputSchema,
+  skipItemsInputSchema,
   undoLastInputSchema,
 } from "../logging/types.js";
 import type { ToolDef } from "./model.js";
@@ -21,6 +22,7 @@ export type ToolName =
   | "log_sets"
   | "edit_last_entry"
   | "undo_last_entry"
+  | "skip_items"
   | "save_memory";
 
 /** Read-only tools: their errors never make a confirm card "partly understood". */
@@ -75,6 +77,12 @@ export const TOOLS: ToolDef[] = [
     description:
       "Stage the removal of the most recent logged entry (nothing is removed until the user confirms). Use for 'undo', 'delete that', 'remove the last one'.",
     input_schema: inputSchema(undoLastInputSchema),
+  },
+  {
+    name: "skip_items",
+    description:
+      "Stage marking a planned item of today (or of a named weekday) as skipped, or the whole session (nothing is saved yet; code decides whether to save or ask). Give exercise.said (the user's words) and slug only when sure, or whole_session: true. Use it when the user says they skipped, will skip or won't do an exercise, or today's session. Omit day unless the user named one.",
+    input_schema: inputSchema(skipItemsInputSchema),
   },
   {
     name: "save_memory",
@@ -155,6 +163,11 @@ export async function executeTool(
       const p = undoLastInputSchema.safeParse(rawInput ?? {});
       if (!p.success) return invalid(p.error);
       return fromStage(await backend.stageUndoLast(p.data));
+    }
+    case "skip_items": {
+      const p = skipItemsInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageSkip(p.data));
     }
     default:
       return { toolResultContent: `Unknown tool: ${name}`, isError: true };

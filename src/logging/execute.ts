@@ -8,6 +8,7 @@ import { logEntries, logGroups, sessionItems } from "../db/schema/log.js";
 import { hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db, Q, Tx } from "./db.js";
 import { groupSnapshot } from "./groups.js";
+import { writeSkip } from "./skip.js";
 import type {
   BeforeGroup,
   GroupSnapshot,
@@ -322,6 +323,8 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
         content: a.input.content,
       };
     }
+    case "skip_items":
+      return writeSkip(tx, a);
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");
   }

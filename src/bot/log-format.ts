@@ -36,6 +36,7 @@ export const HELP_TEXT = [
   "Commands:",
   "/today — today's session",
   "/next — the next exercise to do",
+  "/skip — skip an exercise or today's session",
   "/session — a specific day, e.g. /session mon or /session 26/10",
   "/week — this week",
   "/plan — week, phases and next deload",
@@ -48,6 +49,7 @@ export const HELP_TEXT = [
   "• 3x8 squat 60 rir 2",
   "• bench 2x6 55",
   "• no it was 57.5",
+  "• I skipped Bulgarian today",
   "• undo that",
   "",
   "Or ask me, for example:",
@@ -425,6 +427,15 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
       case "memory":
         out.push("new memory item");
         break;
+      case "skip_primary":
+        out.push("skipping a PRIMARY item");
+        break;
+      case "skip_ambiguous":
+        out.push("more than one planned item matches");
+        break;
+      case "skip_session":
+        out.push("skipping the whole session");
+        break;
       default:
         break; // "delete" needs no explanation
     }
@@ -445,6 +456,13 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
       return `Unclear exercise "${esc(a.said)}"`;
     case "save_memory":
       return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
+    case "skip_items": {
+      const names = a.items.map((i) => esc(i.planName)).join(", ");
+      if (a.whole) return `Whole session (${dateLabel(a.sessionDate)}): ${names}`;
+      return a.items
+        .map((i) => `${esc(i.planName)}${i.priority === "PRIMARY" ? " (PRIMARY)" : ""}`)
+        .join(", ");
+    }
   }
 }
 
@@ -497,7 +515,8 @@ export function confirmCard(args: {
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
-  lines.push(isDelete ? "Remove this?" : "Save this?");
+  const isSkip = args.actions.every((a) => a.kind === "skip_items");
+  lines.push(isDelete ? "Remove this?" : isSkip ? "Skip this?" : "Save this?");
   for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete)}`);
   const why = reasonPhrases(args.actions, args.reasons);
   if (why.length) lines.push("", `Why I'm asking: ${esc(why.join("; "))}`);

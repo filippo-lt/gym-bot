@@ -49,11 +49,11 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 
 ### Text logging (M3, `src/ai/`, `src/logging/`, `src/bot/`)
 
-**Claude stages, code decides.** The model only parses intent: its write tools (`log_sets`, `edit_last_entry`, `undo_last_entry`) stage actions and never save. After the loop, pure code (`decidePolicy`, SPEC 5.6d) picks one of three paths: write now (one clear log in today's session), a "Which exercise?" question, or a confirm card (✅ ✏️ ❌). Every number shown to the user is formatted in code (`src/bot/log-format.ts`) from DB or parsed values, never from model text.
+**Claude stages, code decides.** The model only parses intent: its write tools (`log_sets`, `edit_last_entry`, `undo_last_entry`, `skip_items`) stage actions and never save. After the loop, pure code (`decidePolicy`, SPEC 5.6d) picks one of three paths: write now (one clear log in today's session), a "Which exercise?" question, or a confirm card (✅ ✏️ ❌). Every number shown to the user is formatted in code (`src/bot/log-format.ts`) from DB or parsed values, never from model text.
 
 - `src/ai/`: Anthropic client, tool schemas, prompt, loop (6 turns, 40 s), cost guard, fake model for tests. `src/logging/`: resolver, units, policy, executor, pending actions, aliases, memory. `src/bot/logging-flow.ts`: the Telegram flow and callbacks.
 - **write_ledger** makes writes idempotent. Source key `u:<update_id>` for a direct write, `p:<pending_id>` for a confirmed card. A retry returns the stored results and writes nothing. A pending request is created once per update (`source_update_id`), and ✅ is claimed in the same transaction as the writes.
-- Callback prefixes (data <= 64 bytes, see `src/bot/callbacks.ts`): `pa:<id>:ok|ed|no`, `ex:<pendingId>:<i>`, `rir:<groupId>:<0-4>` (4 = 4+), `cl:<groupId>:1|0`, `ug:<groupId>`, `ue:<sourceKey>:<idx>`, `md:<memoryId>`, `hx:<exerciseId>` (/history choice; handled in `bot.ts` before the generic callback handler, parsed by `parseHistoryCallback`, not part of the `CallbackAction` union).
+- Callback prefixes (data <= 64 bytes, see `src/bot/callbacks.ts`): `pa:<id>:ok|ed|no`, `ex:<pendingId>:<i>`, `rir:<groupId>:<0-4>` (4 = 4+), `cl:<groupId>:1|0`, `ug:<groupId>`, `ue:<sourceKey>:<idx>`, `md:<memoryId>`, `sk:<yyyymmdd>:<plannedItemId|all>` (/skip list tap), `us:<sourceKey>:<idx>` (undo a skip), `hx:<exerciseId>` (/history choice; handled in `bot.ts` before the generic callback handler, parsed by `parseHistoryCallback`, not part of the `CallbackAction` union).
 - AI is built lazily (`aiEnv()` is read only when free text arrives), so commands work without the key.
 
 ## Domain rules that are easy to break

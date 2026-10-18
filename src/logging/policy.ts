@@ -94,6 +94,12 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "save_memory":
       out.push("memory");
       break;
+    case "skip_items":
+      if (a.otherDay) out.push("not_in_today");
+      if (a.whole) out.push("skip_session");
+      if (a.items.some((i) => i.priority === "PRIMARY")) out.push("skip_primary");
+      if (a.ambiguous) out.push("skip_ambiguous");
+      break;
     case "clarify_exercise":
       break;
   }

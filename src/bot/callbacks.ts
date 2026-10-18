@@ -10,7 +10,10 @@ export type CallbackAction =
   | { t: "cl"; groupId: number; clean: boolean }
   | { t: "ug"; groupId: number }
   | { t: "ue"; key: string; index: number }
-  | { t: "md"; id: number };
+  | { t: "md"; id: number }
+  /** /skip list: one planned item of that date, or the whole session. */
+  | { t: "sk"; date: string; item: number | "all" }
+  | { t: "us"; key: string; index: number };
 
 export const CALLBACK_MAX_BYTES = 64;
 
@@ -26,6 +29,10 @@ export const cb = {
   /** `key` is the write_ledger source key, e.g. "u:123456" or "p:42". */
   undoEdit: (key: string, index: number) => `ue:${key}:${index}`,
   memory: (id: number) => `md:${id}`,
+  /** `date` is YYYY-MM-DD; sent without dashes to save bytes. */
+  skip: (date: string, item: number | "all") => `sk:${date.replaceAll("-", "")}:${item}`,
+  /** `key` is the write_ledger source key, like undoEdit. */
+  undoSkip: (key: string, index: number) => `us:${key}:${index}`,
   /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
   history: (exerciseId: number) => `hx:${exerciseId}`,
 };
@@ -77,6 +84,20 @@ export function parseCallback(data: string): CallbackAction | null {
     case "md": {
       const id = int(a);
       return id === null || parts.length !== 2 ? null : { t: "md", id };
+    }
+    case "sk": {
+      const m = /^sk:(\d{4})(\d{2})(\d{2}):(\d{1,15}|all)$/.exec(data);
+      if (!m) return null;
+      const date = `${m[1]}-${m[2]}-${m[3]}`;
+      // Rejects 20261340 and the like: the date must survive a round trip.
+      if (Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) {
+        return null;
+      }
+      return { t: "sk", date, item: m[4] === "all" ? "all" : Number(m[4]) };
+    }
+    case "us": {
+      const m = /^us:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
+      return m ? { t: "us", key: m[1] as string, index: Number(m[2]) } : null;
     }
     default:
       return null;

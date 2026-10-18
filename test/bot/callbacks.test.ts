@@ -17,6 +17,10 @@ describe("callback data", () => {
     cb.undoEdit(`u:${UPDATE}`, 19),
     cb.undoEdit(`p:${ID}`, 19),
     cb.memory(ID),
+    cb.skip("2026-10-19", ID),
+    cb.skip("2026-10-19", "all"),
+    cb.undoSkip(`u:${UPDATE}`, 19),
+    cb.undoSkip(`p:${ID}`, 19),
   ];
 
   it("is at most 64 bytes", () => {
@@ -40,6 +44,19 @@ describe("callback data", () => {
     expect(parseCallback(cb.undoEdit("u:123", 1))).toEqual({ t: "ue", key: "u:123", index: 1 });
     expect(parseCallback(cb.undoEdit("p:5", 0))).toEqual({ t: "ue", key: "p:5", index: 0 });
     expect(parseCallback(cb.memory(3))).toEqual({ t: "md", id: 3 });
+    expect(cb.skip("2026-10-19", 12)).toBe("sk:20261019:12");
+    expect(parseCallback(cb.skip("2026-10-19", 12))).toEqual({
+      t: "sk",
+      date: "2026-10-19",
+      item: 12,
+    });
+    expect(parseCallback(cb.skip("2026-10-19", "all"))).toEqual({
+      t: "sk",
+      date: "2026-10-19",
+      item: "all",
+    });
+    expect(parseCallback(cb.undoSkip("u:123", 0))).toEqual({ t: "us", key: "u:123", index: 0 });
+    expect(parseCallback(cb.undoSkip("p:5", 2))).toEqual({ t: "us", key: "p:5", index: 2 });
   });
 
   it("rejects junk", () => {
@@ -53,6 +70,18 @@ describe("callback data", () => {
       "cl:1:2",
       "ue:x:1",
       "ug:1:2",
+      "sk:",
+      "sk:20261019",
+      "sk:20261019:",
+      "sk:20261019:x",
+      "sk:20261019:1:2",
+      "sk:2026-10-19:1",
+      "sk:20261340:1",
+      "sk:20260230:1",
+      "us:x:1",
+      "us:u:1",
+      "us:q:1:0",
+      "us:u:1:x",
     ]) {
       expect(parseCallback(bad), bad).toBeNull();
     }
