@@ -88,7 +88,11 @@ export function countUnresolvedErrors(events: IntentEvent[]): number {
           ((e.said !== null && x.said === e.said) || (e.slug !== null && x.slug === e.slug))
         );
       }
-      return x.kind === "edit_group" || x.kind === "delete_group";
+      if (e.tool === "edit_last_entry" || e.tool === "undo_last_entry") {
+        return x.kind === "edit_group" || x.kind === "delete_group";
+      }
+      // Unknown tool name (a typo): any later staged action is the retry.
+      return true;
     });
     if (!fixed) n++;
   }
