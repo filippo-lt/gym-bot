@@ -1543,4 +1543,43 @@ describe("/usage", () => {
       ].join("\n"),
     ]);
   });
+
+  it("replies without caps when AI and voice are not configured", async () => {
+    const calls: Call[] = [];
+    const transformer: Transformer = async (_prev, method, payload) => {
+      calls.push({ method, payload: payload as Record<string, unknown> });
+      if (method === "sendMessage") {
+        return {
+          ok: true,
+          result: {
+            message_id: 1,
+            date: 0,
+            chat: CHAT_OBJ,
+            text: (payload as { text: string }).text,
+          },
+        } as never;
+      }
+      return { ok: true, result: true } as never;
+    };
+    const bot = createBot({ db, now: () => MON, token: "123:abc", botInfo, transformer });
+    await bot.handleUpdate({
+      update_id: 9000,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: CHAT_OBJ,
+        from: FROM,
+        text: "/usage",
+        entities: [{ type: "bot_command", offset: 0, length: 6 }],
+      },
+    });
+    expect(calls.filter((c) => c.method === "sendMessage").map((c) => c.payload.text)).toEqual([
+      [
+        "Usage on 28 Sep:",
+        "AI today: 0 tokens",
+        "AI this month: 0 tokens",
+        "Voice today: 0 min",
+      ].join("\n"),
+    ]);
+  });
 });

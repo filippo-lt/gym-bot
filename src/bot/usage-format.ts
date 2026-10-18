@@ -14,7 +14,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
 function tokenLine(label: string, used: number, cap: number | null): string {
   if (cap === null) return `${label}: ${fmt(used)} tokens`;
-  const pct = cap > 0 ? Math.floor((used / cap) * 100) : 0;
+  const pct = cap > 0 ? Math.floor((Math.round(used) * 100) / cap) : 0;
   return `${label}: ${fmt(used)} of ${fmt(cap)} tokens (${pct}%)`;
 }
 

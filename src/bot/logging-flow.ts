@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import type { Context } from "grammy";
 import { DateTime } from "luxon";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
-import { overTokenBudget } from "../ai/budget.js";
+import { type BudgetCap, overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
@@ -151,6 +151,10 @@ export interface Flow {
   memoryCommand(ctx: Context): Promise<void>;
   usageCommand(ctx: Context): Promise<void>;
   skipCommand(ctx: Context): Promise<void>;
+}
+
+function capValue(ai: AiConfig, cap: BudgetCap): number {
+  return cap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
 }
 
 const PARTLY = "partly_understood";
@@ -671,8 +675,7 @@ export function createFlow(deps: FlowDeps): Flow {
     }
 
     if (result.kind === "budget_reached") {
-      const cap = result.cap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
-      await send(ctx, budgetReachedText(result.cap, cap, now));
+      await send(ctx, budgetReachedText(result.cap, capValue(ai, result.cap), now));
       return;
     }
 
@@ -853,8 +856,7 @@ export function createFlow(deps: FlowDeps): Flow {
     const usage = createUsageStore(db);
     const overCap = await overTokenBudget(usage, now, ai);
     if (overCap) {
-      const cap = overCap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
-      await send(ctx, budgetReachedText(overCap, cap, now));
+      await send(ctx, budgetReachedText(overCap, capValue(ai, overCap), now));
       return;
     }
     const caption = ctx.message?.caption?.trim() || undefined;

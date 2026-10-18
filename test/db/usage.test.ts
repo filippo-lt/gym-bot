@@ -53,8 +53,8 @@ describe("usage store", () => {
     await insert(rows);
     const store = createUsageStore(db);
     const expected = counted(rows[1] as Row) + counted(rows[2] as Row);
-    // Sunday 23:59 Rome (CET, UTC+1) and Monday 00:00 Rome are in the same week.
-    for (const now of ["2026-10-19T00:00:00+01:00", "2026-10-25T23:59:00+01:00"]) {
+    // Monday 00:00 Rome (CEST, UTC+2) and Sunday 23:59 Rome (CET, UTC+1) are in the same week.
+    for (const now of ["2026-10-18T22:00:00Z", "2026-10-25T23:59:00+01:00"]) {
       const w = await store.weekTotals(new Date(now));
       expect(w.tokens).toBeCloseTo(expected, 6);
       expect(w.sttSeconds).toBe(90);

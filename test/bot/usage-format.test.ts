@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { formatUsage } from "../../src/bot/usage-format.js";
 
 describe("formatUsage", () => {
+  it("rounds the percent down with integer math on exact boundaries", () => {
+    const text = formatUsage({
+      date: "2026-10-19",
+      dayTokens: 58000,
+      monthTokens: 0,
+      sttSecondsToday: 0,
+      caps: { day: 200000, month: 3000000, sttSeconds: null },
+    });
+    expect(text).toContain("AI today: 58,000 of 200,000 tokens (29%)");
+  });
+
   it("shows used, cap and percent", () => {
     expect(
       formatUsage({
