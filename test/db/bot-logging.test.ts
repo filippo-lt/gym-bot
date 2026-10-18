@@ -1454,3 +1454,61 @@ describe("removed groups retire their echo (M4)", () => {
     expect(await count("log_groups")).toBe(0);
   });
 });
+
+describe("class card with moves", () => {
+  const classAction: StagedAction = {
+    kind: "log_class",
+    date: "2026-10-01",
+    input: {
+      heavy_groups: [],
+      moves: [
+        { name: "Pistol", sets: 5, reps: 10, groups: ["legs"] },
+        { name: "Pull-up", sets: 4, reps: 8, groups: ["pull"] },
+        { name: "Burpee", groups: ["legs", "push"] },
+      ],
+    },
+  };
+  const open = async (updateId: number) =>
+    (
+      await createPending(db, {
+        chatId: CHAT,
+        kind: "confirm",
+        actions: [classAction],
+        reasons: ["class_moves"],
+        sourceUpdateId: updateId,
+        now: clock,
+      })
+    ).pending;
+
+  it("Save writes heavy groups from the tapped mask", async () => {
+    const t = setup();
+    const p = await open(8001);
+    await t.tap(`cm:${p.id}:2`);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain("Selected: push");
+    expect(await count("class_logs")).toBe(0);
+    await t.tap(`cm:${p.id}:4:ok`);
+    const [r] = await sql`select heavy_groups, parsed->'moves' as moves from class_logs`;
+    expect(r?.heavy_groups).toEqual(["legs"]);
+    expect(r?.moves).toHaveLength(3);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("✓ Thursday class: 3 moves; heavy LEGS");
+    // a repeated tap writes nothing more
+    await t.tap(`cm:${p.id}:4:ok`);
+    expect(await count("class_logs")).toBe(1);
+  });
+
+  it("replaced or expired: Save answers the expired text and writes nothing", async () => {
+    const t = setup();
+    const old = await open(8002);
+    await open(8003); // a newer pending replaces it
+    await t.tap(`cm:${old.id}:4:ok`);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("class_logs")).toBe(0);
+
+    const t2 = setup();
+    const p = await open(8004);
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t2.tap(`cm:${p.id}:4:ok`);
+    expect(t2.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("class_logs")).toBe(0);
+  });
+});

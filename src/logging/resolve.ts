@@ -726,16 +726,20 @@ export function stageBodyweight(input: LogBodyweightInput, now: Date): StageResu
 }
 
 export function stageClass(input: LogClassInput, now: Date): StageResult {
-  const heavy = [...new Set(input.heavy_groups)];
+  const heavy = [...new Set(input.heavy_groups ?? [])];
   return {
     ok: true,
     action: {
       kind: "log_class",
-      input: { heavy_groups: heavy },
+      input: {
+        heavy_groups: heavy,
+        ...(input.moves ? { moves: input.moves } : {}),
+      },
       date: thursdayOnOrBefore(trainingDate(now)),
     },
-    preview:
-      "Staged the Thursday class report. The bot saves it with an Undo button. Do not repeat numbers.",
+    preview: input.moves
+      ? "Staged the Thursday class moves. The bot shows a card with the breakdown and asks which parts were heavy. Do not repeat numbers."
+      : "Staged the Thursday class report. The bot saves it with an Undo button. Do not repeat numbers.",
   };
 }
 

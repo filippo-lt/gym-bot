@@ -17,6 +17,8 @@ export type CallbackAction =
   | { t: "rd"; level: "t" | "o" | "s" }
   /** /class toggles: `mask` is the selection after the tap (pull 1, push 2, legs 4); `save` = Save tapped. */
   | { t: "cg"; mask: number; date: string; save: boolean }
+  /** Class-with-moves card (a pending): `mask` is the heavy selection after the tap; `save` = Save tapped. */
+  | { t: "cm"; id: number; mask: number; save: boolean }
   /** HSPU advance proposal. */
   | { t: "pr"; id: number; act: "ok" | "no" }
   /** /skip list: one planned item of that date, or the whole session. */
@@ -42,6 +44,8 @@ export const cb = {
   /** The class Thursday (ISO date) rides along as YYYYMMDD, so a late Save lands on the card's own day. */
   classMask: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}`,
   classSave: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}:ok`,
+  classMoves: (pendingId: number, mask: number) => `cm:${pendingId}:${mask}`,
+  classMovesSave: (pendingId: number, mask: number) => `cm:${pendingId}:${mask}:ok`,
   proposal: (id: number, act: "ok" | "no") => `pr:${id}:${act}`,
   /** `date` is YYYY-MM-DD; sent without dashes to save bytes. */
   skip: (date: string, item: number | "all") => `sk:${date.replaceAll("-", "")}:${item}`,
@@ -106,6 +110,13 @@ export function parseCallback(data: string): CallbackAction | null {
       const date = `${d[1]}-${d[2]}-${d[3]}`;
       if (parts.length === 3) return { t: "cg", mask, date, save: false };
       return parts.length === 4 && parts[3] === "ok" ? { t: "cg", mask, date, save: true } : null;
+    }
+    case "cm": {
+      const id = int(a);
+      const mask = int(b);
+      if (id === null || mask === null || mask > 7) return null;
+      if (parts.length === 3) return { t: "cm", id, mask, save: false };
+      return parts.length === 4 && parts[3] === "ok" ? { t: "cm", id, mask, save: true } : null;
     }
     case "pr": {
       const id = int(a);

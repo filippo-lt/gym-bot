@@ -61,10 +61,13 @@ export function describeAction(a: StagedAction): string {
       return `readiness: ${a.input.signal.replace("_", " ")}`;
     case "log_bodyweight":
       return `bodyweight ${fmt(a.input.kg)} kg`;
-    case "log_class":
-      return a.input.heavy_groups.length
-        ? `Thursday class: heavy ${a.input.heavy_groups.join(", ")}`
-        : "Thursday class: not heavy";
+    case "log_class": {
+      const heavy = a.input.heavy_groups ?? [];
+      const heavyText = heavy.length ? `heavy ${heavy.join(", ")}` : "not heavy";
+      const n = a.input.moves?.length;
+      if (n === undefined) return `Thursday class: ${heavyText}`;
+      return `Thursday class: ${n} ${n === 1 ? "move" : "moves"}${heavy.length ? `; heavy: ${heavy.join(", ")}` : ""}`;
+    }
     case "skip_items":
       return a.whole
         ? `skip the whole session (${dateLabel(a.sessionDate)})`

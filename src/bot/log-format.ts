@@ -5,6 +5,7 @@
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
 import { trainingDate } from "../domain/calendar.js";
+import { classBreakdown } from "../logging/class-moves.js";
 import { dateLabel, describeAction } from "../logging/describe.js";
 import type { MemoryItem } from "../logging/memory.js";
 import type { Pending } from "../logging/pending.js";
@@ -20,7 +21,7 @@ import type {
 } from "../logging/types.js";
 import type { ExerciseType, LoadBasis, Weekday } from "../plan-import/types.js";
 import { cb } from "./callbacks.js";
-import { esc } from "./format.js";
+import { day, esc } from "./format.js";
 
 export interface Button {
   text: string;
@@ -421,6 +422,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         if (guessed.length) out.push(`${guessed.join(", ")} ${plural ? "were" : "was"} guessed`);
         break;
       }
+      case "class_moves":
+        out.push("you pick which parts were heavy");
+        break;
       case "voice_input":
         out.push("from a voice note");
         break;
@@ -573,6 +577,60 @@ export function confirmCard(args: {
   return { text: lines.join("\n"), keyboard: [keyboard] };
 }
 
+/** The three heavy-group toggles of the class cards (mask bits: pull 1, push 2, legs 4). */
+export const CLASS_HEAVY_GROUPS = [
+  { bit: 1, key: "pull", label: "Pull" },
+  { bit: 2, key: "push", label: "Push" },
+  { bit: 4, key: "legs", label: "Legs" },
+] as const;
+
+export const maskToGroups = (mask: number): ("pull" | "push" | "legs")[] =>
+  CLASS_HEAVY_GROUPS.filter((g) => (mask & g.bit) !== 0).map((g) => g.key);
+
+export const groupsToMask = (groups: readonly string[]): number =>
+  CLASS_HEAVY_GROUPS.reduce((m, g) => (groups.includes(g.key) ? m | g.bit : m), 0);
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** A pending class log with moves: breakdown per group, heavy toggles (nothing ticked until the user taps), Save. */
+export function classMovesCard(args: {
+  id: number;
+  action: Extract<StagedAction, { kind: "log_class" }>;
+  mask: number;
+  heard?: string | null;
+  replacedSummary?: string | null;
+}): Message {
+  const { id, action, mask } = args;
+  const lines: string[] = [];
+  pushHeard(lines, args.heard);
+  if (args.replacedSummary) lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
+  lines.push(`Thursday class (${day(action.date, "ccc d LLL")}):`);
+  for (const row of classBreakdown(action.input.moves ?? [])) {
+    const label = row.group.charAt(0).toUpperCase() + row.group.slice(1);
+    lines.push(`${label}: ${plural(row.moves, "move")}, ${plural(row.sets, "set")}`);
+  }
+  const picked = maskToGroups(mask);
+  lines.push(
+    "",
+    "Which parts were heavy?",
+    `Selected: ${picked.length ? picked.join(", ") : "none (= not heavy)"}. Tap to change, then Save.`,
+  );
+  return {
+    text: lines.join("\n"),
+    keyboard: [
+      CLASS_HEAVY_GROUPS.map((g) => ({
+        text: `${(mask & g.bit) !== 0 ? "✓ " : ""}${g.label}`,
+        data: cb.classMoves(id, mask ^ g.bit),
+      })),
+      [
+        { text: "Not heavy", data: cb.classMoves(id, 0) },
+        { text: "Save", data: cb.classMovesSave(id, mask) },
+        { text: "❌", data: cb.pending(id, "no") },
+      ],
+    ],
+  };
+}
+
 export function clarifyCard(args: {
   id: number;
   /** Position of the clarify action in the request, carried by its buttons. */
@@ -680,6 +738,10 @@ export function directWriteSaved(
     case "class":
       return {
         text: `✓ Thursday class: ${
+          result.moveCount !== undefined
+            ? `${result.moveCount} ${result.moveCount === 1 ? "move" : "moves"}; `
+            : ""
+        }${
           result.heavyGroups.length
             ? `heavy ${result.heavyGroups.map((g) => g.toUpperCase()).join(", ")}`
             : "not heavy"

@@ -411,24 +411,48 @@ async function writeAction(
       };
     }
     case "log_class": {
+      const heavy = a.input.heavy_groups ?? [];
       const [prev] = await tx
-        .select({ id: classLogs.id, heavy: classLogs.heavyGroups })
+        .select({
+          id: classLogs.id,
+          heavy: classLogs.heavyGroups,
+          parsed: classLogs.parsed,
+          photoFileId: classLogs.photoFileId,
+          rawText: classLogs.rawText,
+        })
         .from(classLogs)
         .where(eq(classLogs.date, a.date));
+      // Heavy-only touches just heavy_groups: moves and photo from an earlier write stay.
+      const moves = a.input.moves
+        ? {
+            parsed: { moves: a.input.moves },
+            photoFileId: a.photoFileId ?? null,
+            rawText: a.rawText ?? null,
+          }
+        : {};
       const [row] = await tx
         .insert(classLogs)
-        .values({ date: a.date, heavyGroups: a.input.heavy_groups, source: "bot" })
+        .values({ date: a.date, heavyGroups: heavy, source: "bot", ...moves })
         .onConflictDoUpdate({
           target: classLogs.date,
-          set: { heavyGroups: a.input.heavy_groups, source: "bot" },
+          set: { heavyGroups: heavy, source: "bot", ...moves },
         })
         .returning({ id: classLogs.id });
       return {
         kind: "class",
         id: (row as { id: number }).id,
         date: a.date,
-        heavyGroups: a.input.heavy_groups,
+        heavyGroups: heavy,
+        ...(a.input.moves ? { moveCount: a.input.moves.length } : {}),
         previousGroups: prev?.heavy ?? null,
+        previousRow: prev
+          ? {
+              heavyGroups: prev.heavy,
+              parsed: prev.parsed ?? null,
+              photoFileId: prev.photoFileId,
+              rawText: prev.rawText,
+            }
+          : null,
       };
     }
     case "skip_items":
@@ -843,11 +867,31 @@ export async function undoWrite(
     if ([...cur.heavyGroups].sort().join() !== [...r.heavyGroups].sort().join()) {
       return { status: "stale" };
     }
-    if (r.previousGroups === null) {
+    if (r.previousRow === undefined) {
+      // Ledger row from before previousRow: only the heavy groups were tracked.
+      if (r.previousGroups === null) {
+        await db.delete(classLogs).where(eq(classLogs.id, r.id));
+        return { status: "undone", text: "Class report removed." };
+      }
+      await db
+        .update(classLogs)
+        .set({ heavyGroups: r.previousGroups })
+        .where(eq(classLogs.id, r.id));
+      return { status: "undone", text: "Class report restored." };
+    }
+    if (r.previousRow === null) {
       await db.delete(classLogs).where(eq(classLogs.id, r.id));
       return { status: "undone", text: "Class report removed." };
     }
-    await db.update(classLogs).set({ heavyGroups: r.previousGroups }).where(eq(classLogs.id, r.id));
+    await db
+      .update(classLogs)
+      .set({
+        heavyGroups: r.previousRow.heavyGroups,
+        parsed: r.previousRow.parsed,
+        photoFileId: r.previousRow.photoFileId,
+        rawText: r.previousRow.rawText,
+      })
+      .where(eq(classLogs.id, r.id));
     return { status: "undone", text: "Class report restored." };
   }
   return { status: "none" };

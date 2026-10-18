@@ -113,7 +113,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "log_class",
     description:
-      "Save how Thursday's calisthenics class went: heavy_groups lists the muscle groups it loaded heavily (pull, push, legs). 'Class was easy' or 'not heavy' is an empty list. Use it for 'class was heavy on legs', not for training logged as sets. It saves directly with an Undo button.",
+      "Save how Thursday's calisthenics class went: heavy_groups lists the muscle groups it loaded heavily (pull, push, legs). 'Class was easy' or 'not heavy' is an empty list. Use it for 'class was heavy on legs', not for training logged as sets. Heavy groups alone save directly with an Undo button. When the user describes the class's moves ('class was 5x10 pistols, pull-ups 4x8, burpees'), pass moves instead: one entry per move with name, sets, reps or duration_s only if said, and groups (every group it loads: pull, push, legs, core, other). Moves always go through a card where the user picks the heavy parts; do not guess heavy_groups then.",
     input_schema: inputSchema(logClassInputSchema),
   },
   {

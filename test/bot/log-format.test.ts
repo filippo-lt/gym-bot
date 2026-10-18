@@ -3,6 +3,7 @@ import {
   BUDGET_REACHED,
   cancelledText,
   clarifyCard,
+  classMovesCard,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
@@ -561,5 +562,38 @@ describe("skip texts", () => {
 
   it("help lists /skip", () => {
     expect(HELP_TEXT).toContain("/skip");
+  });
+});
+
+describe("classMovesCard", () => {
+  const action: Extract<StagedAction, { kind: "log_class" }> = {
+    kind: "log_class",
+    date: "2026-10-01",
+    input: {
+      moves: [
+        { name: "Pistol", sets: 5, reps: 10, groups: ["legs"] },
+        { name: "Pull-up", sets: 4, reps: 8, groups: ["pull"] },
+        { name: "Burpee", sets: 1, groups: ["legs", "push"] },
+      ],
+    },
+  };
+
+  it("shows breakdown, nothing ticked at mask 0", () => {
+    const m = classMovesCard({ id: 9, action, mask: 0, heard: "pistols and pull-ups" });
+    expect(m.text).toContain("🎤 heard: pistols and pull-ups");
+    expect(m.text).toContain("Thursday class (Thu 1 Oct):");
+    expect(m.text).toContain("Legs: 2 moves, 6 sets");
+    expect(m.text).toContain("Pull: 1 move, 4 sets");
+    expect(m.text).toContain("Which parts were heavy?");
+    expect(m.keyboard.flat().some((b) => b.text.includes("✓"))).toBe(false);
+    expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:1", "cm:9:2", "cm:9:4"]);
+    expect(m.keyboard[1]?.map((b) => b.data)).toEqual(["cm:9:0", "cm:9:0:ok", "pa:9:no"]);
+  });
+
+  it("ticks the selected groups", () => {
+    const m = classMovesCard({ id: 9, action, mask: 5 });
+    expect(m.keyboard[0]?.map((b) => b.text)).toEqual(["✓ Pull", "Push", "✓ Legs"]);
+    expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:4", "cm:9:7", "cm:9:1"]);
+    expect(m.keyboard[1]?.[1]?.data).toBe("cm:9:5:ok");
   });
 });

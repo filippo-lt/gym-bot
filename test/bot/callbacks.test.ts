@@ -108,6 +108,16 @@ describe("M5 callbacks", () => {
       date: "2026-10-01",
       save: true,
     });
+    expect(parseCallback("cm:123:5")).toEqual({ t: "cm", id: 123, mask: 5, save: false });
+    expect(parseCallback(cb.classMovesSave(123, 5))).toEqual({
+      t: "cm",
+      id: 123,
+      mask: 5,
+      save: true,
+    });
+    expect(parseCallback(cb.classMoves(7, 0))).toEqual({ t: "cm", id: 7, mask: 0, save: false });
+    expect(parseCallback("cm:123:8")).toBeNull();
+    expect(parseCallback("cm:123:5:no")).toBeNull();
     expect(parseCallback(cb.proposal(12, "no"))).toEqual({ t: "pr", id: 12, act: "no" });
     expect(parseCallback(cb.undoWrite("u:123", 0))).toEqual({ t: "uw", key: "u:123", index: 0 });
     expect(parseCallback(cb.undoWrite("p:9", 2))).toEqual({ t: "uw", key: "p:9", index: 2 });

@@ -123,7 +123,9 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "clarify_exercise":
     case "log_readiness":
     case "log_bodyweight":
+      break;
     case "log_class":
+      if (a.input.moves) out.push("class_moves");
       break;
   }
   if (farOffLoad(a) !== null) out.push("load_far_off");

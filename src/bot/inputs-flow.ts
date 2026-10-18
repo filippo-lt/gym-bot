@@ -17,7 +17,12 @@ import type { SessionAdvice } from "../progression/session-advice.js";
 import { refreshUserState } from "../progression/store.js";
 import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
 import { day, esc } from "./format.js";
-import { directWriteSaved, type Message } from "./log-format.js";
+import {
+  directWriteSaved,
+  CLASS_HEAVY_GROUPS as GROUPS,
+  type Message,
+  maskToGroups,
+} from "./log-format.js";
 
 const HTML = { parse_mode: "HTML" as const };
 
@@ -25,11 +30,6 @@ export const BW_USAGE = "Send your bodyweight in kg, for example: /bw 78.5";
 export const READINESS_QUESTION = "How do you feel today?";
 
 const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
-const GROUPS = [
-  { bit: 1, key: "pull", label: "Pull" },
-  { bit: 2, key: "push", label: "Push" },
-  { bit: 4, key: "legs", label: "Legs" },
-] as const;
 
 function markup(m: Message): InlineKeyboard {
   const k = new InlineKeyboard();
@@ -52,8 +52,8 @@ export function parseKg(arg: string): number | null {
   return parsed.success ? parsed.data.kg : null;
 }
 
-export const maskToGroups = (mask: number): ("pull" | "push" | "legs")[] =>
-  GROUPS.filter((g) => (mask & g.bit) !== 0).map((g) => g.key);
+// Shared with the class-with-moves card (log-format.ts); re-exported so callers keep this import.
+export { maskToGroups };
 
 export function readinessCard(): Message {
   return {

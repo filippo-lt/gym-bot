@@ -66,6 +66,7 @@ import {
   bandSaved,
   cancelledText,
   clarifyCard,
+  classMovesCard,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
@@ -75,8 +76,10 @@ import {
   echoMessage,
   editEchoMessage,
   expiredText,
+  groupsToMask,
   type Keyboard,
   type Message,
+  maskToGroups,
   memoryList,
   memorySaved,
   NO_AI_KEY,
@@ -440,6 +443,16 @@ export function createFlow(deps: FlowDeps): Flow {
         });
       }
     }
+    const only = p.actions.length === 1 ? p.actions[0] : undefined;
+    if (only?.kind === "log_class" && only.input.moves) {
+      return classMovesCard({
+        id: p.id,
+        action: only,
+        mask: groupsToMask(only.input.heavy_groups ?? []),
+        replacedSummary,
+        heard: p.transcript,
+      });
+    }
     return confirmCard({
       id: p.id,
       kind: p.kind,
@@ -780,6 +793,8 @@ export function createFlow(deps: FlowDeps): Flow {
     switch (a.t) {
       case "pa":
         return pendingButton(ctx, a.id, a.act, answer, now);
+      case "cm":
+        return classMovesButton(ctx, a.id, a.mask, a.save, answer, now);
       case "ex":
         return exerciseButton(ctx, a.pendingId, a.index, a.action, answer, now);
       case "rir":
@@ -999,6 +1014,77 @@ export function createFlow(deps: FlowDeps): Flow {
         ? "Nothing skipped (user confirmed): already done or skipped."
         : `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
     );
+  }
+
+  /** Toggles and Save of a class-with-moves card: the heavy mask rides in the button, the pending holds the moves. */
+  async function classMovesButton(
+    ctx: Context,
+    id: number,
+    mask: number,
+    save: boolean,
+    answer: Answer,
+    now: Date,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const pending = await getPending(db, id);
+    const action =
+      pending?.actions.length === 1 && pending.actions[0]?.kind === "log_class"
+        ? pending.actions[0]
+        : undefined;
+    if (!pending || !action?.input.moves) {
+      await answer(EXPIRED);
+      await remember(chatId, "A tapped request was not found (expired); nothing changed.");
+      return;
+    }
+    if (pending.status === "executed") {
+      await answer("Already saved.");
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      return;
+    }
+    if (pending.status !== "open" || pending.expiresAt.getTime() <= now.getTime()) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped class button found the request expired; nothing changed.");
+      return;
+    }
+    if (!save) {
+      await edit(
+        ctx,
+        classMovesCard({
+          id,
+          action: { ...action, input: { ...action.input, heavy_groups: maskToGroups(mask) } },
+          mask,
+          heard: pending.transcript,
+        }),
+      );
+      await answer();
+      return;
+    }
+    const toSave = {
+      ...action,
+      input: { ...action.input, heavy_groups: maskToGroups(mask) },
+    };
+    const key = `p:${id}`;
+    const r = await executeActions(db, key, [toSave], {
+      pendingId: id,
+      now,
+      source: pending.inputSource,
+      replaceActions: [toSave],
+      replaceReasons: pending.reasons,
+    });
+    if (r.status !== "done") {
+      await answer(r.status === "stale" ? STALE : EXPIRED);
+      if (r.status === "stale") await editQuietly(ctx, STALE);
+      else await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
+      await remember(chatId, "The tapped class card could not be saved; nothing changed.");
+      return;
+    }
+    const result = r.results[0];
+    if (result?.kind === "class") await editQuietly(ctx, directWriteSaved(result, key, 0));
+    else await editQuietly(ctx, "Saved ✓");
+    await answer("Saved.");
+    await remember(chatId, `Saved (user confirmed): ${plainSummary([toSave])}`);
   }
 
   async function exerciseButton(
