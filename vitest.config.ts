@@ -7,7 +7,16 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["test/**/*.test.ts"],
-          exclude: ["test/db/**"],
+          exclude: ["test/db/**", "test/golden/**"],
+        },
+      },
+      {
+        test: {
+          name: "golden",
+          include: ["test/golden/**/*.golden.test.ts"],
+          setupFiles: ["test/golden/setup.ts"],
+          testTimeout: 60_000,
+          fileParallelism: false,
         },
       },
       {

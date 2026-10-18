@@ -1,0 +1,296 @@
+/**
+ * M3 contract shared by the logging domain (src/logging), the AI layer (src/ai) and the bot.
+ * Claude's write tools only *stage* actions; code decides whether to write now or ask first
+ * (SPEC 5.6d). Every number shown to the user comes from code, never from the model.
+ */
+import { z } from "zod";
+import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
+
+export const DAY_VALUES = ["today", "mon", "tue", "wed", "thu", "fri"] as const;
+export type Day = (typeof DAY_VALUES)[number];
+
+const kg = z.number().min(0).max(500);
+
+/** One set as the user said it. Unit conversion happens in code (SPEC 5.2). */
+export const setInputSchema = z.strictObject({
+  reps: z.number().int().min(0).max(1000).optional(),
+  /** In the exercise's convention: barbell total incl. bar, dumbbell per hand, stack value. */
+  load_kg: kg.optional(),
+  /** Barbell only: plates on each side; code adds the bar (equipment.base_kg). */
+  plates_per_side_kg: kg.optional(),
+  /** Dumbbells only: both dumbbells together; code halves it. */
+  pair_total_kg: kg.optional(),
+  /** Pull-up type: extra weight. */
+  added_kg: kg.optional(),
+  /** Pull-up type: assistance in kg. */
+  assist_kg: kg.optional(),
+  /** Band colour as said; no kg mapping exists yet, so it is kept as a note. */
+  band: z.string().min(1).max(30).optional(),
+  duration_s: z.number().int().min(0).max(36_000).optional(),
+  distance_m: z.number().min(0).max(100_000).optional(),
+  pad_height: z.number().min(0).max(100).optional(),
+  rir: z.number().int().min(0).max(10).optional(),
+  /** "4+" = rir 4 with rir_plus. */
+  rir_plus: z.boolean().optional(),
+});
+export type SetInput = z.infer<typeof setInputSchema>;
+
+export const uniformSetsSchema = setInputSchema.extend({
+  count: z.number().int().min(1).max(20),
+});
+export type UniformSets = z.infer<typeof uniformSetsSchema>;
+
+export const rirValueSchema = z.union([z.number().int().min(0).max(10), z.literal("4+")]);
+
+export const logSetsInputSchema = z.strictObject({
+  exercise: z.strictObject({
+    /** Catalog slug when the model is sure; omit when unsure. */
+    slug: z.string().min(1).max(60).optional(),
+    /** The words the user used, e.g. "fp". Used for aliases and fuzzy matching. */
+    said: z.string().min(1).max(100),
+  }),
+  /** Omit or "today" for today's session; a weekday only when the user named it. */
+  day: z.enum(DAY_VALUES).optional(),
+  /** Either one object per set, or a uniform block {count, reps, load_kg, ...}. */
+  sets: z.union([z.array(setInputSchema).min(1).max(20), uniformSetsSchema]),
+  /** One RIR for the whole group belongs to the last set (SPEC 5.2). */
+  rir: rirValueSchema.optional(),
+  /** Pull-up / HSPU: applies to every set of the group. */
+  clean: z.boolean().optional(),
+  /** HSPU only: ladder step slug (hspu_ladder.slug). Omit when not said; code uses the last logged step. */
+  hspu_step: z.string().min(1).max(60).optional(),
+  note: z.string().max(500).optional(),
+  /** Field names the model filled in without the user saying them, e.g. ["sets"]. */
+  guessed_fields: z.array(z.string().max(40)).max(20).default([]),
+  needs_confirmation: z.boolean().default(false),
+});
+export type LogSetsInput = z.infer<typeof logSetsInputSchema>;
+
+export const editLastInputSchema = z.strictObject({
+  /** 1-based set numbers; omit to mean every set (allowed only when they share one load). */
+  set_indexes: z.array(z.number().int().min(1).max(20)).min(1).max(20).optional(),
+  changes: setInputSchema.omit({ rir_plus: true }).extend({
+    rir: rirValueSchema.optional(),
+    clean: z.boolean().optional(),
+    exercise_slug: z.string().min(1).max(60).optional(),
+    hspu_step: z.string().min(1).max(60).optional(),
+    note: z.string().max(500).optional(),
+  }),
+  guessed_fields: z.array(z.string().max(40)).max(20).default([]),
+  needs_confirmation: z.boolean().default(false),
+});
+export type EditLastInput = z.infer<typeof editLastInputSchema>;
+
+export const undoLastInputSchema = z.strictObject({});
+export type UndoLastInput = z.infer<typeof undoLastInputSchema>;
+
+export const getSessionInputSchema = z.strictObject({
+  day: z.enum(DAY_VALUES).default("today"),
+});
+export type GetSessionInput = z.infer<typeof getSessionInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Resolved data (produced by src/logging, consumed by policy, executor, formatters)
+
+export interface EquipmentInfo {
+  slug: string;
+  baseKg: number | null;
+  stepKg: number | null;
+  discreteValues: number[] | null;
+}
+
+export interface ResolvedExercise {
+  id: number;
+  slug: string;
+  name: string;
+  type: ExerciseType;
+  loadBasis: LoadBasis | null;
+  isMainLift: boolean;
+  /** True for pull-up and HSPU (skill_strength): clean is asked when missing. */
+  needsClean: boolean;
+  equipment: EquipmentInfo | null;
+}
+
+/** One set in DB units, 1-based setIndex. */
+export interface ResolvedEntry {
+  setIndex: number;
+  reps: number | null;
+  loadKg: number | null;
+  addedKg: number | null;
+  assistKg: number | null;
+  durationS: number | null;
+  distanceM: number | null;
+  padHeight: number | null;
+  rir: number | null;
+  rirPlus: boolean;
+  clean: boolean | null;
+  note: string | null;
+}
+
+export interface PlannedItemInfo {
+  id: number;
+  subItem: number;
+  week: number;
+  weekday: Weekday;
+  planName: string;
+  priority: Priority;
+  setsMin: number | null;
+  setsMax: number | null;
+  repsMin: number | null;
+  repsMax: number | null;
+  rirMin: number | null;
+  rirMax: number | null;
+  isDeload: boolean;
+}
+
+/** The last logged session of the same exercise, for the far-off check. */
+export interface LastSessionRef {
+  sessionDate: string;
+  /** Highest system load among its sets (load_kg, or bw + added − assist); null if none. */
+  maxSystemLoad: number | null;
+  bestReps: number | null;
+}
+
+export type MatchKind = "today" | "makeup" | "unplanned";
+
+export interface ResolvedLog {
+  said: string;
+  exercise: ResolvedExercise;
+  /** Planned date (make-ups keep the planned date; performed_at is the real time). */
+  sessionDate: string;
+  match: MatchKind;
+  plannedItem: PlannedItemInfo | null;
+  /** HSPU ladder step (SPEC 5.2: the step is user state taken from the last log). */
+  hspuStep: Candidate | null;
+  entries: ResolvedEntry[];
+  bwKg: number | null;
+  note: string | null;
+  /** Required fields that are missing, e.g. ["reps"], ["load"], ["duration"]. */
+  missingFields: string[];
+  guessedFields: string[];
+  needsConfirmation: boolean;
+  lastSession: LastSessionRef | null;
+}
+
+export interface Candidate {
+  slug: string;
+  name: string;
+}
+
+/** A snapshot of a stored group, used for edit before/after, delete cards and undo. */
+export interface GroupSnapshot {
+  groupId: number;
+  sessionDate: string;
+  performedAt: string;
+  exercise: {
+    id: number;
+    slug: string;
+    name: string;
+    type: ExerciseType;
+    loadBasis: LoadBasis | null;
+  };
+  plannedItemId: number | null;
+  hspuStep: Candidate | null;
+  bwKg: number | null;
+  entries: ResolvedEntry[];
+}
+
+export type StagedAction =
+  | { kind: "log_sets"; input: LogSetsInput; resolved: ResolvedLog }
+  /** The exercise is unclear: the bot asks with buttons before anything else. */
+  | { kind: "clarify_exercise"; input: LogSetsInput; said: string; candidates: Candidate[] }
+  | {
+      kind: "edit_group";
+      input: EditLastInput;
+      before: GroupSnapshot;
+      after: GroupSnapshot;
+      /** 1-based sets that change. */
+      setIndexes: number[];
+      /** Same far-off reference as logging, against the edited values. */
+      lastSession: LastSessionRef | null;
+    }
+  | { kind: "delete_group"; snapshot: GroupSnapshot };
+
+/** What a staging call returns to the AI loop. `preview` is shown to the model as the tool result. */
+export type StageResult =
+  | { ok: true; action: StagedAction; preview: string }
+  | { ok: false; error: string };
+
+/** The tools' backend, injected into the AI loop (DB-backed in production, fake in tests). */
+export interface LoggingBackend {
+  getSession(input: GetSessionInput): Promise<unknown>;
+  stageLogSets(input: LogSetsInput): Promise<StageResult>;
+  stageEdit(input: EditLastInput): Promise<StageResult>;
+  stageUndoLast(input: UndoLastInput): Promise<StageResult>;
+}
+
+// ---------------------------------------------------------------------------
+// Policy
+
+export type ConfirmReason =
+  | "multiple_writes"
+  | "not_in_today"
+  | "makeup"
+  | "missing_field"
+  | "guessed"
+  | "model_flag"
+  | "load_far_off"
+  | "reps_far_off"
+  | "delete";
+
+export type PolicyDecision =
+  | { mode: "direct" }
+  | { mode: "clarify"; index: number }
+  | { mode: "confirm"; reasons: ConfirmReason[] };
+
+// ---------------------------------------------------------------------------
+// Ledger results (write_ledger.result jsonb)
+
+export type LedgerResult =
+  | { kind: "log"; groupId: number }
+  | { kind: "edit"; groupId: number; before: ResolvedEntry[] }
+  | { kind: "delete"; snapshot: GroupSnapshot };
+
+// ---------------------------------------------------------------------------
+// AI layer
+
+export interface PromptCatalogEntry {
+  slug: string;
+  name: string;
+  aliases: string[];
+  type: ExerciseType;
+  loadBasis: LoadBasis | null;
+}
+
+/** Static, cacheable part of the system prompt. */
+export interface PromptStatic {
+  catalog: PromptCatalogEntry[];
+  hspuLadder: Candidate[];
+}
+
+export interface PromptContext {
+  /** e.g. "Tue 27 Oct 2026 · Week 5 · Strength" or "Sun 18 Oct 2026 · rest day". */
+  todayLabel: string;
+  todayItems: { name: string; options: Candidate[]; prescription: string; status: string }[];
+  aliases: { said: string; slug: string; name: string }[];
+  pending: { summary: string; awaitingEdit: boolean } | null;
+  recent: { role: "user" | "assistant"; text: string }[];
+}
+
+export interface TokenUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/** Usage storage, injected into the AI loop (usage_logs in production). */
+export interface UsageStore {
+  totals(now: Date): Promise<{ day: number; month: number }>;
+  record(usage: TokenUsage, now: Date): Promise<void>;
+}
+
+export type IntentResult =
+  | { kind: "ok"; staged: StagedAction[]; replyText: string | null; turns: number }
+  | { kind: "budget_reached" };
