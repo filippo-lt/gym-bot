@@ -12,6 +12,7 @@ export const FAILED_MESSAGE =
   "Sorry — I couldn't process your last message after 3 tries. Please send it again.";
 
 const INIT_TIMEOUT_MS = 10_000;
+const DOWNLOAD_TIMEOUT_MS = 15_000;
 
 let botPromise: Promise<Bot> | undefined;
 let aiConfig: AiConfig | undefined;
@@ -45,7 +46,13 @@ export function getBot(): Promise<Bot> {
     const media: MediaSource = {
       stt: lazyStt,
       download: (fileId, maxBytes) =>
-        downloadTelegramFile({ api: bot.api, token, fileId, maxBytes }),
+        downloadTelegramFile({
+          api: bot.api,
+          token,
+          fileId,
+          maxBytes,
+          signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+        }),
     };
     const bot = createBot({ db: getDb(), now: () => new Date(), token, ai: lazyAi, media });
     let timer: NodeJS.Timeout | undefined;

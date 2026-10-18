@@ -5,6 +5,8 @@
  */
 import { eq } from "drizzle-orm";
 import { type Context, InlineKeyboard } from "grammy";
+import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
+import { overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
@@ -12,7 +14,8 @@ import { buildDynamicText } from "../ai/prompt.js";
 import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
-import { trainingDate } from "../domain/calendar.js";
+import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { classBreakdown } from "../logging/class-moves.js";
 import { appendMessage } from "../logging/conversation.js";
 import { describeSnapshot } from "../logging/describe.js";
 import {
@@ -67,6 +70,7 @@ import { type CallbackAction, parseCallback } from "./callbacks.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
+  BOARD_UNREADABLE,
   BUDGET_REACHED,
   bandQuestion,
   bandSaved,
@@ -91,6 +95,7 @@ import {
   memorySaved,
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
+  PHOTO_FAILED,
   type Place,
   removedText,
   replacedText,
@@ -129,10 +134,12 @@ export interface FlowDeps {
 }
 
 const VOICE_MAX_BYTES = 20 * 1024 * 1024;
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 export interface Flow {
   text(ctx: Context): Promise<void>;
   voice(ctx: Context): Promise<void>;
+  photo(ctx: Context): Promise<void>;
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
@@ -826,6 +833,75 @@ export function createFlow(deps: FlowDeps): Flow {
     await handleInput(ctx, { body: transcript, source: "voice", transcript });
   }
 
+  /** A blackboard photo: Claude vision reads the moves, the class card asks what was heavy. */
+  async function photo(ctx: Context): Promise<void> {
+    const sizes = ctx.message?.photo;
+    const chatId = ctx.chat?.id;
+    const largest = sizes?.at(-1);
+    if (!largest || chatId === undefined) return;
+    const ai = aiConfig();
+    if (!ai) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    if (await overTokenBudget(usage, now, ai)) {
+      await send(ctx, BUDGET_REACHED);
+      return;
+    }
+    const caption = ctx.message?.caption?.trim() || undefined;
+    let board: Awaited<ReturnType<typeof readBoard>>;
+    try {
+      if (!deps.media) throw new Error("no media source");
+      const image = await deps.media.download(largest.file_id, PHOTO_MAX_BYTES);
+      board = await readBoard({
+        model: ai.model,
+        image,
+        caption,
+        signal: AbortSignal.timeout(BOARD_TIMEOUT_MS),
+      });
+    } catch (error) {
+      console.error(`photo: failed (${error instanceof Error ? error.name : "error"})`);
+      await send(ctx, PHOTO_FAILED);
+      return;
+    }
+    await usage.record(board.usage, now);
+    await appendMessage(db, chatId, "user", `[photo] ${caption ?? "class board"}`);
+    if (board.result.kind === "not_board") {
+      await send(ctx, BOARD_UNREADABLE);
+      await appendMessage(db, chatId, "assistant", BOARD_UNREADABLE);
+      return;
+    }
+    const { moves, heavyGroups } = board.result;
+    await presentPending(ctx, {
+      kind: "confirm",
+      actions: [
+        {
+          kind: "log_class",
+          input: { moves, heavy_groups: heavyGroups },
+          date: thursdayOnOrBefore(trainingDate(now)),
+          photoFileId: largest.file_id,
+          rawText: caption,
+        },
+      ],
+      reasons: ["class_moves"],
+      updateId: ctx.update.update_id,
+      now,
+      inputSource: "photo",
+    });
+    const breakdown = classBreakdown(moves)
+      .map((r) => `${r.group} ${r.moves} moves ${r.sets} sets`)
+      .join(", ");
+    await appendMessage(
+      db,
+      chatId,
+      "assistant",
+      `Asked which class parts were heavy: ${breakdown}`,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Commands
 
@@ -1412,5 +1488,13 @@ export function createFlow(deps: FlowDeps): Flow {
     presentPending,
   });
 
-  return { text, voice, callback, undoCommand, memoryCommand, skipCommand: skip.skipCommand };
+  return {
+    text,
+    voice,
+    photo,
+    callback,
+    undoCommand,
+    memoryCommand,
+    skipCommand: skip.skipCommand,
+  };
 }

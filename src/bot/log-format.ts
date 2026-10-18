@@ -75,6 +75,9 @@ export const VOICE_TOO_LONG = "That voice note is too long. Please keep it under
 export const VOICE_BUDGET = "Voice budget reached. Text still works.";
 export const VOICE_BLANK = "I couldn't hear that. Please try again or type it.";
 export const VOICE_FAILED = "Sorry, I couldn't transcribe that. Please try again or type it.";
+export const BOARD_UNREADABLE =
+  "I couldn't read a class board in that photo. Please type or say the class instead.";
+export const PHOTO_FAILED = "Sorry, I couldn't read that photo. Please try again.";
 export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";

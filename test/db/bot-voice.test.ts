@@ -44,6 +44,7 @@ const FROM = { id: CHAT, is_bot: false, first_name: "F" };
 const CHAT_OBJ = { id: CHAT, type: "private" as const, first_name: "F" };
 
 beforeEach(async () => {
+  vi.restoreAllMocks();
   await resetAndSeed(db, sql);
   await sql`insert into bodyweight_logs (date, kg, source) values ('2026-09-28', 70, 'bot')`;
 });
@@ -212,6 +213,7 @@ describe("voice notes", () => {
   });
 
   it("not configured", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const t = setup([ok], { stt: false });
     await t.voice();
     expect(t.texts()).toEqual([VOICE_NOT_CONFIGURED]);
@@ -232,6 +234,7 @@ describe("voice notes", () => {
   });
 
   it("STT throws: VOICE_FAILED, no usage recorded; success records seconds", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const bad = setup([ok], {
       transcript: async () => {
         throw new Error("boom");

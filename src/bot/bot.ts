@@ -186,6 +186,7 @@ export function createBot(deps: BotDeps): Bot {
       : flow.text(ctx),
   );
   bot.on("message:voice", (ctx) => flow.voice(ctx));
+  bot.on("message:photo", (ctx) => flow.photo(ctx));
   bot.on("message", (ctx) => ctx.reply(TEXT_ONLY, html));
 
   return bot;

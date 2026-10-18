@@ -40,7 +40,7 @@ export const READ_TOOLS: readonly string[] = [
   "get_alternatives",
 ];
 
-function inputSchema(schema: z.ZodType): ToolDef["input_schema"] {
+export function inputSchema(schema: z.ZodType): ToolDef["input_schema"] {
   const json = z.toJSONSchema(schema, { io: "input", target: "draft-7" }) as Record<
     string,
     unknown

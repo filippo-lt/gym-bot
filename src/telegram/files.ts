@@ -15,8 +15,9 @@ export async function downloadTelegramFile(args: {
   fileId: string;
   maxBytes: number;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }): Promise<Uint8Array> {
-  const { api, token, fileId, maxBytes, fetchImpl = fetch } = args;
+  const { api, token, fileId, maxBytes, fetchImpl = fetch, signal } = args;
   const file = await api.getFile(fileId);
   if (file.file_size !== undefined && file.file_size > maxBytes) {
     throw new FileTooLargeError(maxBytes);
@@ -26,7 +27,9 @@ export async function downloadTelegramFile(args: {
   const failed = () => new Error("telegram file download failed");
   let res: Response;
   try {
-    res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+    res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`, {
+      signal,
+    });
   } catch {
     throw failed();
   }

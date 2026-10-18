@@ -8,6 +8,7 @@ import type {
   StagedAction,
   UsageStore,
 } from "../logging/types.js";
+import { overTokenBudget, tokenUsageOf } from "./budget.js";
 import { AI_BUDGET_MS, AI_MAX_TURNS } from "./constants.js";
 import type { IntentModel, MessageParam } from "./model.js";
 import { buildSystem } from "./prompt.js";
@@ -166,8 +167,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
 
   /** Checked before every model call: a long loop can reach the cap mid-way. */
   const overBudget = async () => {
-    const totals = await p.usage.totals(p.now);
-    return totals.day >= p.dailyTokenCap || totals.month >= p.monthlyTokenCap;
+    return overTokenBudget(p.usage, p.now, p);
   };
 
   const controller = new AbortController();
@@ -192,16 +192,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
         max_tokens: MAX_TOKENS,
         signal: controller.signal,
       });
-      await p.usage.record(
-        {
-          model: p.model.name,
-          inputTokens: res.usage.input_tokens,
-          outputTokens: res.usage.output_tokens,
-          cacheReadTokens: res.usage.cache_read_input_tokens ?? 0,
-          cacheWriteTokens: res.usage.cache_creation_input_tokens ?? 0,
-        },
-        p.now,
-      );
+      await p.usage.record(tokenUsageOf(p.model.name, res.usage), p.now);
 
       if (res.stop_reason === "max_tokens") {
         // Its tool calls may be cut off mid-input: execute none of them.
