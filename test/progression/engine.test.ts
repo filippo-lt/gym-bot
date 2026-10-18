@@ -404,4 +404,34 @@ describe("planSession", () => {
     expect(r.items[0]?.suggestion).toMatchObject({ rirMin: 2, rirMax: 3, rirMid: 2.5 });
     expect(r.items[0]?.prescription).toMatchObject({ rirMin: 2, rirMax: 3 });
   });
+
+  it("deload week, closed gate: keeps the 2 x 3 deload item at plain bodyweight", () => {
+    const t = target({
+      exerciseIds: [4],
+      isDeload: true,
+      setsMin: 2,
+      setsMax: 2,
+      repsMin: 3,
+      repsMax: 3,
+      rirMin: 3,
+      rirMax: 4,
+      fallback: {
+        if_bw_max_gte: 4,
+        // biome-ignore lint/suspicious/noThenProperty: FallbackPrescription contract field
+        then: { mode: "bodyweight", sets: 4, reps_min: 4, reps_max: 6 },
+        else: { mode: "assisted", sets: 4, reps_min: 6, reps_max: 6 },
+      },
+    });
+    const r = planSession(input({ isDeload: true, items: [t] }));
+    expect(r.items[0]?.pullup?.maxTestFirst).toBe(false);
+    expect(r.items[0]?.suggestion).toMatchObject({
+      sets: 2,
+      repsMin: 3,
+      repsMax: 3,
+      rirMin: 3,
+      rirMax: 4,
+      addedKg: 0,
+      labels: [],
+    });
+  });
 });
