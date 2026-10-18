@@ -186,6 +186,21 @@ export function pullupPlan(
     };
   }
 
+  // Deload / easy item: keep its own prescription (no fallback volume, no max test until a normal week).
+  // Unknown max -> plain bodyweight; a known max below the threshold -> assisted.
+  const easy = target.isDeload || target.modifiers.some((m) => m === "easy" || m === "deload");
+  if (easy) {
+    const assistedCase = lastBwMax !== null && lastBwMax < threshold;
+    return {
+      mode: assistedCase ? "fallback_assisted" : "fallback_bw",
+      maxTestFirst: false,
+      sets: planSets,
+      repsMin: planMin,
+      repsMax: planMax,
+      labels: assistedCase ? ["fallback_assisted"] : [],
+    };
+  }
+
   const maxTestFirst = lastBwMax === null;
   if (maxTestFirst) labels.push("max_test_first");
   return {

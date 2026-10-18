@@ -207,6 +207,31 @@ describe("pullupPlan", () => {
     expect(p.labels).toContain("max_test_first");
     expect(p.mode).toBe("fallback_assisted");
   });
+  it("deload item, closed gate: own 2 x 3 prescription, plain bodyweight, no max test", () => {
+    const t = target({ isDeload: true, setsMin: 2, setsMax: 2, repsMin: 3, repsMax: 3 });
+    for (const max of [null, 5]) {
+      const p = pullupPlan(closed(max), t, max);
+      expect(p).toMatchObject({
+        mode: "fallback_bw",
+        maxTestFirst: false,
+        sets: 2,
+        repsMin: 3,
+        repsMax: 3,
+        labels: [],
+      });
+    }
+  });
+  it("deload item, closed gate, max below the threshold: own prescription, assisted", () => {
+    const t = target({ isDeload: true, setsMin: 2, setsMax: 2, repsMin: 3, repsMax: 3 });
+    const p = pullupPlan(closed(3), t, 3);
+    expect(p).toMatchObject({
+      mode: "fallback_assisted",
+      maxTestFirst: false,
+      sets: 2,
+      repsMin: 3,
+    });
+    expect(p.labels).toEqual(["fallback_assisted"]);
+  });
   it("open gate never asks for a max test even with no max", () => {
     expect(
       pullupPlan({ open: true, since: "x", lastBwMax: null }, target(), null).maxTestFirst,
