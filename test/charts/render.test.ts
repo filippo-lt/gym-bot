@@ -1,6 +1,7 @@
+import { existsSync } from "node:fs";
 import type { TopLevelSpec } from "vega-lite";
 import { describe, expect, it } from "vitest";
-import { FONT_FAMILY, renderPng } from "../../src/charts/render";
+import { FONT_FAMILY, FONT_PATH, renderPng } from "../../src/charts/render";
 
 const spec: TopLevelSpec = {
   $schema: "https://vega.github.io/schema/vega-lite/v6.json",
@@ -33,5 +34,11 @@ describe("renderPng", () => {
   it("honours a custom width", async () => {
     const png = await renderPng(spec, { width: 600 });
     expect(png.readUInt32BE(16)).toBe(600);
+  });
+});
+
+describe("bundled font", () => {
+  it("exists on disk", () => {
+    expect(existsSync(FONT_PATH)).toBe(true);
   });
 });
