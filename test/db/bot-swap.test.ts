@@ -212,6 +212,12 @@ describe("saving, echo and undo", () => {
     await t.say("/session tue");
     expect(t.texts().at(-1)).toContain("hack_squat");
     expect(t.texts().at(-1)).not.toContain("cable_row");
+    // Other Tuesdays keep it too; next Monday (from the new version) has the replacement.
+    await t.say("/session 6/10");
+    expect(t.texts().at(-1)).toContain("hack_squat");
+    expect(t.texts().at(-1)).not.toContain("cable_row");
+    await t.say("/session 5/10");
+    expect(t.texts().at(-1)).toContain("cable_row");
   });
 
   it("/plan lists the change", async () => {
@@ -235,7 +241,8 @@ describe("saving, echo and undo", () => {
     expect(String(last?.payload.text)).toBe("Undone. The plan is back as it was.");
     expect(t.buttons(last)).toEqual([]);
     await t.tap(`up:p:${id}:0`, 1002);
-    expect(t.texts().at(-1)).toBe("Already undone.");
+    expect(t.answers().at(-1)?.payload.text).toBe("Already undone.");
+    expect(t.sent().filter((c) => String(c.payload.text) === "Already undone.")).toHaveLength(0);
   });
 
   it("Undo after a log of the replacement is too late", async () => {
@@ -255,7 +262,7 @@ describe("saving, echo and undo", () => {
     await t.say("2x8 cable row 30");
     expect(await count("log_groups")).toBe(1);
     await t.tap(`up:p:${id}:0`, 1002);
-    expect(t.texts().at(-1)).toMatch(/^Too late to undo/);
+    expect(t.answers().at(-1)?.payload.text).toMatch(/^Too late to undo/);
     expect(await count("plan_versions")).toBe(2);
   });
 
@@ -310,5 +317,64 @@ describe("/swap and staging refusals", () => {
     await t.say("swap unobtainium for cable row, and bench 2x6 55");
     expect(await count("log_groups")).toBe(0);
     expect(t.texts()[0]).toContain("part of your message couldn't be saved");
+  });
+});
+
+describe("swap with other actions and refusals", () => {
+  const benchLog = {
+    exercise: { slug: "bench_press", said: "bench" },
+    sets: { count: 2, reps: 6, load_kg: 55 },
+    guessed_fields: [],
+    needs_confirmation: false,
+  };
+
+  it("a swap staged with a clear log asks first, then one card for both", async () => {
+    const t = setup([tool("swap_exercise", swapInput()), tool("log_sets", benchLog), ok]);
+    await t.say("swap hack squat for cable row, and bench 2x6 55");
+    expect(t.texts()[0]).toContain("For which sessions?");
+    expect(await count("log_groups")).toBe(0);
+    const id = await pendingId();
+    await t.tap(`sw:${id}:t`);
+    const card = String(t.edits().at(-1)?.payload.text);
+    expect(card).toContain("Save this?");
+    expect(card).toContain("Swap for");
+    expect(card).toContain("bench");
+    await t.tap(`pa:${id}:ok`);
+    expect(await count("log_groups")).toBe(1);
+    expect(await count("session_overrides")).toBe(1);
+  });
+
+  it("an unclear exercise plus a swap: after the choice the swap question still comes first", async () => {
+    const t = setup([
+      tool("log_sets", { ...benchLog, exercise: { said: "fp" } }),
+      tool("swap_exercise", swapInput()),
+      ok,
+    ]);
+    await t.say("fp 2x6 55, and swap hack squat for cable row");
+    const id = await pendingId();
+    const pick = t
+      .buttons(t.lastSent())
+      .find((b) => b.data.startsWith(`ex:${id}:`) && /face pull/i.test(b.text));
+    expect(pick).toBeDefined();
+    await t.tap(pick?.data ?? "");
+    const after = t.edits().at(-1);
+    expect(String(after?.payload.text)).toContain("For which sessions?");
+    expect(t.buttons(after).map((b) => b.data)).toEqual([`sw:${id}:t`, `sw:${id}:r`]);
+    await t.tap(`sw:${id}:t`);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain("Save this?");
+  });
+
+  it("a lone refused swap shows the refusal text itself", async () => {
+    const t = setup([
+      tool(
+        "swap_exercise",
+        swapInput({ replacement: { said: "cable row", slug: "hspu_negative" } }),
+      ),
+      turn(text("Done, swapped!")),
+    ]);
+    await t.say("swap hack squat for an hspu step");
+    expect(t.texts()[0]).toBe(
+      "That is an HSPU step. The HSPU step is tracked from your logs, so I changed nothing.",
+    );
   });
 });

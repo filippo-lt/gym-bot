@@ -674,6 +674,8 @@ export type IntentResult =
       toolErrors: number;
       /** A model turn hit max_tokens: its tool calls were not executed. */
       truncated: boolean;
+      /** Code-built texts of swaps refused at staging and not retried. */
+      swapRefusals: string[];
       /** Read-tool results as the model saw them, in call order. */
       reads: ReadRecord[];
     }

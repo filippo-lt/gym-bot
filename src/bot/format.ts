@@ -371,7 +371,7 @@ export function formatToday(
   });
   const dropped = mains
     .filter((i) => hidden.has(i.plannedItemId))
-    .map((i) => itemName(i))
+    .map((i) => baseItemName(i))
     .filter((name, idx, all) => all.indexOf(name) === idx);
   if (dropped.length) lines.push("", `Dropped today: ${esc(dropped.join(", "))}`);
 

@@ -711,6 +711,13 @@ export function createFlow(deps: FlowDeps): Flow {
 
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
+    if (staged.length === 0 && result.swapRefusals.length > 0) {
+      // A refused swap is code-built text: show it as it is, not the model's wording.
+      const reply = result.swapRefusals.join("\n");
+      await send(ctx, { text: heard + esc(reply), keyboard: [] });
+      await appendMessage(db, chatId, "assistant", reply);
+      return;
+    }
     if (staged.length === 0) {
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
@@ -1311,7 +1318,6 @@ export function createFlow(deps: FlowDeps): Flow {
     const outcome = await db.transaction((tx) => undoPlanChange(tx, key, index));
     if (!outcome.ok) {
       await answer(outcome.reply);
-      await send(ctx, outcome.reply);
       await remember(chatId, `Plan change not undone: ${outcome.reply}`);
       return;
     }
@@ -1560,16 +1566,7 @@ export function createFlow(deps: FlowDeps): Flow {
         await remember(chatOf(ctx), "The request had expired; nothing saved.");
         return;
       }
-      await edit(
-        ctx,
-        confirmCard({
-          id: pendingId,
-          kind,
-          actions,
-          reasons: next.reasons,
-          heard: pending.transcript,
-        }),
-      );
+      await edit(ctx, renderPending(row, null));
       await remember(chatId, `${chose} Asked to confirm: ${plainSummary(actions)}`);
       const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);

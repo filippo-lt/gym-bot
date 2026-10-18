@@ -77,6 +77,18 @@ export function stagedEvent(a: StagedAction, turn: number): IntentEvent {
  * and tried again): a log_sets error is fixed by a later log_sets/clarify with the same words
  * or slug; an edit/undo error only by a later edit or delete (a log never fixes it).
  */
+/** Code-built refusal texts of swaps that no later swap fixed (they are shown to the user as they are). */
+export function unresolvedSwapRefusals(
+  errors: { turn: number; reply: string }[],
+  events: IntentEvent[],
+): string[] {
+  return errors
+    .filter(
+      (e) => !events.some((x) => x.type === "staged" && x.kind === "swap" && x.turn > e.turn),
+    )
+    .map((e) => e.reply);
+}
+
 export function countUnresolvedErrors(events: IntentEvent[]): number {
   let n = 0;
   for (const e of events) {
@@ -179,6 +191,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const events: IntentEvent[] = [];
   const metas: StagedMeta[] = [];
   const reads: ReadRecord[] = [];
+  const swapErrors: { turn: number; reply: string }[] = [];
 
   try {
     let turns = 0;
@@ -203,6 +216,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           replyText: null,
           turns,
           toolErrors: countUnresolvedErrors(events),
+          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
           truncated: true,
           reads,
         };
@@ -221,6 +235,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           replyText,
           turns,
           toolErrors: countUnresolvedErrors(events),
+          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
           truncated: false,
           reads,
         };
@@ -239,6 +254,9 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           addStaged(staged, metas, events, exec.staged, turns, tu.input);
         } else if (exec.isError && !READ_TOOLS.includes(tu.name)) {
           events.push({ type: "error", turn: turns, tool: tu.name, ...exerciseOf(tu.input) });
+          if (tu.name === "swap_exercise" && !exec.toolResultContent.startsWith("Invalid input")) {
+            swapErrors.push({ turn: turns, reply: exec.toolResultContent });
+          }
         }
         if (exec.read && !exec.isError) {
           reads.push({
@@ -265,6 +283,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
       replyText: null,
       turns,
       toolErrors: countUnresolvedErrors(events),
+          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
       truncated: false,
       reads,
     };
