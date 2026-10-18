@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (end of M6 build)._
+_Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
 
 ## Milestones (SPEC §8)
 
@@ -44,11 +44,16 @@ _Last updated: 18 Oct 2026 (end of M6 build)._
   - class rows keep moves and photo; undo restores the whole previous row
   - scheduled jobs (`src/jobs/`, run from the cron tick): the Thursday 21:00–23:00 Rome class question, skipped when the class is logged or outside the plan
   - migration 0006 (`job_runs`, `pending_actions.input_source`/`transcript`) applied to production; STT env vars set in Vercel; health and tick OK after deploy
+  - decisions: voice notes are mixed Italian/English, so no language is forced; every voice write needs a tap, even a single clear log; a ✏️ correction keeps the voice origin; on the photo card "Not heavy" saves in one tap; a photo without a caption never starts with groups ticked; set counts show only what is written ("6 sets", "6+ sets", or none); a heavy-only report keeps the stored moves and photo, a report with moves replaces them
+  - design and plan: `docs/superpowers/specs/2026-10-18-m6-voice-photo-design.md`, `docs/superpowers/plans/2026-10-18-m6-voice-photo.md`
 
 ## Open items
 
 **For the user (manual):**
-- **M6 live test:** send a voice note and a class board photo; check the first Thursday 21:00 class question on 22 Oct.
+- **M6 live test (from the phone):**
+  - a voice note such as "15 face pulls at 20 kg" → card starting "🎤 heard:" with ✅ ✏️ ❌; ✅ saves with `source = voice`
+  - a class board photo → per-group breakdown, Pull / Push / Legs unticked, Save / Not heavy
+  - Thu 22 Oct 21:00 → the class question arrives (skipped if the class is already logged)
 - Revoke the Telegram bot token in BotFather, update `.env.local` and Vercel, redeploy, then run `pnpm telegram:setup https://gym-bot-xi.vercel.app`.
 - Remove the unused `SUPABASE_DB_PASSWORD` and the Supabase integration's unused service-role key from Vercel.
 - Send band colours with their kg of assistance (or answer the bot the first time it asks).
@@ -66,11 +71,13 @@ _Last updated: 18 Oct 2026 (end of M6 build)._
 - If a re-import restores a bot-logged slot that the export no longer has, the row stays `source = bot`.
 - A crash after STT or vision succeeds but before the card is stored re-bills STT/vision on the inbox retry (no duplicate write).
 - After a re-import, undo of an earlier bot log restores the status recorded at log time, even if the fresh export changed it.
+- If marking a scheduled job done fails after its message was sent, the job can send again 5 minutes later while its window is open.
+- A photo over 3.5 MB gets the generic "couldn't read that photo" reply instead of a "too large" message.
 
 ## How we work
 
-- Plan each milestone first (plan mode), then build with Sonnet subagents. Independent QA by a Haiku subagent at high effort, repeated until clean (see CLAUDE.md, Workflow).
-- Commit to `dev`, open a PR `dev → main`; the user merges. Vercel deploys `main`.
+- Plan each milestone first: agree the design with the user, write it to `docs/superpowers/specs/`, then a task plan in `docs/superpowers/plans/`. Build task by task with Sonnet subagents; after each task an independent Haiku reviewer (high effort), fixes until clean, then one whole-branch review (see CLAUDE.md, Workflow).
+- Commit to `dev`, open a PR `dev → main`; the user merges, or tells Claude to. Vercel deploys `main`. Apply any new migration before merging.
 - Production writes (`pnpm db:migrate`, `pnpm history:import`, manual SQL) need the user's OK every time. Always dry-run the import first.
 - After each deploy, check health with the cron secret: `curl -H "Authorization: Bearer $CRON_SECRET" https://gym-bot-xi.vercel.app/api/health`.
 
@@ -86,3 +93,4 @@ Use Claude in Chrome on `https://web.telegram.org/k/#@GyyyyyyyyyymBot`.
 - **Checking the DB:** check each flow read-only (inbox, pending_actions, log_groups, session_items, conversation_messages).
 - **Cleanup:** afterwards, undo every test log, then check 0 bot log groups, 0 open pending actions and 77 import session_items.
 - **Weekends:** on a weekend every log goes through make-up or unplanned paths. Test weekday paths on a weekday.
+- **Voice and photos:** Telegram Web can't record voice notes; test voice from the phone. Photos can be sent from the phone or uploaded in Telegram Web.
