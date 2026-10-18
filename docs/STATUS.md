@@ -18,7 +18,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | deployed 18 Oct, live test pending | #12 |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
 | 8 | Morning message + charts | merged to dev, not deployed | #13 |
-| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | PR open, not merged | M9 PR |
+| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | PR open, not merged | #14 |
 
 ## What happened, in short
 
@@ -53,7 +53,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
   - no migration, no new env vars
   - decisions: the user left the design calls to Claude; an independent agent then answered the open questions and its answers were adopted (e1RM only for load, most reps only, timed holds out of volume). `/done`, `/checkin`, the Friday 20:00 check-in and the Sunday summary are NOT in M8 (proposed as their own milestone)
   - design and plan: `docs/superpowers/specs/2026-10-18-m8-morning-charts-design.md`, `docs/superpowers/plans/2026-10-18-m8-morning-charts.md`
-- **M9 (PR open, 18 Oct):**
+- **M9 (#14, PR open, 18 Oct):**
   - backup: `/export` and a Sunday 18:00 job send a summary, the JSON backup (restore source; gzipped over 10 MB, refused over 45 MB) and a CSV zip (one file per table). `pnpm backup` writes the same files locally. The table list comes from the Postgres catalog, so M7's new tables are covered with no code change; only `inbox` and `chat_lease` are left out
   - restore: `pnpm backup:restore <file> [--dry-run] [--allow-remote]` into an empty, migrated database named by `RESTORE_DATABASE_URL` (no fallback). Refuses a non-empty target, a migration or table mismatch, a damaged file. Original ids, `write_ledger` and sequences are kept, so old taps and retries still write nothing twice. Runbook in `docs/SETUP.md`
   - failure messages: each step says what failed (Claude timeout / overloaded / rate limit / key rejected, Groq or OpenAI transcription, Telegram download, photo too large, database). Inbox retries tell the user on the first failure ("I'll retry automatically, so don't send it again") and give the reason after the third
