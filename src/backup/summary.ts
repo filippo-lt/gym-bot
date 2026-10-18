@@ -25,16 +25,14 @@ export function backupSummary(meta: BackupMeta, now: Date, weekly: WeeklyUsage |
     .join(", ");
   const lines = [`Backup of ${when} (Rome).`, `Rows: ${rows}`];
   if (weekly) {
-    const tokens = `${nf.format(weekly.tokens)}${
-      weekly.caps.tokens === null ? "" : ` of ${nf.format(weekly.caps.tokens)}`
-    } tokens`;
     const minutes = Math.round(weekly.sttSeconds / 60);
-    const voice = `${nf.format(minutes)}${
-      weekly.caps.sttSeconds === null
-        ? ""
-        : ` of ${nf.format(Math.round(weekly.caps.sttSeconds / 60))}`
-    } min voice`;
-    lines.push(`This week: ${tokens} (day cap) · ${voice} (day cap).`);
+    lines.push(`This week: ${nf.format(weekly.tokens)} tokens, ${nf.format(minutes)} min voice.`);
+    const caps: string[] = [];
+    if (weekly.caps.tokens !== null) caps.push(`${nf.format(weekly.caps.tokens)} tokens`);
+    if (weekly.caps.sttSeconds !== null) {
+      caps.push(`${nf.format(Math.round(weekly.caps.sttSeconds / 60))} min voice`);
+    }
+    if (caps.length) lines.push(`Daily caps: ${caps.join(", ")}.`);
   }
   lines.push("Keep these files: they are your only restore point.");
   return lines.join("\n");

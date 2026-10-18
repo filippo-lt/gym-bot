@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { sendBackup } from "../backup/send.js";
+import { BackupTooLargeError, sendBackup } from "../backup/send.js";
 import { APP_TIMEZONE } from "../config/constants.js";
 import { aiEnv, sttEnv } from "../config/env.js";
 import { classify } from "../failures/classify.js";
@@ -49,6 +49,15 @@ export const weeklyBackupJob: Job = {
       });
       return "sent";
     } catch (error) {
+      if (error instanceof BackupTooLargeError) {
+        // Retrying cannot help: say so once and finish the job.
+        const mb = (error.bytes / (1024 * 1024)).toFixed(1);
+        await ctx.send({
+          text: `Weekly backup too large for Telegram (${mb} MB). Run pnpm backup locally (no size limit).`,
+          keyboard: [],
+        });
+        return "sent";
+      }
       if (isLastChance(ctx.now)) {
         const reason = reasonPhrase(classify(error, "other"));
         try {

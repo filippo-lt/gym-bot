@@ -2,7 +2,7 @@ import { gzipSync } from "node:zlib";
 import { sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
-import type { Db } from "../db/client.js";
+import type { Db } from "../db/seed-plan.js";
 import { type CatalogTable, EXCLUDED_TABLES, readCatalog, readMigrations } from "./catalog.js";
 import { toCsv } from "./csv.js";
 import { zip } from "./zip.js";

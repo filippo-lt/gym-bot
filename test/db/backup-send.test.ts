@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackupTooLargeError, sendBackup } from "../../src/backup/send.js";
 import type { Message } from "../../src/bot/log-format.js";
 import { type JobContext, runDueJobs } from "../../src/jobs/runner.js";
@@ -14,8 +14,10 @@ beforeEach(async () => {
   await sql`truncate table job_runs restart identity`;
   texts.length = 0;
   files.length = 0;
+  log.length = 0;
 });
 
+const log: string[] = [];
 const texts: Message[] = [];
 const files: { name: string; data: Uint8Array }[] = [];
 const ctxAt = (iso: string, failFile = false): JobContext => ({
@@ -23,10 +25,12 @@ const ctxAt = (iso: string, failFile = false): JobContext => ({
   now: new Date(iso),
   send: async (m) => {
     texts.push(m);
+    log.push("text");
   },
   sendFile: async (f) => {
     if (failFile) throw new Error("boom");
     files.push({ name: f.name, data: f.data });
+    log.push("file");
   },
 });
 
@@ -37,7 +41,7 @@ describe("weekly backup window", () => {
     expect(at("2026-10-25T17:00:00Z")).toEqual({ date: "2026-10-25" });
     expect(at("2026-10-25T21:59:00Z")).toEqual({ date: "2026-10-25" });
     expect(at("2026-10-25T22:00:00Z")).toBeNull();
-    expect(at("2026-10-24T17:00:00Z")).toBeNull(); // Saturday
+    expect(at("2026-10-24T16:00:00Z")).toBeNull(); // Saturday
   });
   it("isLastChance from 22:30 Rome", () => {
     expect(isLastChance(new Date("2026-10-25T21:29:00Z"))).toBe(false);
@@ -49,7 +53,7 @@ describe("weekly backup job", () => {
   it("sends one text, then the JSON and the zip", async () => {
     const r = await runDueJobs(ctxAt("2026-10-25T18:00:00Z"), [weeklyBackupJob]);
     expect(r).toEqual([{ job: "weekly_backup", date: "2026-10-25", outcome: "sent" }]);
-    expect(texts).toHaveLength(1);
+    expect(log).toEqual(["text", "file", "file"]);
     expect(texts[0]?.text).toContain("This week:");
     expect(files.map((f) => f.name)).toEqual([
       "gymbot-backup-2026-10-25.json",
@@ -72,6 +76,21 @@ describe("weekly backup job", () => {
     expect(r[0]?.outcome).toBe("failed");
     const last = texts[texts.length - 1]?.text ?? "";
     expect(last).toMatch(/^Weekly backup failed \(.+\)\. Use \/export or pnpm backup\.$/);
+  });
+});
+
+describe("weekly backup too large", () => {
+  it("is announced once, and the job finishes", async () => {
+    const mod = await import("../../src/backup/send.js");
+    const spy = vi
+      .spyOn(mod, "sendBackup")
+      .mockRejectedValue(new mod.BackupTooLargeError(50 * 1024 * 1024));
+    const r = await runDueJobs(ctxAt("2026-10-25T21:45:00Z"), [weeklyBackupJob]);
+    spy.mockRestore();
+    expect(r[0]?.outcome).toBe("sent");
+    expect(texts.map((t) => t.text)).toEqual([
+      "Weekly backup too large for Telegram (50.0 MB). Run pnpm backup locally (no size limit).",
+    ]);
   });
 });
 

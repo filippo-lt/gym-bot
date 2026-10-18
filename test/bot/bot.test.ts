@@ -95,6 +95,13 @@ describe("createBot", () => {
     expect(String(calls[0]?.payload.text)).toContain(expected);
   });
 
+  it("/export replies first with the preparing message", async () => {
+    const { calls, send } = setup();
+    await send("/export");
+    expect(calls[0]?.method).toBe("sendMessage");
+    expect(calls[0]?.payload.text).toBe("Preparing your backup…");
+  });
+
   it("uses the training date from now()", async () => {
     const { dates, send } = setup();
     await send("/today");

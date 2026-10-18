@@ -1,7 +1,6 @@
 import type { Context } from "grammy";
 import { InputFile } from "grammy";
 import { BackupTooLargeError, sendBackup } from "../backup/send.js";
-import type { Db as ClientDb } from "../db/client.js";
 import type { Db } from "../db/seed-plan.js";
 import { classify, describeFailure } from "../failures/classify.js";
 import { reasonPhrase } from "../failures/messages.js";
@@ -20,7 +19,7 @@ export function createExportCommand(deps: ExportDeps): (ctx: Context) => Promise
     await ctx.reply("Preparing your backup…");
     try {
       await backup({
-        db: deps.db as ClientDb, // the bot types its db without the driver handle; same object
+        db: deps.db,
         now: deps.now(),
         weekly: null,
         send: async (m) => {

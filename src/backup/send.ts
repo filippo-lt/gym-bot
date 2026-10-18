@@ -1,5 +1,5 @@
 import type { Message } from "../bot/log-format.js";
-import type { Db } from "../db/client.js";
+import type { Db } from "../db/seed-plan.js";
 import type { SendFile } from "../jobs/runner.js";
 import { backupFiles, buildBackup, TELEGRAM_MAX_BYTES } from "./export.js";
 import { backupSummary, type WeeklyUsage } from "./summary.js";
