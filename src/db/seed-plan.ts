@@ -215,6 +215,7 @@ export async function seedPlan(
               version: 1,
               effectiveFrom: plan.start_date,
               reason: "initial import",
+              weeks: plan.weeks_count,
               sourceHash: plan.source_hash,
               resolvedHash: resolved.resolved_hash,
             })

@@ -14,6 +14,7 @@ import {
   timestamp,
   unique,
 } from "drizzle-orm/pg-core";
+import type { PlanChange } from "../../plan/types.js";
 import type { FallbackPrescription, HiitSpec } from "../../plan-import/types.js";
 
 export const EXERCISE_TYPES = [
@@ -57,6 +58,8 @@ export const planVersions = pgTable(
     version: integer("version").notNull(),
     effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
     reason: text("reason").notNull(),
+    weeks: integer("weeks").notNull(),
+    change: jsonb("change").$type<PlanChange | null>(),
     sourceHash: text("source_hash").notNull(),
     resolvedHash: text("resolved_hash").notNull(),
     createdAt: createdAt(),
@@ -177,5 +180,30 @@ export const plannedItemOptions = pgTable(
   (t) => [
     primaryKey({ columns: [t.plannedItemId, t.optionIndex] }),
     index("planned_item_options_exercise_id_idx").on(t.exerciseId),
+  ],
+).enableRLS();
+
+export const sessionOverrides = pgTable(
+  "session_overrides",
+  {
+    id: serial("id").primaryKey(),
+    sessionDate: date("session_date", { mode: "string" }).notNull(),
+    plannedItemId: integer("planned_item_id")
+      .notNull()
+      .references(() => plannedItems.id),
+    replacedExerciseId: integer("replaced_exercise_id")
+      .notNull()
+      .references(() => exercises.id),
+    replacementExerciseId: integer("replacement_exercise_id")
+      .notNull()
+      .references(() => exercises.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("session_overrides_slot_unique").on(
+      t.sessionDate,
+      t.plannedItemId,
+      t.replacedExerciseId,
+    ),
   ],
 ).enableRLS();
