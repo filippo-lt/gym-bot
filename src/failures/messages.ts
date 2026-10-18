@@ -83,9 +83,11 @@ export function failureText(f: Failure, input: Input, provider = "the provider")
     case "download_failed":
       return "I couldn't download that file from Telegram. Please send it again.";
     case "file_too_large":
-      return input === "voice"
-        ? "That voice note is too large to download."
-        : "That photo is too large (max 3.5 MB). Send it compressed (not as a file) or crop it.";
+      if (input === "voice") return "That voice note is too large to download.";
+      if (input === "photo") {
+        return "That photo is too large (max 3.5 MB). Send it compressed (not as a file) or crop it.";
+      }
+      return "That file is too large.";
     default:
       return `Sorry, something went wrong (${reasonPhrase(f)}). Please try again.`;
   }

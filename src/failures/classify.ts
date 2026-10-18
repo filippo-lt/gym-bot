@@ -70,7 +70,16 @@ function sttKind(e: unknown): FailureKind | null {
 }
 
 function aiKind(e: unknown): FailureKind | null {
-  if (e instanceof AiTimeoutError || e instanceof Anthropic.APIConnectionTimeoutError) {
+  // Caller-signal aborts (e.g. AbortSignal.timeout on the photo path) surface as
+  // APIUserAbortError or a TimeoutError/AbortError DOMException.
+  const name = prop(e, "name");
+  if (
+    e instanceof AiTimeoutError ||
+    e instanceof Anthropic.APIConnectionTimeoutError ||
+    e instanceof Anthropic.APIUserAbortError ||
+    name === "TimeoutError" ||
+    name === "AbortError"
+  ) {
     return "ai_timeout";
   }
   if (e instanceof Anthropic.APIConnectionError) return "ai_network";
@@ -110,6 +119,7 @@ export function classify(error: unknown, step: FailureStep = "other"): Failure {
   if (prop(current, "name") === "BotError" && prop(current, "error") !== undefined) {
     current = prop(current, "error");
   }
+  let last: unknown = current;
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
     const kind = kindOf(current, step);
     if (kind) return { kind, detail: detailOf(current) };
@@ -117,8 +127,10 @@ export function classify(error: unknown, step: FailureStep = "other"): Failure {
     const follow = prop(current, "name") === "DrizzleQueryError" || !hasOwnStatusOrCode(current);
     if (cause === undefined || cause === null || !follow) break;
     current = cause;
+    last = cause;
   }
-  const detail = detailOf(error);
+  // Detail comes from the deepest unwrapped error, not the BotError/Drizzle wrapper.
+  const detail = detailOf(last);
   if (step === "download") return { kind: "download_failed", detail };
   if (step === "stt") return { kind: "stt_failed", detail };
   return { kind: "unknown", detail };

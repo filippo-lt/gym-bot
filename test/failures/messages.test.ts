@@ -110,6 +110,13 @@ describe("failure texts", () => {
       "Sorry, I couldn't process your last message after 3 tries (it took too long). Please send it again.",
     );
   });
+  it("file_too_large for text input is neutral", () => {
+    expect(failureText(f("file_too_large"), "text")).toBe("That file is too large.");
+  });
+  it("providerLabel falls back to the raw provider", () => {
+    expect(providerLabel("acme:model-1")).toBe("acme");
+    expect(providerLabel("plain")).toBe("plain");
+  });
   it("providerLabel", () => {
     expect(providerLabel("groq:whisper-large-v3-turbo")).toBe("Groq");
     expect(providerLabel("openai:whisper-1")).toBe("OpenAI");

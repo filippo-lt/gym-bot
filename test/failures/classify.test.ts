@@ -80,4 +80,20 @@ describe("classify", () => {
     const f = classify(named("X".repeat(300)));
     expect(f.detail.length).toBeLessThanOrEqual(120);
   });
+  it("detail comes from the unwrapped error", () => {
+    expect(classify({ name: "BotError", error: new TypeError("x") }).detail).toBe("TypeError");
+    expect(classify({ name: "BotError", error: new TypeError("x") }, "download")).toEqual({
+      kind: "download_failed",
+      detail: "TypeError",
+    });
+    const e = named("DrizzleQueryError", { cause: named("WeirdError") });
+    expect(classify(e)).toEqual({ kind: "unknown", detail: "WeirdError" });
+  });
+  it("caller aborts are ai_timeout on ai/vision/other", () => {
+    expect(classify(new Anthropic.APIUserAbortError(), "vision").kind).toBe("ai_timeout");
+    const dom = new DOMException("signal timed out", "TimeoutError");
+    expect(classify(dom, "vision").kind).toBe("ai_timeout");
+    expect(classify(new DOMException("x", "AbortError"), "ai").kind).toBe("ai_timeout");
+    expect(classify(dom).kind).toBe("ai_timeout");
+  });
 });
