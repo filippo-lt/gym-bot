@@ -17,6 +17,12 @@ export interface SwapSpec {
   fromDate: string;
   weekdays: Weekday[] | "all";
   clearHspuStep: boolean;
+  /** Recomputes RIR for a changed item from its new options (called only for changed items). */
+  rirFor: (
+    item: ItemSpec,
+    newOptionIds: number[],
+    weekIsDeload: boolean,
+  ) => { rirMin: number | null; rirMax: number | null };
 }
 
 /** Replace one option (not the whole OR item) on items dated on/after fromDate. */
@@ -34,10 +40,15 @@ export function applySwap(
     );
     const optionExerciseIds = mapped.filter((id, i) => mapped.indexOf(id) === i);
     changedItems++;
+    const week = content.weeks.find((w) => w.week === item.week);
+    const { rirMin, rirMax } = s.rirFor(item, optionExerciseIds, week?.isDeload ?? false);
     return {
       ...item,
       optionExerciseIds,
+      rirMin,
+      rirMax,
       hspuStepId: s.clearHspuStep ? null : item.hspuStepId,
+      fallbackPrescription: s.clearHspuStep ? null : item.fallbackPrescription,
     };
   });
   return { content: { weeks: content.weeks, items }, changedItems };

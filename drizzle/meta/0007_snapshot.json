@@ -1,5 +1,5 @@
 {
-  "id": "1b16c6bd-0436-4c18-83ca-5e89b58c5702",
+  "id": "a8a01719-2814-4e38-8b60-e520272df507",
   "prevId": "e2442287-21c7-499b-ac37-95b4f86d8ee7",
   "version": "7",
   "dialect": "postgresql",
@@ -1279,12 +1279,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "weeks": {
-          "name": "weeks",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "change": {
           "name": "change",
           "type": "jsonb",
@@ -1850,7 +1844,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "session_overrides_planned_item_id_idx": {
+          "name": "session_overrides_planned_item_id_idx",
+          "columns": [
+            {
+              "expression": "planned_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "session_overrides_replacement_exercise_id_idx": {
+          "name": "session_overrides_replacement_exercise_id_idx",
+          "columns": [
+            {
+              "expression": "replacement_exercise_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "session_overrides_planned_item_id_planned_items_id_fk": {
           "name": "session_overrides_planned_item_id_planned_items_id_fk",

@@ -460,9 +460,8 @@ describe("real plan pipeline", () => {
       exercises: plan.exercises.length,
     });
 
-    const versionRows = await sql`select weeks, change from plan_versions`;
+    const versionRows = await sql`select change from plan_versions`;
     expect(versionRows).toHaveLength(1);
-    expect(versionRows[0]?.weeks).toBe(12);
     expect(versionRows[0]?.change).toBeNull();
 
     const orNames = new Set<string>(OR_PLAN_NAMES);

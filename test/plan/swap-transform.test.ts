@@ -16,6 +16,7 @@ describe("applySwap", () => {
     toExerciseId: 3,
     weekdays: "all" as const,
     clearHspuStep: false,
+    rirFor: () => ({ rirMin: 7, rirMax: 8 }),
   };
 
   it("itemDate = week start + weekday offset", () => {
@@ -69,5 +70,57 @@ describe("applySwap", () => {
     expect(
       content.items.find((i) => i.weekday === "tue" && i.itemOrder === 1)?.hspuStepId,
     ).toBeNull();
+  });
+
+  it("recomputes RIR via rirFor only on changed items", () => {
+    const calls: Array<{ ids: number[]; deload: boolean }> = [];
+    const c = base();
+    const { content } = applySwap(c, {
+      ...swap,
+      fromDate: "2026-10-06",
+      rirFor: (_item, ids, deload) => {
+        calls.push({ ids, deload });
+        return { rirMin: 7, rirMax: 8 };
+      },
+    });
+    let changed = 0;
+    for (const [n, i] of content.items.entries()) {
+      const o = c.items[n] as ItemSpec;
+      if (i.optionExerciseIds.includes(3)) {
+        changed++;
+        expect([i.rirMin, i.rirMax]).toEqual([7, 8]);
+      } else expect(i).toEqual(o);
+    }
+    expect(calls).toHaveLength(changed);
+    expect(calls.every((x) => x.ids.includes(3) && !x.ids.includes(2))).toBe(true);
+  });
+
+  it("passes the week's isDeload flag to rirFor", () => {
+    const c = base();
+    c.weeks = c.weeks.map((w) => (w.week === 2 ? { ...w, isDeload: true } : w));
+    const seen = new Set<string>();
+    applySwap(c, {
+      ...swap,
+      fromDate: "2026-09-28",
+      rirFor: (item, _ids, deload) => {
+        seen.add(`${item.week}:${deload}`);
+        return { rirMin: null, rirMax: null };
+      },
+    });
+    expect(seen.has("2:true")).toBe(true);
+    expect(seen.has("1:false")).toBe(true);
+    expect(seen.has("2:false")).toBe(false);
+  });
+
+  it("clearHspuStep nulls fallbackPrescription on changed items only", () => {
+    const fb = { kind: "x" } as unknown as ItemSpec["fallbackPrescription"];
+    const c = base();
+    c.items = c.items.map((i) => ({ ...i, fallbackPrescription: fb }));
+    const run = (clearHspuStep: boolean) =>
+      applySwap(c, { ...swap, clearHspuStep, weekdays: ["tue"], fromDate: "2026-09-28" }).content;
+    for (const i of run(true).items) {
+      expect(i.fallbackPrescription).toEqual(i.optionExerciseIds.includes(3) ? null : fb);
+    }
+    for (const i of run(false).items) expect(i.fallbackPrescription).toEqual(fb);
   });
 });

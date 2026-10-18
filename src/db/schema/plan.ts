@@ -58,7 +58,6 @@ export const planVersions = pgTable(
     version: integer("version").notNull(),
     effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
     reason: text("reason").notNull(),
-    weeks: integer("weeks").notNull(),
     change: jsonb("change").$type<PlanChange | null>(),
     sourceHash: text("source_hash").notNull(),
     resolvedHash: text("resolved_hash").notNull(),
@@ -205,5 +204,7 @@ export const sessionOverrides = pgTable(
       t.plannedItemId,
       t.replacedExerciseId,
     ),
+    index("session_overrides_planned_item_id_idx").on(t.plannedItemId),
+    index("session_overrides_replacement_exercise_id_idx").on(t.replacementExerciseId),
   ],
 ).enableRLS();
