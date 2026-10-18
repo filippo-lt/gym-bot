@@ -24,6 +24,7 @@ import {
   WEEKDAY_ORDER,
   weekRefFor,
 } from "./plan-context.js";
+import { stageSkip } from "./skip.js";
 import type {
   Candidate,
   Day,
@@ -167,7 +168,7 @@ type ExerciseOutcome =
   | { kind: "ok"; exercise: CatalogExercise }
   | { kind: "clarify"; candidates: Candidate[] };
 
-async function pickExercise(
+export async function pickExercise(
   db: Q,
   ex: LogSetsInput["exercise"],
   catalog: CatalogExercise[],
@@ -236,7 +237,7 @@ async function pickExercise(
 // ---------------------------------------------------------------------------
 // Planned item
 
-function dateForDay(ctx: PlanContext | null, today: string, day: Day | undefined): string {
+export function dateForDay(ctx: PlanContext | null, today: string, day: Day | undefined): string {
   if (!day || day === "today" || !ctx) return today;
   const ref = weekRefFor(ctx, today);
   if (!ref) return today;
@@ -669,5 +670,6 @@ export function createLoggingBackend(
     stageLogSets: (input) => stageLogSets(db, input, clock()),
     stageEdit: async (input) => blocked() ?? stageEdit(db, input, clock()),
     stageUndoLast: async (_input: UndoLastInput) => blocked() ?? stageUndoLast(db, clock()),
+    stageSkip: (input) => stageSkip(db, input, clock()),
   };
 }

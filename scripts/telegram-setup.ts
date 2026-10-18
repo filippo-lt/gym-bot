@@ -31,6 +31,7 @@ try {
   await api.setMyCommands([
     { command: "today", description: "Today's session" },
     { command: "next", description: "Next exercise" },
+    { command: "skip", description: "Skip an exercise or the session" },
     { command: "session", description: "A session by day or date" },
     { command: "week", description: "This week" },
     { command: "plan", description: "Plan overview" },

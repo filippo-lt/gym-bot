@@ -53,6 +53,10 @@ export function describeAction(a: StagedAction): string {
       return `unclear exercise "${a.said}"`;
     case "save_memory":
       return `remember (${a.input.kind}): ${a.input.content}`;
+    case "skip_items":
+      return a.whole
+        ? `skip the whole session (${dateLabel(a.sessionDate)})`
+        : `skip ${a.items.map((i) => i.planName).join(", ")}`;
   }
 }
 

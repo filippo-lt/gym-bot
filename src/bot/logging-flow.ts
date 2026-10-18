@@ -79,6 +79,8 @@ import {
   summarize,
   viewFromSnapshot,
 } from "./log-format.js";
+import { createSkipFlow } from "./skip-flow.js";
+import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
 
 export interface AiConfig {
   model: IntentModel;
@@ -99,6 +101,7 @@ export interface Flow {
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
+  skipCommand(ctx: Context): Promise<void>;
 }
 
 const PARTLY = "partly_understood";
@@ -293,6 +296,8 @@ export function createFlow(deps: FlowDeps): Flow {
         add(action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] });
       } else if (r.kind === "memory") {
         add(memorySaved(r.content, r.memoryId));
+      } else if (r.kind === "skip") {
+        add(skipEcho(r, sourceKey, i));
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -447,6 +452,13 @@ export function createFlow(deps: FlowDeps): Flow {
     }
   }
 
+  const allSkips = (actions: StagedAction[]) => actions.every((a) => a.kind === "skip_items");
+  const noSkipItems = (results: LedgerResult[]) =>
+    results.length > 0 && results.every((x) => x.kind === "skip" && x.items.length === 0);
+
+  /** An executed skip card whose write skipped nothing (the items were settled meanwhile). */
+  const skipWasEmpty = async (p: Pending) => noSkipItems(await ledgerResults(db, `p:${p.id}`));
+
   /**
    * A tap on a card whose request is over (saved, expired, replaced, cancelled): the buttons go
    * and the card shows how it ended. Best effort, and never a new chat message.
@@ -454,11 +466,16 @@ export function createFlow(deps: FlowDeps): Flow {
   async function closeStaleCard(ctx: Context, p: Pending): Promise<void> {
     // A clarify card that was resolved and saved already shows "Exercise: …": keep it.
     if (p.status === "executed" && p.kind === "clarify_exercise") return;
+    const emptySkip = p.status === "executed" && allSkips(p.actions) && (await skipWasEmpty(p));
     const text =
       p.status === "executed"
         ? p.kind === "delete"
           ? "Removed ✓"
-          : "Saved ✓"
+          : allSkips(p.actions)
+            ? emptySkip
+              ? NOTHING_SKIPPED_DONE
+              : SKIPPED_DONE
+            : "Saved ✓"
         : p.status === "replaced"
           ? replacedText(p.actions)
           : p.status === "cancelled"
@@ -588,7 +605,14 @@ export function createFlow(deps: FlowDeps): Flow {
       const r = await executeActions(db, key, staged, { now });
       if (r.status === "done") {
         await sendEchoes(ctx, key, staged, r.results);
-        await appendMessage(db, chatId, "assistant", `Saved: ${plainSummary(staged)}`);
+        await appendMessage(
+          db,
+          chatId,
+          "assistant",
+          noSkipItems(r.results)
+            ? "Nothing skipped: already done or skipped."
+            : `Saved: ${plainSummary(staged)}`,
+        );
       } else {
         await send(ctx, r.status === "stale" ? STALE : EXPIRED);
       }
@@ -761,6 +785,10 @@ export function createFlow(deps: FlowDeps): Flow {
         );
         return;
       }
+      case "sk":
+        return skip.skipTap(ctx, a, answer);
+      case "us":
+        return skip.undoTap(ctx, a, answer);
       case "md": {
         const done = await deactivateMemory(db, a.id);
         const msg = ctx.callbackQuery?.message;
@@ -802,7 +830,12 @@ export function createFlow(deps: FlowDeps): Flow {
       // it was saved, nothing to write, nothing to repeat.
       await answer("Already saved.");
       await closeStaleCard(ctx, pending);
-      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      await remember(
+        chatId,
+        allSkips(pending.actions) && (await skipWasEmpty(pending))
+          ? "A tapped button was too late: nothing was skipped."
+          : "A tapped button was too late: the request was already saved.",
+      );
       return;
     }
     if (act === "no") {
@@ -847,7 +880,12 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("Pick an exercise first.");
       return;
     }
-    const doneText = pending.kind === "delete" ? "Removed ✓" : "Saved ✓";
+    const doneText =
+      pending.kind === "delete"
+        ? "Removed ✓"
+        : allSkips(pending.actions)
+          ? SKIPPED_DONE
+          : "Saved ✓";
     const key = `p:${id}`;
     const r = await executeActions(db, key, pending.actions, { pendingId: id, now });
     if (r.status === "stale") {
@@ -866,12 +904,17 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     // The write is committed: a failing card edit must not stop the echoes (and their Undo).
-    await editQuietly(ctx, doneText);
-    await answer(doneText);
+    // Every item was done or skipped meanwhile: the card must not claim a skip happened.
+    const nothingSkipped = noSkipItems(r.results);
+    const finalText = nothingSkipped ? NOTHING_SKIPPED_DONE : doneText;
+    await editQuietly(ctx, finalText);
+    await answer(finalText);
     await sendEchoes(ctx, key, pending.actions, r.results);
     await remember(
       chatId,
-      `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
+      nothingSkipped
+        ? "Nothing skipped (user confirmed): already done or skipped."
+        : `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
     );
   }
 
@@ -1070,5 +1113,16 @@ export function createFlow(deps: FlowDeps): Flow {
     await sendEchoes(ctx, key, actions, r.results);
   }
 
-  return { text, callback, undoCommand, memoryCommand };
+  const skip = createSkipFlow({
+    db,
+    now: deps.now,
+    send,
+    edit,
+    editQuietly,
+    remember,
+    chatOf,
+    presentPending,
+  });
+
+  return { text, callback, undoCommand, memoryCommand, skipCommand: skip.skipCommand };
 }

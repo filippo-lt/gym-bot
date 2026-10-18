@@ -15,6 +15,7 @@ import type {
   PromptContext,
   PromptStatic,
   SaveMemoryInput,
+  SkipItemsInput,
   StagedAction,
   UsageStore,
 } from "../../src/logging/types.js";
@@ -29,7 +30,8 @@ type Call =
   | { tool: "get_session"; input: GetSessionInput }
   | { tool: "get_exercise_history"; input: GetExerciseHistoryInput }
   | { tool: "get_alternatives"; input: GetAlternativesInput }
-  | { tool: "save_memory"; input: SaveMemoryInput };
+  | { tool: "save_memory"; input: SaveMemoryInput }
+  | { tool: "skip_items"; input: SkipItemsInput };
 
 function recordingBackend() {
   const calls: Call[] = [];
@@ -183,6 +185,10 @@ function recordingBackend() {
         preview: "Staged removal of the last Bench press entry.",
       };
     },
+    async stageSkip(input) {
+      calls.push({ tool: "skip_items", input });
+      return { ok: false, error: "not used in this golden set" };
+    },
   };
   return { backend, calls };
 }
@@ -281,7 +287,7 @@ function guardOk(text: string, res: Extract<IntentResult, { kind: "ok" }>) {
 }
 
 const toolNames = (calls: Call[]) => calls.map((c) => c.tool);
-const WRITE_TOOLS = ["log_sets", "edit_last_entry", "undo_last_entry", "save_memory"];
+const WRITE_TOOLS = ["log_sets", "edit_last_entry", "undo_last_entry", "skip_items", "save_memory"];
 
 const logs = (calls: Call[]) =>
   calls

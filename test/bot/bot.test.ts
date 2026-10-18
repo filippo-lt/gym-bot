@@ -155,6 +155,7 @@ describe("createBot", () => {
         callback: async (ctx) => void seen.push(`cb:${ctx.callbackQuery?.data}`),
         undoCommand: async () => void seen.push("undo"),
         memoryCommand: async () => void seen.push("memory"),
+        skipCommand: async () => void seen.push("skip"),
       };
       return { seen, flow };
     }
@@ -165,6 +166,7 @@ describe("createBot", () => {
       await send("3x8 squat 60");
       await send("/undo");
       await send("/memory");
+      await send("/skip");
       await bot.handleUpdate({
         update_id: 500,
         callback_query: {
@@ -174,7 +176,7 @@ describe("createBot", () => {
           data: "ug:7",
         },
       });
-      expect(seen).toEqual(["text:3x8 squat 60", "undo", "memory", "cb:ug:7"]);
+      expect(seen).toEqual(["text:3x8 squat 60", "undo", "memory", "skip", "cb:ug:7"]);
       expect(calls).toHaveLength(0);
     });
 
@@ -381,6 +383,7 @@ describe("query commands", () => {
       callback: async (ctx) => void seenByFlow.push(String(ctx.callbackQuery?.data)),
       undoCommand: async () => {},
       memoryCommand: async () => {},
+      skipCommand: async () => {},
     };
     const h = reads({ kind: "unknown" });
     const { calls, bot } = setup(flow, h.r);

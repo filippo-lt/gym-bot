@@ -84,6 +84,25 @@ export const editLastInputSchema = z.strictObject({
 });
 export type EditLastInput = z.infer<typeof editLastInputSchema>;
 
+export const skipItemsInputSchema = z
+  .strictObject({
+    /** One planned exercise to skip; code finds the matching open item of that day. */
+    exercise: z
+      .strictObject({
+        slug: z.string().min(1).max(60).optional(),
+        said: z.string().min(1).max(100),
+      })
+      .optional(),
+    /** Skip every open item of the day. */
+    whole_session: z.boolean().optional(),
+    /** Omit unless the user named a weekday. */
+    day: z.enum(DAY_VALUES).optional(),
+  })
+  .refine((v) => (v.exercise !== undefined) !== (v.whole_session === true), {
+    message: "Give exactly one of exercise or whole_session: true.",
+  });
+export type SkipItemsInput = z.infer<typeof skipItemsInputSchema>;
+
 export const undoLastInputSchema = z.strictObject({});
 export type UndoLastInput = z.infer<typeof undoLastInputSchema>;
 
@@ -265,6 +284,13 @@ export interface GroupSnapshot {
   entries: ResolvedEntry[];
 }
 
+/** A planned item to mark skipped. */
+export interface SkipTarget {
+  plannedItemId: number;
+  planName: string;
+  priority: Priority;
+}
+
 export type StagedAction =
   | { kind: "log_sets"; input: LogSetsInput; resolved: ResolvedLog }
   /** The exercise is unclear: the bot asks with buttons before anything else. */
@@ -283,7 +309,18 @@ export type StagedAction =
     }
   | { kind: "delete_group"; snapshot: GroupSnapshot }
   /** A lasting limitation/preference. Always goes through a confirm card (SPEC 5.6e). */
-  | { kind: "save_memory"; input: SaveMemoryInput };
+  | { kind: "save_memory"; input: SaveMemoryInput }
+  /** Marks planned items skipped; a PRIMARY item or the whole session goes through a card. */
+  | {
+      kind: "skip_items";
+      sessionDate: string;
+      whole: boolean;
+      items: SkipTarget[];
+      /** The date is not today: needs a card (SPEC 5.6d). */
+      otherDay?: boolean;
+      /** Several open items fit the words; the first was taken. */
+      ambiguous?: boolean;
+    };
 
 /** What a staging call returns to the AI loop. `preview` is shown to the model as the tool result. */
 export type StageResult =
@@ -310,6 +347,7 @@ export interface LoggingBackend {
   stageLogSets(input: LogSetsInput): Promise<StageResult>;
   stageEdit(input: EditLastInput): Promise<StageResult>;
   stageUndoLast(input: UndoLastInput): Promise<StageResult>;
+  stageSkip(input: SkipItemsInput): Promise<StageResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +363,9 @@ export type ConfirmReason =
   | "load_far_off"
   | "reps_far_off"
   | "delete"
+  | "skip_primary"
+  | "skip_session"
+  | "skip_ambiguous"
   /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
   | "memory"
   /** An unsaved request is open: new actions replace it through a card, never a direct write. */
@@ -379,7 +420,14 @@ export type LedgerResult =
       afterGroup?: BeforeGroup;
     }
   | { kind: "delete"; snapshot: GroupSnapshot }
-  | { kind: "memory"; memoryId: number; memoryKind: "limitation" | "preference"; content: string };
+  | { kind: "memory"; memoryId: number; memoryKind: "limitation" | "preference"; content: string }
+  /** Only the items this write skipped; Undo restores each to its `before`. */
+  | {
+      kind: "skip";
+      sessionDate: string;
+      whole: boolean;
+      items: { plannedItemId: number; planName: string; before: SessionItemBefore | null }[];
+    };
 
 // ---------------------------------------------------------------------------
 // AI layer
