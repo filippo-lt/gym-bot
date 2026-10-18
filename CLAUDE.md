@@ -70,7 +70,7 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 - **Photo.** `message:photo` → `flow.photo` → `readBoard` (`src/ai/board.ts`, forced `record_board` tool) → a `log_class` pending with `moves` → `classMovesCard` (per-group breakdown from `classBreakdown`; toggles start unticked unless a non-blank caption names heavy groups; `cm:` callbacks). 3.5 MB cap. Memory stores `[photo] <caption or "class board">`.
 - **Class rows.** Heavy-only writes keep moves, photo and raw text; a moves write replaces them; undo restores the whole previous row (stale if the row changed since).
 - **Jobs.** `src/jobs/` (`runDueJobs`): `job_runs` claim → send → done, with a 5-minute reclaim. First job `class_question` (Thu 21:00–23:00 Rome; skipped if the class is logged or outside the plan). Runs in `/api/cron/tick` before the inbox sweeper.
-- Shared helpers in `src/bot/log-format.ts`: `inlineKeyboard`, `pushHeard`.
+- Shared helpers in `src/bot/log-format.ts`: `inlineKeyboard`, `heardLine`.
 
 ## Domain rules that are easy to break
 

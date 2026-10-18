@@ -647,7 +647,7 @@ export function createFlow(deps: FlowDeps): Flow {
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
-        text: body,
+        text: voice ? `[voice] ${body}` : body,
         model: ai.model,
         backend: createLoggingBackend(db, now, { openPending: context.pending }),
         usage: createUsageStore(db),

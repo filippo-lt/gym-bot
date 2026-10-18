@@ -115,6 +115,11 @@ function setup(
         voice: { file_id: "f1", file_unique_id: "u1", duration },
       },
     });
+  const typed = (body: string, updateId = ++uid) =>
+    bot.handleUpdate({
+      update_id: updateId,
+      message: { message_id: updateId, date: 0, chat: CHAT_OBJ, from: FROM, text: body },
+    });
   const tap = (data: string, messageId: number, updateId = ++uid) =>
     bot.handleUpdate({
       update_id: updateId,
@@ -135,7 +140,7 @@ function setup(
     )
       .flat()
       .map((b) => ({ text: b.text, data: b.callback_data }));
-  return { model, transcribe, download, voice, tap, sent, texts, buttons };
+  return { model, transcribe, download, voice, typed, tap, sent, texts, buttons };
 }
 
 const tool = (name: string, input: unknown) => turn(toolUse(name, input));
@@ -152,6 +157,21 @@ const facePulls = {
 };
 
 describe("voice notes", () => {
+  it("the model sees a voice turn tagged [voice], a typed turn untagged", async () => {
+    const lastUser = (m: ReturnType<typeof setup>["model"]) => {
+      const msgs = m.messageSnapshots[0] ?? [];
+      const u = [...msgs].reverse().find((x) => x.role === "user");
+      return typeof u?.content === "string" ? u.content : JSON.stringify(u?.content);
+    };
+    const v = setup([ok], { transcript: "how many sets today" });
+    await v.voice();
+    expect(lastUser(v.model)).toContain("[voice] how many sets today");
+    const x = setup([ok]);
+    await x.typed("how many sets today");
+    expect(lastUser(x.model)).toContain("how many sets today");
+    expect(lastUser(x.model)).not.toContain("[voice]");
+  });
+
   it("a clear log goes to a confirm card with the heard line", async () => {
     const t = setup([tool("log_sets", facePulls), ok], { transcript: "15 face pulls at 20 kg" });
     await t.voice();
