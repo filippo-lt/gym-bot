@@ -83,9 +83,7 @@ export function unresolvedSwapRefusals(
   events: IntentEvent[],
 ): string[] {
   return errors
-    .filter(
-      (e) => !events.some((x) => x.type === "staged" && x.kind === "swap" && x.turn > e.turn),
-    )
+    .filter((e) => !events.some((x) => x.type === "staged" && x.kind === "swap" && x.turn > e.turn))
     .map((e) => e.reply);
 }
 
@@ -283,7 +281,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
       replyText: null,
       turns,
       toolErrors: countUnresolvedErrors(events),
-          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
+      swapRefusals: unresolvedSwapRefusals(swapErrors, events),
       truncated: false,
       reads,
     };
