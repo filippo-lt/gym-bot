@@ -66,7 +66,7 @@ export function describeAction(a: StagedAction): string {
       const heavyText = heavy.length ? `heavy ${heavy.join(", ")}` : "not heavy";
       const n = a.input.moves?.length;
       if (n === undefined) return `Thursday class: ${heavyText}`;
-      return `Thursday class: ${n} ${n === 1 ? "move" : "moves"}${heavy.length ? `; heavy: ${heavy.join(", ")}` : ""}`;
+      return `Thursday class: ${n} ${n === 1 ? "move" : "moves"}; heavy: ${heavy.length ? heavy.join(", ") : "none"}`;
     }
     case "skip_items":
       return a.whole

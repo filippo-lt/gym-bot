@@ -62,7 +62,7 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 - Before a log is written, `executeActions` freezes the day's readiness and stores today's suggestions (outside the transaction). The log group then gets `suggestion_id` and `readiness_level`. The far-off check compares with the stored suggestion first, then the last session. After every write, undo, edit, RIR/clean tap and history import, `refreshUserState` rebuilds the pull-up gate and the HSPU step.
 - Band colours live in `log_entries.band` (`assist_kg` null while unmapped) and map to kg through `equipment.bands`. The first saved log with an unmapped colour triggers one question; the answer is the `set_band_kg` tool (confirm card).
 - An accepted `hspu_advance` proposal counts as the current HSPU step until a newer HSPU log (`acceptedHspuStep`).
-- `log_readiness`, `log_bodyweight`, `log_class` save directly with an Undo (`uw:`), like a log.
+- `log_readiness`, `log_bodyweight` and a heavy-only text `log_class` save directly with an Undo (`uw:`), like a log. A `log_class` with moves, or any voice-origin write, goes through a card.
 
 ### Voice, photo, scheduled jobs (M6, `src/stt/`, `src/ai/board.ts`, `src/jobs/`)
 

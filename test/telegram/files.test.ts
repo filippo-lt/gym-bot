@@ -72,3 +72,33 @@ describe("downloadTelegramFile", () => {
     expect(err.message).not.toContain("SECRET-TOKEN");
   });
 });
+
+describe("downloadTelegramFile timeout", () => {
+  it("getFile that never resolves is cut by the signal, with a generic error", async () => {
+    const api = { getFile: () => new Promise<{ file_path?: string }>(() => {}) };
+    const fetchImpl = vi.fn();
+    const err = await downloadTelegramFile({
+      api,
+      token: TOKEN,
+      fileId: "f",
+      maxBytes: 100,
+      fetchImpl,
+      signal: AbortSignal.timeout(20),
+    }).catch((e) => e);
+    expect(err.message).toBe("telegram file download failed");
+    expect(err.message).not.toContain("SECRET-TOKEN");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("an already-aborted signal rejects without waiting", async () => {
+    const api = { getFile: () => new Promise<{ file_path?: string }>(() => {}) };
+    const err = await downloadTelegramFile({
+      api,
+      token: TOKEN,
+      fileId: "f",
+      maxBytes: 100,
+      signal: AbortSignal.abort(),
+    }).catch((e) => e);
+    expect(err.message).toBe("telegram file download failed");
+  });
+});

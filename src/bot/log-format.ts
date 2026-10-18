@@ -444,7 +444,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         break;
       }
       case "class_moves":
-        out.push("you pick which parts were heavy");
+        out.push("class report");
         break;
       case "voice_input":
         out.push("from a voice note");
@@ -566,7 +566,8 @@ const HEARD_MAX = 300;
 
 /** The "🎤 heard:" line (capped, escaped) and a blank line, first on every voice-origin card. */
 export function heardLine(heard: string): string {
-  const text = heard.length > HEARD_MAX ? `${heard.slice(0, HEARD_MAX)}…` : heard;
+  const chars = Array.from(heard);
+  const text = chars.length > HEARD_MAX ? `${chars.slice(0, HEARD_MAX).join("")}…` : heard;
   return `🎤 heard: ${esc(text)}`;
 }
 
@@ -617,6 +618,15 @@ export const groupsToMask = (groups: readonly string[]): number =>
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** "2 moves, 6 sets", "2 moves, 6+ sets" (some moves without sets) or "2 moves" (none had sets). */
+export function classRowText(row: ReturnType<typeof classBreakdown>[number]): string {
+  const moves = plural(row.moves, "move");
+  if (row.setMoves === 0) return moves;
+  return row.setMoves === row.moves
+    ? `${moves}, ${plural(row.sets, "set")}`
+    : `${moves}, ${row.sets}+ sets`;
+}
+
 /** A pending class log with moves: breakdown per group, heavy toggles (nothing ticked until the user taps), Save. */
 export function classMovesCard(args: {
   id: number;
@@ -632,7 +642,7 @@ export function classMovesCard(args: {
   lines.push(`Thursday class (${day(action.date, "ccc d LLL")}):`);
   for (const row of classBreakdown(action.input.moves ?? [])) {
     const label = row.group.charAt(0).toUpperCase() + row.group.slice(1);
-    lines.push(`${label}: ${plural(row.moves, "move")}, ${plural(row.sets, "set")}`);
+    lines.push(`${label}: ${classRowText(row)}`);
   }
   const picked = maskToGroups(mask);
   lines.push(
@@ -648,7 +658,7 @@ export function classMovesCard(args: {
         data: cb.classMoves(id, mask ^ g.bit),
       })),
       [
-        { text: "Not heavy", data: cb.classMoves(id, 0) },
+        { text: "Not heavy", data: cb.classMovesSave(id, 0) },
         { text: "Save", data: cb.classMovesSave(id, mask) },
         { text: "❌", data: cb.pending(id, "no") },
       ],

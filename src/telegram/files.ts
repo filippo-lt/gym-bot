@@ -5,6 +5,20 @@ export class FileTooLargeError extends Error {
   }
 }
 
+/** Rejects as soon as the signal aborts; the original promise is left to settle on its own. */
+function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    promise.catch(() => {});
+    return Promise.reject(new Error("aborted"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error("aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 /**
  * Downloads a Telegram file. The download URL contains the bot token, so it
  * never appears in an error message or a log.
@@ -18,13 +32,20 @@ export async function downloadTelegramFile(args: {
   signal?: AbortSignal;
 }): Promise<Uint8Array> {
   const { api, token, fileId, maxBytes, fetchImpl = fetch, signal } = args;
-  const file = await api.getFile(fileId);
+  // Network errors can echo the token-bearing URL: never let one escape.
+  const failed = () => new Error("telegram file download failed");
+  // The signal also covers getFile, so one timeout bounds the whole download.
+  let file: { file_path?: string; file_size?: number };
+  try {
+    file = await raceAbort(api.getFile(fileId), signal);
+  } catch (error) {
+    if (signal?.aborted) throw failed();
+    throw error;
+  }
   if (file.file_size !== undefined && file.file_size > maxBytes) {
     throw new FileTooLargeError(maxBytes);
   }
   if (!file.file_path) throw new Error("telegram file has no path");
-  // Network errors can echo the token-bearing URL: never let one escape.
-  const failed = () => new Error("telegram file download failed");
   let res: Response;
   try {
     res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`, {

@@ -187,6 +187,29 @@ describe("voice notes", () => {
     expect(groups[0]?.source).toBe("voice");
   });
 
+  it("✏️ then a typed correction keeps the voice origin and the heard line", async () => {
+    const fixed = { ...facePulls, sets: { count: 1, reps: 15, load_kg: 22.5 } };
+    const t = setup([tool("log_sets", facePulls), ok, tool("log_sets", fixed), ok], {
+      transcript: "15 face pulls at 20 kg",
+    });
+    await t.voice();
+    const first = t.sent().at(-1);
+    const edBtn = t.buttons(first).find((b) => /^pa:\d+:ed$/.test(b.data));
+    await t.tap(edBtn?.data as string, 1001);
+    await t.typed("it was 22.5");
+    const card = t.sent().at(-1);
+    expect(String(card?.payload.text).startsWith("🎤 heard: 15 face pulls at 20 kg")).toBe(true);
+    const rows =
+      await sql`select input_source, transcript from pending_actions where status = 'open'`;
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.input_source).toBe("voice");
+    expect(rows[0]?.transcript).toBe("15 face pulls at 20 kg");
+    const okBtn = t.buttons(card).find((b) => /^pa:\d+:ok$/.test(b.data));
+    await t.tap(okBtn?.data as string, 1002);
+    const groups = await sql`select source from log_groups`;
+    expect(groups.map((g) => g.source)).toEqual(["voice"]);
+  });
+
   it("readiness by voice is a card, not a direct save", async () => {
     const t = setup([tool("log_readiness", { signal: "bad_sleep" }), nothing], {
       transcript: "I slept badly",

@@ -17,18 +17,20 @@ export const classMoveSchema = z.strictObject({
 });
 export type ClassMove = z.infer<typeof classMoveSchema>;
 
-/** Moves and sets per group, in CLASS_GROUPS order; groups without moves are left out. */
+/** Moves, written sets and how many moves had sets, per group, in CLASS_GROUPS order; groups without moves are left out. */
 export function classBreakdown(
   moves: ClassMove[],
-): { group: ClassGroup; moves: number; sets: number }[] {
-  const out: { group: ClassGroup; moves: number; sets: number }[] = [];
+): { group: ClassGroup; moves: number; sets: number; setMoves: number }[] {
+  const out: { group: ClassGroup; moves: number; sets: number; setMoves: number }[] = [];
   for (const group of CLASS_GROUPS) {
     const inGroup = moves.filter((m) => m.groups.includes(group));
     if (inGroup.length === 0) continue;
     out.push({
       group,
       moves: inGroup.length,
-      sets: inGroup.reduce((sum, m) => sum + (m.sets ?? 1), 0),
+      // Only sets the class report wrote; moves without sets add nothing.
+      sets: inGroup.reduce((sum, m) => sum + (m.sets ?? 0), 0),
+      setMoves: inGroup.filter((m) => m.sets !== undefined).length,
     });
   }
   return out;

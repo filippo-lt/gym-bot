@@ -10,9 +10,9 @@ describe("classBreakdown", () => {
       { name: "Burpee", groups: ["legs", "push"] },
     ];
     expect(classBreakdown(moves)).toEqual([
-      { group: "pull", moves: 1, sets: 4 },
-      { group: "push", moves: 1, sets: 1 },
-      { group: "legs", moves: 2, sets: 6 },
+      { group: "pull", moves: 1, sets: 4, setMoves: 1 },
+      { group: "push", moves: 1, sets: 0, setMoves: 0 },
+      { group: "legs", moves: 2, sets: 5, setMoves: 1 },
     ]);
   });
 });

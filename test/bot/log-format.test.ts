@@ -12,6 +12,7 @@ import {
   echoMessage,
   editEchoMessage,
   HELP_TEXT,
+  heardLine,
   MEMORY_EMPTY,
   memoryList,
   NO_AI_KEY,
@@ -565,6 +566,14 @@ describe("skip texts", () => {
   });
 });
 
+describe("heardLine", () => {
+  it("cuts by code points, never inside an emoji", () => {
+    const text = `${"a".repeat(299)}😀tail`;
+    const line = heardLine(text);
+    expect(line).toBe(`🎤 heard: ${"a".repeat(299)}😀…`);
+  });
+});
+
 describe("classMovesCard", () => {
   const action: Extract<StagedAction, { kind: "log_class" }> = {
     kind: "log_class",
@@ -584,10 +593,49 @@ describe("classMovesCard", () => {
     expect(m.text).toContain("Thursday class (Thu 1 Oct):");
     expect(m.text).toContain("Legs: 2 moves, 6 sets");
     expect(m.text).toContain("Pull: 1 move, 4 sets");
+    expect(m.text).toContain("Push: 1 move, 1 set");
     expect(m.text).toContain("Which parts were heavy?");
     expect(m.keyboard.flat().some((b) => b.text.includes("✓"))).toBe(false);
     expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:1", "cm:9:2", "cm:9:4"]);
-    expect(m.keyboard[1]?.map((b) => b.data)).toEqual(["cm:9:0", "cm:9:0:ok", "pa:9:no"]);
+    expect(m.keyboard[1]?.map((b) => b.data)).toEqual(["cm:9:0:ok", "cm:9:0:ok", "pa:9:no"]);
+  });
+
+  it("never invents sets", () => {
+    const some = {
+      ...action,
+      input: {
+        moves: [
+          { name: "Pistol", sets: 5, groups: ["legs" as const] },
+          { name: "Burpee", groups: ["legs" as const] },
+          { name: "Pull-up", groups: ["pull" as const] },
+        ],
+      },
+    };
+    const m = classMovesCard({ id: 9, action: some, mask: 0 });
+    expect(m.text).toContain("Legs: 2 moves, 5+ sets");
+    expect(m.text).toContain("Pull: 1 move\n");
+  });
+
+  it("Not heavy saves in one tap", () => {
+    const m = classMovesCard({ id: 9, action, mask: 5 });
+    expect(m.keyboard[1]?.[0]).toEqual({ text: "Not heavy", data: "cm:9:0:ok" });
+  });
+
+  it("a class with moves in a multi-action card states heavy groups", () => {
+    const line = (heavy: ("legs" | "pull" | "push")[]) =>
+      confirmCard({
+        id: 1,
+        kind: "confirm",
+        actions: [
+          { ...action, input: { ...action.input, heavy_groups: heavy } },
+          { kind: "log_bodyweight", input: { kg: 70 }, date: "2026-10-01" },
+        ],
+        reasons: ["multiple_writes", "class_moves"],
+      }).text;
+    expect(line([])).toContain("Thursday class: 3 moves; heavy: none");
+    expect(line(["legs"])).toContain("Thursday class: 3 moves; heavy: legs");
+    expect(line([])).toContain("class report");
+    expect(line([])).not.toContain("you pick");
   });
 
   it("ticks the selected groups", () => {

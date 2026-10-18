@@ -1496,6 +1496,16 @@ describe("class card with moves", () => {
     expect(await count("class_logs")).toBe(1);
   });
 
+  it("Not heavy saves in one tap with no heavy groups", async () => {
+    const t = setup();
+    const p = await open(8005);
+    await t.tap(`cm:${p.id}:0:ok`);
+    const [r] = await sql`select heavy_groups, parsed->'moves' as moves from class_logs`;
+    expect(r?.heavy_groups).toEqual([]);
+    expect(r?.moves).toHaveLength(3);
+    expect(await count("class_logs")).toBe(1);
+  });
+
   it("replaced or expired: Save answers the expired text and writes nothing", async () => {
     const t = setup();
     const old = await open(8002);

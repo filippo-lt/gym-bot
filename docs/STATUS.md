@@ -65,6 +65,7 @@ _Last updated: 18 Oct 2026 (end of M6 build)._
 **Known minor issues (not blocking):**
 - The duplicate-user-message check in `conversation.ts` is keyed on text, not on update id (no migration for it).
 - If a re-import restores a bot-logged slot that the export no longer has, the row stays `source = bot`.
+- A crash after STT or vision succeeds but before the card is stored re-bills STT/vision on the inbox retry (no duplicate write).
 - After a re-import, undo of an earlier bot log restores the status recorded at log time, even if the fresh export changed it.
 
 ## How we work

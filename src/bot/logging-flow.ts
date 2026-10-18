@@ -77,6 +77,7 @@ import {
   cancelledText,
   clarifyCard,
   classMovesCard,
+  classRowText,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
@@ -98,7 +99,6 @@ import {
   NUMBER_GUARD_FALLBACK,
   PHOTO_FAILED,
   type Place,
-  plural,
   removedText,
   replacedText,
   STALE,
@@ -720,10 +720,14 @@ export function createFlow(deps: FlowDeps): Flow {
     // With an unsaved request open nothing is written directly: the new actions go to a card
     // that replaces it (and says so).
     const open = await getOpenPending(db, chatId, now);
+    // A typed correction of a voice card (after tapping ✏️) keeps the voice origin and its transcript.
+    const inherit = !voice && open?.awaitingEdit === true && open.inputSource === "voice";
+    const cardSource: InputSource = inherit ? "voice" : source;
+    const cardTranscript = inherit ? (open?.transcript ?? null) : transcript;
     const decision = decidePolicy(staged, {
       openPending: open !== null,
       partlyUnderstood: partly,
-      voiceInput: voice,
+      voiceInput: cardSource === "voice",
     });
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
@@ -747,8 +751,8 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: partly ? [PARTLY] : [],
         updateId,
         now,
-        inputSource: source,
-        transcript,
+        inputSource: cardSource,
+        transcript: cardTranscript,
       });
       const a = staged[decision.index];
       await appendMessage(
@@ -767,8 +771,8 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: decision.reasons,
         updateId,
         now,
-        inputSource: source,
-        transcript,
+        inputSource: cardSource,
+        transcript: cardTranscript,
       });
       await appendMessage(db, chatId, "assistant", `Asked to confirm: ${plainSummary(staged)}`);
     }
@@ -886,7 +890,7 @@ export function createFlow(deps: FlowDeps): Flow {
       inputSource: "photo",
     });
     const breakdown = classBreakdown(moves)
-      .map((r) => `${r.group} ${plural(r.moves, "move")} ${plural(r.sets, "set")}`)
+      .map((r) => `${r.group} ${classRowText(r)}`)
       .join(", ");
     await appendMessage(
       db,

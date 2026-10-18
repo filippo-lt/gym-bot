@@ -294,6 +294,43 @@ describe("decidePolicy voice", () => {
     }
   });
 
+  it("every write kind gets the voice_input reason under voice", () => {
+    const edit: StagedAction = {
+      kind: "edit_group",
+      input: editInput({ load_kg: 60 }),
+      before: snapshot(),
+      after: snapshot(),
+      setIndexes: [1],
+      lastSession: null,
+    };
+    const all: StagedAction[] = [
+      logAction(),
+      edit,
+      { kind: "delete_group", snapshot: snapshot() },
+      { kind: "save_memory", input: { kind: "limitation", content: "left shoulder" } },
+      {
+        kind: "set_band_kg",
+        input: { colour: "red", kg: 20 },
+        equipmentSlug: "pull-up",
+        previousKg: null,
+      },
+      readiness,
+      bw,
+      cls,
+      {
+        kind: "skip_items",
+        sessionDate: "2026-10-19",
+        whole: false,
+        items: [{ plannedItemId: 1, planName: "Bulgarian split squat", priority: "High" }],
+      },
+    ];
+    for (const a of all) {
+      const d = decidePolicy([a], voice);
+      expect(d.mode, a.kind).toBe("confirm");
+      expect(d.mode === "confirm" ? d.reasons : [], a.kind).toContain("voice_input");
+    }
+  });
+
   it("clarify still wins over voice", () => {
     const clarify: StagedAction = {
       kind: "clarify_exercise",
