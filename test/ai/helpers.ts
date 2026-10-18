@@ -7,6 +7,7 @@ import type {
   LogSetsInput,
   PromptContext,
   PromptStatic,
+  RenderChartInput,
   SaveMemoryInput,
   SkipItemsInput,
   StagedAction,
@@ -35,6 +36,10 @@ export function fakeBackend(): LoggingBackend & { calls: string[] } {
     async getExerciseHistory(i: GetExerciseHistoryInput) {
       calls.push(`history:${i.exercise.said}`);
       return { facts: { found: true, sessions: [] }, fallbackHtml: "<b>History</b>" };
+    },
+    async renderChart(i: RenderChartInput) {
+      calls.push(`chart:${i.metric}:${i.exercise ?? "-"}`);
+      return { facts: { found: true }, fallbackHtml: "<b>Chart</b>" };
     },
     async getAlternatives(i: GetAlternativesInput) {
       calls.push(`alternatives:${i.exercise.said}`);
@@ -84,6 +89,9 @@ export function fakeUsage(totals = { day: 0, month: 0 }): UsageStore & { recorde
     },
     async record(u) {
       recorded.push(u);
+    },
+    async weekTotals() {
+      return { tokens: 0, sttSeconds: 0 };
     },
     async sttSecondsToday() {
       return 0;

@@ -4,6 +4,7 @@
  * (SPEC 5.6d). Every number shown to the user comes from code, never from the model.
  */
 import { z } from "zod";
+import type { BudgetCap } from "../ai/budget.js";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 import { classMoveSchema } from "./class-moves.js";
 
@@ -192,6 +193,15 @@ export const getExerciseHistoryInputSchema = z
     message: "Give either period or plan_week, not both.",
   });
 export type GetExerciseHistoryInput = z.infer<typeof getExerciseHistoryInputSchema>;
+
+export const CHART_METRICS = ["load", "reps", "volume"] as const;
+
+export const renderChartInputSchema = z.object({
+  metric: z.enum(CHART_METRICS),
+  exercise: z.string().min(1).max(60).optional(),
+  weeks: z.number().int().min(1).max(52).optional(),
+});
+export type RenderChartInput = z.infer<typeof renderChartInputSchema>;
 
 export const getAlternativesInputSchema = z.strictObject({
   exercise: z.strictObject({
@@ -405,11 +415,20 @@ export interface ReadResult {
   isError?: boolean;
 }
 
+/** A rendered chart waiting to be sent after the reply. */
+export interface PendingChart {
+  png: Buffer;
+  /** Telegram HTML, escaped. */
+  caption: string;
+}
+
 /** The tools' backend, injected into the AI loop (DB-backed in production, fake in tests). */
 export interface LoggingBackend {
   getSession(input: GetSessionInput): Promise<ReadResult>;
   getExerciseHistory(input: GetExerciseHistoryInput): Promise<ReadResult>;
   getAlternatives(input: GetAlternativesInput): Promise<ReadResult>;
+  /** Builds a chart for this message (one per message); the flow sends it after the reply. */
+  renderChart(input: RenderChartInput): Promise<ReadResult>;
   stageSaveMemory(input: SaveMemoryInput): Promise<StageResult>;
   stageReadiness(input: LogReadinessInput): Promise<StageResult>;
   stageBodyweight(input: LogBodyweightInput): Promise<StageResult>;
@@ -574,7 +593,10 @@ export interface TokenUsage {
 
 /** Usage storage, injected into the AI loop (usage_logs in production). */
 export interface UsageStore {
+  /** Weighted tokens (see `countedTokens`) for today and the calendar month, Rome dates. */
   totals(now: Date): Promise<{ day: number; month: number }>;
+  /** Weighted tokens and voice seconds for the Rome Mon-Sun week containing `now`. */
+  weekTotals(now: Date): Promise<{ tokens: number; sttSeconds: number }>;
   record(usage: TokenUsage, now: Date): Promise<void>;
   /** Voice seconds transcribed today (Europe/Rome date). */
   sttSecondsToday(now: Date): Promise<number>;
@@ -602,4 +624,4 @@ export type IntentResult =
       /** Read-tool results as the model saw them, in call order. */
       reads: ReadRecord[];
     }
-  | { kind: "budget_reached" };
+  | { kind: "budget_reached"; cap: BudgetCap };

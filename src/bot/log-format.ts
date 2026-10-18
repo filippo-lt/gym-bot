@@ -4,6 +4,7 @@
  */
 import { InlineKeyboard } from "grammy";
 import { DateTime } from "luxon";
+import type { BudgetCap } from "../ai/budget.js";
 import { APP_TIMEZONE } from "../config/constants.js";
 import { trainingDate } from "../domain/calendar.js";
 import { classBreakdown } from "../logging/class-moves.js";
@@ -58,8 +59,11 @@ export const HELP_TEXT = [
   "/class — log Thursday's class",
   "/plan — week, phases and next deload",
   "/history — last sessions of an exercise, e.g. /history squat",
+  "/chart — progress chart, e.g. /chart squat or /chart volume",
   "/undo — remove your last log",
   "/memory — what I remember about you",
+  "/usage — AI and voice usage",
+  "/export — backup of all your data",
   "/help — this message",
   "",
   "Just tell me what you did, for example:",
@@ -85,15 +89,30 @@ export const HELP_TEXT = [
 export const TEXT_ONLY = "I can read text, voice notes and class board photos.";
 export const VOICE_NOT_CONFIGURED = "Voice isn't configured yet. Text still works.";
 export const VOICE_TOO_LONG = "That voice note is too long. Please keep it under 2 minutes.";
-export const VOICE_BUDGET = "Voice budget reached. Text still works.";
+/** Voice cap reached; `usedSeconds` is what was used today, shown capped at the limit. */
+export function voiceBudgetText(usedSeconds: number, capSeconds: number): string {
+  const capMin = Math.round(capSeconds / 60);
+  const usedMin = Math.min(capMin, Math.round(usedSeconds / 60));
+  return `Voice budget reached (${usedMin} of ${capMin} min today). Resets at midnight (Rome). Typing still works.`;
+}
 export const VOICE_BLANK = "I couldn't hear that. Please try again or type it.";
-export const VOICE_FAILED = "Sorry, I couldn't transcribe that. Please try again or type it.";
 export const BOARD_UNREADABLE =
   "I couldn't read a class board in that photo. Please type or say the class instead.";
-export const PHOTO_FAILED = "Sorry, I couldn't read that photo. Please try again.";
 export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
-export const BUDGET_REACHED = "AI budget reached. Commands still work.";
+/** Names the cap that was hit and when it resets (Rome time). */
+export function budgetReachedText(cap: BudgetCap, capTokens: number, now: Date): string {
+  const n = capTokens.toLocaleString("en-US");
+  if (cap === "day") {
+    return `AI daily budget reached (${n} tokens). Resets at midnight (Rome). Commands still work.`;
+  }
+  const reset = DateTime.fromJSDate(now, { zone: APP_TIMEZONE })
+    .plus({ months: 1 })
+    .startOf("month")
+    .setLocale("en")
+    .toFormat("d LLL");
+  return `AI monthly budget reached (${n} tokens). Resets on ${reset}. Commands still work.`;
+}
 export const NUMBER_GUARD_FALLBACK =
   "I can't answer that reliably — try /history, /session or /plan.";
 export const DIDNT_GET_IT = "Sorry, I didn't get that. Try /help.";

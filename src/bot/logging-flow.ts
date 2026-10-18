@@ -4,17 +4,22 @@
  * All numbers in replies are formatted by log-format.ts from DB or parsed values.
  */
 import { eq } from "drizzle-orm";
-import type { Context } from "grammy";
+import { type Context, InputFile } from "grammy";
+import { DateTime } from "luxon";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
-import { overTokenBudget } from "../ai/budget.js";
+import { type BudgetCap, overTokenBudget } from "../ai/budget.js";
+import { AI_BUDGET_MS } from "../ai/constants.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
 import { buildDynamicText } from "../ai/prompt.js";
+import { APP_TIMEZONE } from "../config/constants.js";
 import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { classify, describeFailure } from "../failures/classify.js";
+import { failureText, providerLabel } from "../failures/messages.js";
 import { classBreakdown } from "../logging/class-moves.js";
 import { appendMessage } from "../logging/conversation.js";
 import { describeSnapshot } from "../logging/describe.js";
@@ -60,6 +65,8 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import type { ChartBuilder } from "../queries/chart-tool.js";
+import { clampTimeout } from "../runtime/deadline.js";
 import {
   MAX_VOICE_SECONDS,
   type SpeechToText,
@@ -67,13 +74,14 @@ import {
   sttVocabularyPrompt,
 } from "../stt/stt.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
+import { trySendFallback } from "./chart-fallback.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
   BOARD_UNREADABLE,
-  BUDGET_REACHED,
   bandQuestion,
   bandSaved,
+  budgetReachedText,
   cancelledText,
   clarifyCard,
   classMovesCard,
@@ -97,7 +105,6 @@ import {
   memorySaved,
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
-  PHOTO_FAILED,
   type Place,
   removedText,
   replacedText,
@@ -105,14 +112,16 @@ import {
   stripMarkdown,
   summarize,
   VOICE_BLANK,
-  VOICE_BUDGET,
-  VOICE_FAILED,
   VOICE_NOT_CONFIGURED,
   VOICE_TOO_LONG,
   viewFromSnapshot,
+  voiceBudgetText,
 } from "./log-format.js";
+import { pickPhoto } from "./pick-photo.js";
+import { CHART_FAILED } from "./query-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
+import { formatUsage } from "./usage-format.js";
 
 export interface AiConfig {
   model: IntentModel;
@@ -133,6 +142,8 @@ export interface FlowDeps {
   now: () => Date;
   ai?: AiSource;
   media?: MediaSource;
+  /** Test seam: replace the chart builder used by the render_chart tool. */
+  buildChart?: ChartBuilder;
 }
 
 const VOICE_MAX_BYTES = 20 * 1024 * 1024;
@@ -146,7 +157,12 @@ export interface Flow {
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
+  usageCommand(ctx: Context): Promise<void>;
   skipCommand(ctx: Context): Promise<void>;
+}
+
+function capValue(ai: AiConfig, cap: BudgetCap): number {
+  return cap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
 }
 
 const PARTLY = "partly_understood";
@@ -644,36 +660,66 @@ export function createFlow(deps: FlowDeps): Flow {
     const context = await buildPromptContext(db, chatId, now);
     await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
+    const backend = createLoggingBackend(db, now, {
+      openPending: context.pending,
+      buildChart: deps.buildChart,
+    });
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
         text: voice ? `[voice] ${body}` : body,
         model: ai.model,
-        backend: createLoggingBackend(db, now, { openPending: context.pending }),
+        backend,
         usage: createUsageStore(db),
         promptStatic: staticBlock,
         promptContext: context,
         now,
         dailyTokenCap: ai.dailyTokenCap,
         monthlyTokenCap: ai.monthlyTokenCap,
+        budgetMs: clampTimeout(AI_BUDGET_MS),
       });
     } catch (error) {
       // Timeouts and API errors: tell the user once instead of burning the inbox retries.
-      console.error(`ai: intent failed (${error instanceof Error ? error.name : "error"})`);
-      const reply = "Sorry, I couldn't process that. Please try again.";
-      await send(ctx, reply);
+      const failure = classify(error, "ai");
+      console.error("ai: intent failed", describeFailure(failure));
+      const reply = failureText(failure, source);
+      await send(ctx, heard ? { text: heard + esc(reply), keyboard: [] } : reply);
       await appendMessage(db, chatId, "assistant", reply);
       return;
     }
 
     if (result.kind === "budget_reached") {
-      await send(ctx, BUDGET_REACHED);
+      await send(ctx, budgetReachedText(result.cap, capValue(ai, result.cap), now));
       return;
     }
 
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
     if (staged.length === 0) {
+      // The chart (if any) follows the reply, also when the number guard swapped the text.
+      const chart = backend.takeChart();
+      // A failed upload must not fail the update after the text went out (inbox retry).
+      const sendChart = async (prefix = "") => {
+        if (!chart) return;
+        try {
+          await ctx.replyWithPhoto(new InputFile(chart.png, "chart.png"), {
+            caption: prefix + chart.caption,
+            ...HTML,
+          });
+        } catch (error) {
+          console.error("chart: photo failed", error instanceof Error ? error.name : "");
+          await trySendFallback(() => send(ctx, CHART_FAILED));
+        }
+      };
+      // Nothing else to say: the photo and its caption are the whole answer.
+      const sendPhotoOnly = async () => {
+        if (!chart) return false;
+        const fits = heard.length + chart.caption.length <= 1000;
+        if (heard && !fits) await send(ctx, { text: heard.trimEnd(), keyboard: [] });
+        await sendChart(fits ? heard : "");
+        await appendMessage(db, chatId, "assistant", htmlToPlain(chart.caption));
+        return true;
+      };
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
         await send(ctx, {
@@ -686,6 +732,7 @@ export function createFlow(deps: FlowDeps): Flow {
           "assistant",
           html ? htmlToPlain(html) : NUMBER_GUARD_FALLBACK,
         );
+        await sendChart();
       };
       if (result.replyText && !result.truncated) {
         // Number guard (SPEC 3): a number the model wrote must come from this run's facts.
@@ -697,11 +744,13 @@ export function createFlow(deps: FlowDeps): Flow {
         ]);
         if (!checked.ok) {
           console.warn(`ai: reply rejected, ${checked.unknown.length} unknown number(s)`);
+          if (!fallback?.fallbackHtml && (await sendPhotoOnly())) return;
           await sendFallback(fallback?.fallbackHtml ?? null);
           return;
         }
         await send(ctx, { text: heard + esc(guardLength(reply, 3000)), keyboard: [] });
         await appendMessage(db, chatId, "assistant", reply);
+        await sendChart();
         return;
       }
       if (!result.truncated && fallback?.fallbackHtml) {
@@ -709,11 +758,13 @@ export function createFlow(deps: FlowDeps): Flow {
         await sendFallback(fallback.fallbackHtml);
         return;
       }
+      if (!result.truncated && (await sendPhotoOnly())) return;
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
         : DIDNT_GET_IT;
       await send(ctx, { text: heard + esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
+      await sendChart();
       return;
     }
 
@@ -803,24 +854,35 @@ export function createFlow(deps: FlowDeps): Flow {
     }
     const now = deps.now();
     const usage = createUsageStore(db);
-    if ((await usage.sttSecondsToday(now)) + note.duration > sttConfig.dailySecondsCap) {
-      await send(ctx, VOICE_BUDGET);
+    const usedSeconds = await usage.sttSecondsToday(now);
+    if (usedSeconds + note.duration > sttConfig.dailySecondsCap) {
+      await send(ctx, voiceBudgetText(usedSeconds, sttConfig.dailySecondsCap));
       return;
     }
+    let audio: Uint8Array;
+    try {
+      audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
+    } catch (error) {
+      const failure = classify(error, "download");
+      console.error("voice: download failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "voice"));
+      return;
+    }
+    // A DB failure here is not a transcription failure: let it throw (inbox retry path).
+    const staticBlock = await promptStatic();
     let transcript: string;
     try {
-      const staticBlock = await promptStatic();
-      const audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
       transcript = (
         await sttConfig.stt.transcribe(audio, {
           filename: "voice.ogg",
           prompt: sttVocabularyPrompt(staticBlock.catalog.map((e) => e.name)),
-          signal: AbortSignal.timeout(STT_TIMEOUT_MS),
+          signal: AbortSignal.timeout(clampTimeout(STT_TIMEOUT_MS)),
         })
       ).trim();
     } catch (error) {
-      console.error(`stt: failed (${error instanceof Error ? error.name : "error"})`);
-      await send(ctx, VOICE_FAILED);
+      const failure = classify(error, "stt");
+      console.error("stt: failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "voice", providerLabel(sttConfig.stt.name)));
       return;
     }
     await usage.recordStt(note.duration, sttConfig.stt.name, now);
@@ -835,8 +897,7 @@ export function createFlow(deps: FlowDeps): Flow {
   async function photo(ctx: Context): Promise<void> {
     const sizes = ctx.message?.photo;
     const chatId = ctx.chat?.id;
-    const largest = sizes?.at(-1);
-    if (!largest || chatId === undefined) return;
+    if (!sizes?.length || chatId === undefined) return;
     const ai = aiConfig();
     if (!ai) {
       await send(ctx, NO_AI_KEY);
@@ -845,24 +906,39 @@ export function createFlow(deps: FlowDeps): Flow {
     if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
     const now = deps.now();
     const usage = createUsageStore(db);
-    if (await overTokenBudget(usage, now, ai)) {
-      await send(ctx, BUDGET_REACHED);
+    const overCap = await overTokenBudget(usage, now, ai);
+    if (overCap) {
+      await send(ctx, budgetReachedText(overCap, capValue(ai, overCap), now));
+      return;
+    }
+    const picked = pickPhoto(sizes, PHOTO_MAX_BYTES);
+    if (!picked) {
+      await send(ctx, failureText({ kind: "file_too_large", detail: "photo" }, "photo"));
       return;
     }
     const caption = ctx.message?.caption?.trim() || undefined;
-    let board: Awaited<ReturnType<typeof readBoard>>;
+    let image: Uint8Array;
     try {
       if (!deps.media) throw new Error("no media source");
-      const image = await deps.media.download(largest.file_id, PHOTO_MAX_BYTES);
+      image = await deps.media.download(picked.file_id, PHOTO_MAX_BYTES);
+    } catch (error) {
+      const failure = classify(error, "download");
+      console.error("photo: download failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "photo"));
+      return;
+    }
+    let board: Awaited<ReturnType<typeof readBoard>>;
+    try {
       board = await readBoard({
         model: ai.model,
         image,
         caption,
-        signal: AbortSignal.timeout(BOARD_TIMEOUT_MS),
+        signal: AbortSignal.timeout(clampTimeout(BOARD_TIMEOUT_MS)),
       });
     } catch (error) {
-      console.error(`photo: failed (${error instanceof Error ? error.name : "error"})`);
-      await send(ctx, PHOTO_FAILED);
+      const failure = classify(error, "vision");
+      console.error("photo: vision failed", describeFailure(failure));
+      await send(ctx, failureText(failure, "photo"));
       return;
     }
     await usage.record(board.usage, now);
@@ -880,7 +956,7 @@ export function createFlow(deps: FlowDeps): Flow {
           kind: "log_class",
           input: { moves, heavy_groups: heavyGroups },
           date: thursdayOnOrBefore(trainingDate(now)),
-          photoFileId: largest.file_id,
+          photoFileId: picked.file_id,
           rawText: caption,
         },
       ],
@@ -936,6 +1012,34 @@ export function createFlow(deps: FlowDeps): Flow {
 
   async function memoryCommand(ctx: Context): Promise<void> {
     await send(ctx, memoryList(await listMemory(db)));
+  }
+
+  async function usageCommand(ctx: Context): Promise<void> {
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    const totals = await usage.totals(now);
+    const sttSecondsToday = await usage.sttSecondsToday(now);
+    const ai = aiConfig();
+    let sttCap: number | null = null;
+    try {
+      sttCap = deps.media?.stt?.().dailySecondsCap ?? null;
+    } catch {
+      // voice not configured: show the usage without a cap
+    }
+    await send(
+      ctx,
+      formatUsage({
+        date: DateTime.fromJSDate(now, { zone: APP_TIMEZONE }).toISODate() as string,
+        dayTokens: totals.day,
+        monthTokens: totals.month,
+        sttSecondsToday,
+        caps: {
+          day: ai?.dailyTokenCap ?? null,
+          month: ai?.monthlyTokenCap ?? null,
+          sttSeconds: sttCap,
+        },
+      }),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -1493,6 +1597,7 @@ export function createFlow(deps: FlowDeps): Flow {
     callback,
     undoCommand,
     memoryCommand,
+    usageCommand,
     skipCommand: skip.skipCommand,
   };
 }

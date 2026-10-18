@@ -9,7 +9,12 @@ import {
   turn,
 } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
-import { BUDGET_REACHED, EXPIRED, NUMBER_GUARD_FALLBACK, STALE } from "../../src/bot/log-format.js";
+import {
+  budgetReachedText,
+  EXPIRED,
+  NUMBER_GUARD_FALLBACK,
+  STALE,
+} from "../../src/bot/log-format.js";
 import { saveAlias } from "../../src/logging/memory.js";
 import { createPending } from "../../src/logging/pending.js";
 import type { StagedAction } from "../../src/logging/types.js";
@@ -564,7 +569,7 @@ describe("AI budget", () => {
     await sql`insert into usage_logs (date, model, input_tokens, output_tokens) values ('2026-09-28', 'm', 900, 200)`;
     const t = setup([tool("log_sets", squatLog()), ok], { daily: 1000, monthly: 1_000_000 });
     await t.say("3x8 squat 60");
-    expect(t.texts()).toEqual([BUDGET_REACHED]);
+    expect(t.texts()).toEqual([budgetReachedText("day", 1000, MON)]);
     expect(t.model.requests).toHaveLength(0);
     expect(await count("log_groups")).toBe(0);
   });
@@ -1520,5 +1525,61 @@ describe("class card with moves", () => {
     await t2.tap(`cm:${p.id}:4:ok`);
     expect(t2.answers().at(-1)?.payload.text).toBe(EXPIRED);
     expect(await count("class_logs")).toBe(0);
+  });
+});
+
+describe("/usage", () => {
+  it("shows today and month against the caps", async () => {
+    await sql`insert into usage_logs (date, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens) values ('2026-09-28', 'm', 1000, 500, 10000, 400)`;
+    await sql`insert into usage_logs (date, model, input_tokens, output_tokens, stt_seconds) values ('2026-09-28', 'stt', 0, 0, 240)`;
+    const t = setup([], { daily: 10_000, monthly: 100_000 });
+    await t.say("/usage");
+    expect(t.texts()).toEqual([
+      [
+        "Usage on 28 Sep:",
+        "AI today: 3,000 of 10,000 tokens (30%)",
+        "AI this month: 3,000 of 100,000 tokens (3%)",
+        "Voice today: 4 min",
+      ].join("\n"),
+    ]);
+  });
+
+  it("replies without caps when AI and voice are not configured", async () => {
+    const calls: Call[] = [];
+    const transformer: Transformer = async (_prev, method, payload) => {
+      calls.push({ method, payload: payload as Record<string, unknown> });
+      if (method === "sendMessage") {
+        return {
+          ok: true,
+          result: {
+            message_id: 1,
+            date: 0,
+            chat: CHAT_OBJ,
+            text: (payload as { text: string }).text,
+          },
+        } as never;
+      }
+      return { ok: true, result: true } as never;
+    };
+    const bot = createBot({ db, now: () => MON, token: "123:abc", botInfo, transformer });
+    await bot.handleUpdate({
+      update_id: 9000,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: CHAT_OBJ,
+        from: FROM,
+        text: "/usage",
+        entities: [{ type: "bot_command", offset: 0, length: 6 }],
+      },
+    });
+    expect(calls.filter((c) => c.method === "sendMessage").map((c) => c.payload.text)).toEqual([
+      [
+        "Usage on 28 Sep:",
+        "AI today: 0 tokens",
+        "AI this month: 0 tokens",
+        "Voice today: 0 min",
+      ].join("\n"),
+    ]);
   });
 });

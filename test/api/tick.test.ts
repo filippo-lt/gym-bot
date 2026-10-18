@@ -10,7 +10,7 @@ const execute = vi.fn(async () => []);
 const chatsWithOpenRows = vi.fn(async () => [11, 22]);
 
 vi.mock("../../src/db/client.js", () => ({ getDb: () => ({ execute }) }));
-vi.mock("../../src/runtime/inbox.js", () => ({ chatsWithOpenRows }));
+vi.mock("../../src/runtime/inbox.js", () => ({ chatsWithOpenRows, purgeOldRows: async () => 0 }));
 vi.mock("../../src/runtime/process-chat.js", () => ({ processChat }));
 const runDueJobs = vi.fn(async () => [] as unknown[]);
 vi.mock("../../src/jobs/runner.js", () => ({ runDueJobs }));
@@ -21,6 +21,7 @@ vi.mock("../../src/runtime/telegram-runtime.js", () => ({
     handle: async () => {},
     sendTyping: async () => {},
     notifyFailed: async () => {},
+    notifyRetrying: async () => {},
   }),
 }));
 
@@ -49,12 +50,18 @@ describe("GET /api/cron/tick", () => {
   });
 
   it("200 and sweeps every chat with open rows", async () => {
+    const before = Date.now();
     const res = await GET(get({ authorization: `Bearer ${secret}` }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; swept: { chatId: number }[] };
     expect(body.ok).toBe(true);
     expect(body.swept.map((s) => s.chatId)).toEqual([11, 22]);
     expect(processChat).toHaveBeenCalledTimes(2);
+    for (const [deps] of processChat.mock.calls as unknown as [{ startedAt: number }][]) {
+      expect(typeof deps.startedAt).toBe("number");
+      expect(deps.startedAt).toBeLessThanOrEqual(Date.now());
+      expect(deps.startedAt).toBeGreaterThanOrEqual(before);
+    }
     expect(execute).toHaveBeenCalled();
   });
 

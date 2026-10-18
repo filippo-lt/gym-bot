@@ -61,6 +61,7 @@ export async function POST(request: Request): Promise<Response> {
             chatId: chat,
             ...handlers,
             deadline: start + STOP_TAKING_AT_S * 1000,
+            startedAt: start,
           });
           console.log(
             `telegram: chat processed=${summary.processed} failed=${summary.failed} stop=${summary.stoppedReason}`,
