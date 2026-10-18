@@ -244,3 +244,32 @@ describe("far-off reference (SPEC 5.6d)", () => {
     expect(farOffLoadRef(a)).toBeNull();
   });
 });
+
+describe("skip_items policy", () => {
+  const skip = (priority: "High" | "PRIMARY", whole = false): StagedAction => ({
+    kind: "skip_items",
+    sessionDate: "2026-10-19",
+    whole,
+    items: [{ plannedItemId: 1, planName: "Bulgarian split squat", priority }],
+  });
+
+  it("writes a single non-PRIMARY skip directly", () => {
+    expect(decidePolicy([skip("High")])).toEqual({ mode: "direct" });
+  });
+
+  it("confirms a PRIMARY skip and the whole session", () => {
+    expect(reasons([skip("PRIMARY")])).toEqual(["skip_primary"]);
+    expect(reasons([skip("High", true)])).toEqual(["skip_session"]);
+    expect(reasons([skip("PRIMARY", true)])).toEqual(["skip_session", "skip_primary"]);
+  });
+
+  it("confirms a skip on another day and an ambiguous match", () => {
+    const a = skip("High") as Extract<StagedAction, { kind: "skip_items" }>;
+    expect(reasons([{ ...a, otherDay: true }])).toEqual(["not_in_today"]);
+    expect(reasons([{ ...a, ambiguous: true }])).toEqual(["skip_ambiguous"]);
+  });
+
+  it("confirms a skip together with another write", () => {
+    expect(reasons([skip("High"), logAction()])).toEqual(["multiple_writes"]);
+  });
+});

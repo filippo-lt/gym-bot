@@ -114,6 +114,12 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "set_band_kg":
       out.push("equipment");
       break;
+    case "skip_items":
+      if (a.otherDay) out.push("not_in_today");
+      if (a.whole) out.push("skip_session");
+      if (a.items.some((i) => i.priority === "PRIMARY")) out.push("skip_primary");
+      if (a.ambiguous) out.push("skip_ambiguous");
+      break;
     case "clarify_exercise":
     case "log_readiness":
     case "log_bodyweight":

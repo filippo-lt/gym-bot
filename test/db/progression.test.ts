@@ -4,6 +4,8 @@
  */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { seedPlan } from "../../src/db/seed-plan.js";
+import { executeActions } from "../../src/logging/execute.js";
+import { skipAction } from "../../src/logging/skip.js";
 import type { CatalogExercise, ParsedItem } from "../../src/plan-import/types.js";
 import { systemLoadOf } from "../../src/progression/e1rm.js";
 import {
@@ -344,6 +346,32 @@ describe("break rule on real history", () => {
     const withBreak = await ensureSuggestions(db, "2026-10-26");
     const labels = labelsOf(withBreak as NonNullable<typeof withBreak>);
     expect(labels).toContain("back_after_break");
+  });
+
+  it("explicit /skip of two Mondays in a row counts as not logged (break applies)", async () => {
+    await logMondays([1, 4], {});
+    for (const w of [2, 3]) {
+      const r = await executeActions(
+        db,
+        `u:${9000 + w}`,
+        [
+          skipAction(MONDAYS[w - 1] as string, false, [
+            {
+              plannedItemId: await itemId(`w${pad(w)}-mon-03-0`),
+              planName: "Bench press",
+              priority: "High",
+            },
+          ]),
+        ],
+        { now: new Date(`${MONDAYS[w - 1]}T08:00:00Z`) },
+      );
+      expect(r.status).toBe("done");
+    }
+    expect(await sql`select 1 from session_items where status = 'skipped'`).toHaveLength(2);
+    // A skip is not training: it freezes no readiness and writes no user_state cache.
+    expect(await sql`select 1 from readiness_logs`).toHaveLength(0);
+    const r = await ensureSuggestions(db, "2026-10-26");
+    expect(labelsOf(r as NonNullable<typeof r>)).toContain("back_after_break");
   });
 
   it("deload weeks never count as misses", async () => {

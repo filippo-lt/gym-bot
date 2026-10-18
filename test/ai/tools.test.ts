@@ -4,7 +4,7 @@ import { executeTool, TOOLS } from "../../src/ai/tools.js";
 import { fakeBackend, promptContext, promptStatic } from "./helpers.js";
 
 describe("tool schemas", () => {
-  it("has eleven tools, each a top-level object schema without $schema", () => {
+  it("has twelve tools, each a top-level object schema without $schema", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       "get_session",
       "get_exercise_history",
@@ -12,6 +12,7 @@ describe("tool schemas", () => {
       "log_sets",
       "edit_last_entry",
       "undo_last_entry",
+      "skip_items",
       "save_memory",
       "log_readiness",
       "log_bodyweight",
@@ -185,5 +186,29 @@ describe("buildSystem", () => {
     expect(a[0]?.text).toContain(
       "When an unsaved request is pending, corrections restate it with log_sets; edit_last_entry and undo_last_entry act only on saved logs.",
     );
+  });
+});
+
+describe("skip_items input", () => {
+  const run = (input: unknown) => executeTool("skip_items", input, fakeBackend());
+
+  it("stages an exercise or the whole session", async () => {
+    const one = await run({ exercise: { said: "bulgarian" }, day: "mon" });
+    expect(one.isError).toBe(true); // the fake backend has nothing to skip, but the input passed
+    expect(one.toolResultContent).toBe("nothing to skip");
+    expect((await run({ whole_session: true })).toolResultContent).toBe("nothing to skip");
+  });
+
+  it("needs exactly one of exercise or whole_session", async () => {
+    for (const bad of [
+      {},
+      { whole_session: false },
+      { exercise: { said: "x" }, whole_session: true },
+      { whole_session: true, day: "sat" },
+      { exercise: { said: "x" }, extra: 1 },
+    ]) {
+      const r = await run(bad);
+      expect(r.toolResultContent, JSON.stringify(bad)).toContain("Invalid input for skip_items");
+    }
   });
 });

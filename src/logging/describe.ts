@@ -65,6 +65,10 @@ export function describeAction(a: StagedAction): string {
       return a.input.heavy_groups.length
         ? `Thursday class: heavy ${a.input.heavy_groups.join(", ")}`
         : "Thursday class: not heavy";
+    case "skip_items":
+      return a.whole
+        ? `skip the whole session (${dateLabel(a.sessionDate)})`
+        : `skip ${a.items.map((i) => i.planName).join(", ")}`;
   }
 }
 

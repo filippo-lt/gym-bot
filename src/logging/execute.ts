@@ -18,6 +18,7 @@ import { loadFrozenLevel } from "../progression/load-history.js";
 import { ensureSuggestions, freezeReadiness, refreshUserState } from "../progression/store.js";
 import type { Db, Q, Tx } from "./db.js";
 import { groupSnapshot, storedSuggestion } from "./groups.js";
+import { writeSkip } from "./skip.js";
 import type {
   BeforeGroup,
   GroupSnapshot,
@@ -424,6 +425,8 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
         previousGroups: prev?.heavy ?? null,
       };
     }
+    case "skip_items":
+      return writeSkip(tx, a);
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");
   }

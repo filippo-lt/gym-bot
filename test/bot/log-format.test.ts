@@ -24,6 +24,7 @@ import {
   UNKNOWN_COMMAND,
 } from "../../src/bot/log-format.js";
 import { HISTORY_UNKNOWN, HISTORY_USAGE, SESSION_USAGE } from "../../src/bot/query-format.js";
+import { skipEcho, skipList, skipUndone } from "../../src/bot/skip-format.js";
 import { decidePolicy } from "../../src/logging/policy.js";
 import type { ResolvedEntry, StagedAction } from "../../src/logging/types.js";
 import { editInput, entry, logAction, logInput, snapshot } from "../logging/helpers.js";
@@ -436,5 +437,94 @@ describe("memory card", () => {
       input: { kind: "limitation", content: "no dips" },
     };
     expect(reasonPhrases([a], ["memory"])).toEqual(["new memory item"]);
+  });
+});
+
+describe("skip texts", () => {
+  const skipAct = (priority: "High" | "PRIMARY", whole = false): StagedAction => ({
+    kind: "skip_items",
+    sessionDate: "2026-10-19",
+    whole,
+    items: [
+      { plannedItemId: 1, planName: "Bulgarian split squat", priority },
+      ...(whole ? [{ plannedItemId: 2, planName: "Row <x>", priority: "High" as const }] : []),
+    ],
+  });
+
+  it("the confirm card asks 'Skip this?' with the item and why", () => {
+    const m = confirmCard({
+      id: 4,
+      kind: "confirm",
+      actions: [skipAct("PRIMARY")],
+      reasons: ["skip_primary"],
+    });
+    expect(m.text).toBe(
+      "Skip this?\n• Bulgarian split squat (PRIMARY)\n\nWhy I'm asking: skipping a PRIMARY item",
+    );
+    expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["pa:4:ok", "pa:4:ed", "pa:4:no"]);
+  });
+
+  it("the whole-session card lists every item, escaped", () => {
+    const m = confirmCard({
+      id: 4,
+      kind: "confirm",
+      actions: [skipAct("High", true)],
+      reasons: ["skip_session"],
+    });
+    expect(m.text).toContain("• Whole session (Mon 19 Oct): Bulgarian split squat, Row &lt;x&gt;");
+    expect(m.text).toContain("skipping the whole session");
+  });
+
+  it("a mixed request keeps 'Save this?'", () => {
+    const m = confirmCard({
+      id: 4,
+      kind: "confirm",
+      actions: [skipAct("PRIMARY"), logAction()],
+      reasons: ["multiple_writes"],
+    });
+    expect(m.text.startsWith("Save this?")).toBe(true);
+  });
+
+  it("list, echo and undone texts", () => {
+    const list = skipList("2026-10-19", [
+      { plannedItemId: 5, planName: "Squat", priority: "PRIMARY" },
+      { plannedItemId: 6, planName: "Curl", priority: "Low" },
+    ]);
+    expect(list.text).toBe("Skip what? (Mon 19 Oct)");
+    expect(list.keyboard.flat()).toEqual([
+      { text: "⭐ Squat", data: "sk:20261019:5" },
+      { text: "Curl", data: "sk:20261019:6" },
+      { text: "Whole session", data: "sk:20261019:all" },
+    ]);
+    const item = (planName: string) => ({ plannedItemId: 1, planName, before: null });
+    const one = skipEcho(
+      { kind: "skip", sessionDate: "2026-10-19", whole: false, items: [item("A")] },
+      "u:9",
+      0,
+    );
+    expect(one).toEqual({
+      text: "Skipped: A",
+      keyboard: [[{ text: "Undo", data: "us:u:9:0" }]],
+    });
+    const all = skipEcho(
+      { kind: "skip", sessionDate: "2026-10-19", whole: true, items: [item("A"), item("B")] },
+      "p:3",
+      0,
+    );
+    expect(all.text).toBe("Skipped the whole session (Mon 19 Oct): A, B");
+    expect(
+      skipEcho({ kind: "skip", sessionDate: "2026-10-19", whole: false, items: [] }, "u:9", 0),
+    ).toEqual({ text: "Nothing skipped: already done or skipped.", keyboard: [] });
+    expect(skipUndone(["A", "B"])).toEqual({ text: "Skip undone: A, B", keyboard: [] });
+  });
+
+  it("explains an ambiguous skip", () => {
+    expect(reasonPhrases([skipAct("High")], ["skip_ambiguous"])).toEqual([
+      "more than one planned item matches",
+    ]);
+  });
+
+  it("help lists /skip", () => {
+    expect(HELP_TEXT).toContain("/skip");
   });
 });

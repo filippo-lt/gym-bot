@@ -19,6 +19,7 @@ import type {
   PromptStatic,
   SaveMemoryInput,
   SetBandKgInput,
+  SkipItemsInput,
   StagedAction,
   UsageStore,
 } from "../../src/logging/types.js";
@@ -37,7 +38,8 @@ type Call =
   | { tool: "log_readiness"; input: LogReadinessInput }
   | { tool: "log_bodyweight"; input: LogBodyweightInput }
   | { tool: "log_class"; input: LogClassInput }
-  | { tool: "set_band_kg"; input: SetBandKgInput };
+  | { tool: "set_band_kg"; input: SetBandKgInput }
+  | { tool: "skip_items"; input: SkipItemsInput };
 
 function recordingBackend() {
   const calls: Call[] = [];
@@ -254,6 +256,10 @@ function recordingBackend() {
         preview: "Staged removal of the last Bench press entry.",
       };
     },
+    async stageSkip(input) {
+      calls.push({ tool: "skip_items", input });
+      return { ok: false, error: "not used in this golden set" };
+    },
   };
   return { backend, calls };
 }
@@ -356,6 +362,7 @@ const WRITE_TOOLS = [
   "log_sets",
   "edit_last_entry",
   "undo_last_entry",
+  "skip_items",
   "save_memory",
   "log_readiness",
   "log_bodyweight",
