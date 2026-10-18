@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deloadAppliedText,
   deloadProposalText,
+  droppedOverridesText,
   swapCardText,
   swapDaysQuestion,
   swapScopeQuestion,
@@ -154,5 +155,24 @@ describe("deload proposal text", () => {
     expect(
       deloadAppliedText({ insertedWeek: 6, droppedWeek: null, mondayDate: "2026-11-02" }),
     ).toBe("Done. From Mon 2 Nov the deload is W6.");
+  });
+  it("says which one-off swaps no longer apply", () => {
+    const dropped = [
+      { sessionDate: "2026-10-20", replacedName: "Face pull", replacementName: "Row" },
+    ];
+    expect(droppedOverridesText(dropped)).toBe(
+      "Your one-off swap on Tue 20 Oct (Face pull → Row) no longer applies.",
+    );
+    expect(droppedOverridesText([])).toBe("");
+    expect(
+      deloadAppliedText({
+        insertedWeek: 6,
+        droppedWeek: null,
+        mondayDate: "2026-11-02",
+        droppedOverrides: dropped,
+      }),
+    ).toBe(
+      "Done. From Mon 2 Nov the deload is W6.\nYour one-off swap on Tue 20 Oct (Face pull → Row) no longer applies.",
+    );
   });
 });

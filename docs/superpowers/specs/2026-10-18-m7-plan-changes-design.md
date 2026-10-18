@@ -50,6 +50,8 @@ Why a full copy and not a delta table: every reader already reads "items of vers
 
 On read, an override replaces `replaced_exercise_id` with `replacement_exercise_id` inside that item's options for that date only (an OR item keeps its other option; if the replacement is already an option, it is not listed twice). The planned item id does not change, so logs, session items and suggestions keep working.
 
+**Re-point rule.** Item ids are new in every version, so `createVersion` moves each override dated on/after the new `effective_from` (and sitting on the base version) to the new item on the same date whose options contain the replaced exercise, preferring the same `item_key`. No such item (e.g. a deload insert changed that day) → the override is deleted and returned as `droppedOverrides`; the reply adds "Your one-off swap on <date> (<A> → <B>) no longer applies." Undo of a version re-points overrides on its items back to the previous version by the same rule instead of blocking.
+
 ### Swapping OR items (Claude's call)
 
 The swap replaces only the named option ("swap hack squat for leg press" on "Squat / hack squat" → "Squat / leg press"). Same rule for overrides and versions.
@@ -151,8 +153,8 @@ swap_exercise({
 
 Everything is computed at ✅ time, not card time (independent review): the base version is the latest version *at ✅*, and `effective_from` uses "tomorrow" *at ✅* (a card confirmed after the 03:00 boundary moves with the day).
 
-- **Only today:** insert a `session_overrides` row for (reference date, planned item, replaced → replacement). If the item on that date already has a log group for the replaced exercise, refuse: "You already logged face pulls today; nothing changed." Several items on that day with the exercise (rare) → all of them.
-- **Rest of plan:** `effective_from = max(tomorrow, reference date)`. Create the new version as a full copy of the latest version, swapping the option on every item dated `>= effective_from` that has the exercise as an option (restricted to the chosen weekday for "this day only"). If the reference date is today and today's item has no log for the replaced exercise yet, also insert today's override, so the swap covers today too.
+- **Only today:** refuse "This card is for <date>, which has passed; nothing changed." when the reference date is before today at ✅. Re-read the reference date's items at ✅ (the card's ids may belong to an older version); none holding the exercise → "The plan changed since the card; ask again." Insert a `session_overrides` row for (reference date, planned item, replaced → replacement). If the item on that date already has a log group for the replaced exercise, refuse: "You already logged face pulls today; nothing changed." Several items on that day with the exercise (rare) → all of them.
+- **Rest of plan:** with no later session that has the exercise, refuse "<A> isn't in a later session; use only today." (at staging and again at ✅). `effective_from = max(tomorrow, reference date)`. Create the new version as a full copy of the latest version, swapping the option on every item dated `>= effective_from` that has the exercise as an option (restricted to the chosen weekday for "this day only"). If the reference date is today and today's item has no log for the replaced exercise yet, also insert today's override, so the swap covers today too.
 - Create the new exercise first when `replacement.new` is set (slug unique; if it exists by then, reuse it).
 - Reply: `Saved. <same change line>` with an **Undo** button (`up:<sourceKey>:<idx>`, independent review; matches the `uw:`/`us:` undo pattern).
 - **Concurrency:** the version number is `max(version)+1` inside the transaction; the `(plan_id, version)` unique constraint turns a race into a retry-safe failure ("plan changed meanwhile, try again").

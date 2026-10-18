@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (M7 merged to dev, deploying; M6 live; M8 and M9 live tests pending)._
+_Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pending)._
 
 ## Milestones (SPEC §8)
 
@@ -64,11 +64,11 @@ _Last updated: 18 Oct 2026 (M7 merged to dev, deploying; M6 live; M8 and M9 live
   - no migration, one new optional env var (`RESTORE_DATABASE_URL`, local use only)
   - decisions: the user left the design to Claude; an independent agent answered the open design questions and its answers were adopted (`docs/superpowers/specs/2026-10-18-m9-design-qa.md`). Known minor issue "photo over 3.5 MB" is fixed (a smaller Telegram size is used when one fits); the others stay
   - design and plan: `docs/superpowers/specs/2026-10-18-m9-hardening-design.md`, `docs/superpowers/plans/2026-10-18-m9-hardening.md`
-- **M7 (merged to dev, deploying):**
-  - swaps: `/swap` or chat ("swap face pulls for band pull-aparts only today"). Scope is Only today (a one-off override) or Rest of plan (a new plan version, from tomorrow). An exercise on several weekdays asks "this weekday only / every day". Always a card, saved on ✅, with Undo until the change is used
+- **M7 (PR open to dev):**
+  - swaps: `/swap` or chat ("swap face pulls for band pull-aparts only today"). Scope is Only today (a one-off override) or Rest of plan (a new plan version, from tomorrow). A one-off swap on a later day moves to the new version's items (or is dropped with a message). An exercise on several weekdays asks "this weekday only / every day". Always a card, saved on ✅, with Undo until the change is used
   - plan versions are full copies; `planDayOn` is the one reader of the plan for a date; the week count comes from `plan_weeks` rows. Past logs and suggestions are never changed
   - deload earlier: when two RED sessions (or low recovery) happen in a row, a separate card offers to move the deload one week earlier; ✅ writes a new version. Asked once until the fatigue signal clears
-  - migration 0007 (`plan_versions`, `plan_weeks`, `session_overrides`, `proposals` changes); history import now refuses rows dated after a later version starts
+  - migration 0007: the `session_overrides` table (RLS, 2 indexes) and `plan_versions.change`; no change to `proposals`. History import now refuses rows dated after a later version starts
   - decisions: the user left the design to Claude; an independent Opus review answered 17 open questions and all answers were adopted. Rulings: "only today" means the next session that has the exercise, named on the card; RIR is recomputed for the new option list; a failed or refused swap says so in plain words, nothing is staged
   - design and plan: `docs/superpowers/specs/2026-10-18-m7-plan-changes-design.md`, `docs/superpowers/plans/2026-10-18-m7-plan-changes.md`; demo: `docs/m7-demo.md`
 
@@ -107,7 +107,6 @@ _Last updated: 18 Oct 2026 (M7 merged to dev, deploying; M6 live; M8 and M9 live
 - The read-only engine run on real data showed RDL and lat pulldown as "baseline, tell me your weight". The imported week 1 has no per-set reps or RIR, so the first logged sessions set the baseline.
 
 **Known minor issues (not blocking):**
-- M7: a refused swap plus a staged log in one message shows only the generic "Part of your message couldn't be saved.", not the swap reason.
 - M7: undo of an "only today" swap leaves the suggestion rows made for the replacement (harmless; unlogged rows are cleaned on the next `/today`).
 - M7: the morning message does not send the deload card yet; M8's job can call `deloadProposal`.
 - M7: two concurrent `/today` could send two deload cards (single user, chat lease makes it very unlikely).
