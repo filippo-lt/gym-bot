@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pending)._
+_Last updated: 18 Oct 2026 (M7 deployed via #16/#17, migration 0007 applied, health OK; M6 live; M7, M8 and M9 live tests pending)._
 
 ## Milestones (SPEC §8)
 
@@ -16,7 +16,7 @@ _Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pen
 | 4 | Queries (`/next`, `/session`, `/history`, `/plan`, history/alternatives in chat, memory, number guard) | live | #8 |
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | live (voice and photo live-tested 18 Oct) | #12 |
-| 7 | Plan changes (swaps with scope, plan versions, deload earlier) | merged to dev, deploying | |
+| 7 | Plan changes (swaps with scope, plan versions, deload earlier) | deployed 18 Oct, live test pending | #16, #17 |
 | 8 | Morning message + charts | deployed 18 Oct, live test pending | #13, #15 |
 | 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | deployed 18 Oct, live test pending | #14, #15 |
 
@@ -64,11 +64,11 @@ _Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pen
   - no migration, one new optional env var (`RESTORE_DATABASE_URL`, local use only)
   - decisions: the user left the design to Claude; an independent agent answered the open design questions and its answers were adopted (`docs/superpowers/specs/2026-10-18-m9-design-qa.md`). Known minor issue "photo over 3.5 MB" is fixed (a smaller Telegram size is used when one fits); the others stay
   - design and plan: `docs/superpowers/specs/2026-10-18-m9-hardening-design.md`, `docs/superpowers/plans/2026-10-18-m9-hardening.md`
-- **M7 (PR open to dev):**
+- **M7 (#16, deployed 18 Oct via #17):**
   - swaps: `/swap` or chat ("swap face pulls for band pull-aparts only today"). Scope is Only today (a one-off override) or Rest of plan (a new plan version, from tomorrow). A one-off swap on a later day moves to the new version's items (or is dropped with a message). An exercise on several weekdays asks "this weekday only / every day". Always a card, saved on ✅, with Undo until the change is used
   - plan versions are full copies; `planDayOn` is the one reader of the plan for a date; the week count comes from `plan_weeks` rows. Past logs and suggestions are never changed
   - deload earlier: when two RED sessions (or low recovery) happen in a row, a separate card offers to move the deload one week earlier; ✅ writes a new version. Asked once until the fatigue signal clears
-  - migration 0007: the `session_overrides` table (RLS, 2 indexes) and `plan_versions.change`; no change to `proposals`. History import now refuses rows dated after a later version starts
+  - migration 0007 (applied to production 18 Oct): the `session_overrides` table (RLS, 2 indexes) and `plan_versions.change`; no change to `proposals`. Health OK and `telegram:setup` run after deploy (`/swap` in the command menu). History import now refuses rows dated after a later version starts
   - decisions: the user left the design to Claude; an independent Opus review answered 17 open questions and all answers were adopted. Rulings: "only today" means the next session that has the exercise, named on the card; RIR is recomputed for the new option list; a failed or refused swap says so in plain words, nothing is staged
   - design and plan: `docs/superpowers/specs/2026-10-18-m7-plan-changes-design.md`, `docs/superpowers/plans/2026-10-18-m7-plan-changes.md`; demo: `docs/m7-demo.md`
 
