@@ -45,9 +45,24 @@ describe("classify", () => {
     expect(classify(named("AbortError"), "stt").kind).toBe("stt_timeout");
     expect(classify(new Error("boom"), "stt").kind).toBe("stt_failed");
   });
+  it("a bare socket code is unknown; through Drizzle or alongside a PostgresError it is db", () => {
+    expect(classify(named("Error", { code: "ECONNRESET" })).kind).toBe("unknown");
+    expect(classify(named("Error", { code: "ETIMEDOUT" }), "ai").kind).toBe("unknown");
+    expect(
+      classify(named("DrizzleQueryError", { cause: named("Error", { code: "ECONNRESET" }) })).kind,
+    ).toBe("db");
+    expect(
+      classify(
+        named("Error", {
+          cause: named("PostgresError", { cause: named("Error", { code: "ECONNREFUSED" }) }),
+        }),
+      ).kind,
+    ).toBe("db");
+  });
+
   it("PostgresError and connection codes are db", () => {
     expect(classify(named("PostgresError", { code: "23505" })).kind).toBe("db");
-    expect(classify(named("Error", { code: "ECONNRESET" })).kind).toBe("db");
+    expect(classify(named("Error", { code: "CONNECTION_CLOSED" })).kind).toBe("db");
     expect(classify(named("Error", { code: "CONNECT_TIMEOUT" })).kind).toBe("db");
   });
   it("unknown otherwise", () => {

@@ -32,7 +32,7 @@ describe("backupSummary", () => {
       caps: { tokens: 200000, sttSeconds: 1800 },
     });
     expect(t).toContain(
-      "This week: 45,678 tokens, 12 min voice.\nDaily caps: 200,000 tokens, 30 min voice.",
+      "This week: 45,678 AI tokens, 12 min voice.\nLimits per day: 200,000 tokens, 30 min voice.",
     );
   });
 
@@ -42,7 +42,7 @@ describe("backupSummary", () => {
       sttSeconds: 60,
       caps: { tokens: null, sttSeconds: null },
     });
-    expect(t).toContain("This week: 5 tokens, 1 min voice.");
-    expect(t).not.toContain("Daily caps");
+    expect(t).toContain("This week: 5 AI tokens, 1 min voice.");
+    expect(t).not.toContain("Limits per day");
   });
 });

@@ -4,7 +4,7 @@ import { classify, describeFailure, type Failure } from "../failures/classify.js
 import { runWithDeadline } from "./deadline.js";
 import { claim, markDone, markRetryOrFailed, oldestOpen, resetStuck } from "./inbox.js";
 import { acquireOrRenew, release } from "./lease.js";
-import { hardEndMs, inputKind, MIN_TIME_LEFT_MS } from "./row-budget.js";
+import { FIRST_ROW_GRACE_MS, hardEndMs, inputKind, MIN_TIME_LEFT_MS } from "./row-budget.js";
 
 export type StoppedReason =
   | "lease_held"
@@ -89,10 +89,11 @@ async function runRound(
         summary.stoppedReason = "busy";
         return;
       }
-      // The first row of an invocation always runs (its timeouts are clamped); later rows
-      // that cannot fit wait for the next invocation, attempts untouched.
+      // The first row runs when the invocation is still young (its timeouts are clamped); a
+      // later row, or a first row reached late, that cannot fit waits for the next
+      // invocation, attempts untouched.
       if (
-        invocation.handlerRuns > 0 &&
+        (invocation.handlerRuns > 0 || now() - startedAt >= FIRST_ROW_GRACE_MS) &&
         hardEndMs(startedAt) - now() < MIN_TIME_LEFT_MS[inputKind(row.payload)]
       ) {
         summary.stoppedReason = "deadline";

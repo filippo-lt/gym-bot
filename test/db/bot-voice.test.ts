@@ -334,6 +334,16 @@ describe("voice notes", () => {
     expect(JSON.stringify(err.mock.calls)).toContain("ai_timeout");
   });
 
+  it("the AI loop budget is clamped to the invocation deadline", async () => {
+    const t = setup([ok]);
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    await runWithDeadline(Date.now() + 20_000, () => t.typed("how many sets today"));
+    const delays = spy.mock.calls.map((c) => c[1]);
+    // 20 s left minus the 5 s margin: 15 s, not the 40 s budget.
+    expect(delays.some((d) => typeof d === "number" && d > 14_000 && d <= 15_000)).toBe(true);
+    expect(delays).not.toContain(40_000);
+  });
+
   it("a DB failure reading the catalog is not reported as a transcription failure", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const t = setup([ok], { transcript: "hi" });

@@ -102,7 +102,8 @@ class DryRunRollback extends Error {
 
 /**
  * Restores a backup into an empty, migrated database in one transaction. Every refusal comes
- * before the first insert. A dry run does the full work and rolls back.
+ * before the first insert except `manifest_mismatch`, which is checked after the inserts and
+ * rolls the whole transaction back. A dry run does the full work and rolls back.
  */
 export async function restoreBackup(
   db: Db,

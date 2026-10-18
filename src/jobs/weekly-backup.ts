@@ -52,10 +52,14 @@ export const weeklyBackupJob: Job = {
       if (error instanceof BackupTooLargeError) {
         // Retrying cannot help: say so once and finish the job.
         const mb = (error.bytes / (1024 * 1024)).toFixed(1);
-        await ctx.send({
-          text: `Weekly backup too large for Telegram (${mb} MB). Run pnpm backup locally (no size limit).`,
-          keyboard: [],
-        });
+        try {
+          await ctx.send({
+            text: `Weekly backup too large for Telegram (${mb} MB). Run pnpm backup locally (no size limit).`,
+            keyboard: [],
+          });
+        } catch {
+          // the notice is best effort
+        }
         return "sent";
       }
       if (isLastChance(ctx.now)) {

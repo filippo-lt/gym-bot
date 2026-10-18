@@ -35,11 +35,10 @@ const DB_CODES = new Set([
   "CONNECTION_CLOSED",
   "CONNECTION_ENDED",
   "CONNECTION_DESTROYED",
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "ETIMEDOUT",
-  "ENOTFOUND",
 ]);
+// Generic Node socket codes: they also come from fetch/Anthropic/Telegram, so they only
+// count as db when the chain shows the error came through Drizzle or postgres-js.
+const SOCKET_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]);
 
 const OVERLOADED = new Set([529, 500, 502, 503, 504]);
 
@@ -96,17 +95,29 @@ function aiKind(e: unknown, step: FailureStep): FailureKind | null {
   return null;
 }
 
-function dbKind(e: unknown): FailureKind | null {
+function dbKind(e: unknown, viaDb: boolean): FailureKind | null {
   const code = prop(e, "code");
   if (prop(e, "name") === "PostgresError") return "db";
-  return typeof code === "string" && DB_CODES.has(code) ? "db" : null;
+  if (typeof code !== "string") return null;
+  return DB_CODES.has(code) || (viaDb && SOCKET_CODES.has(code)) ? "db" : null;
 }
 
-function kindOf(e: unknown, step: FailureStep): FailureKind | null {
+/** True when the cause chain contains a DrizzleQueryError or a PostgresError. */
+function chainViaDb(start: unknown): boolean {
+  let current = start;
+  for (let hop = 0; hop <= MAX_HOPS && current !== undefined && current !== null; hop++) {
+    const name = prop(current, "name");
+    if (name === "DrizzleQueryError" || name === "PostgresError") return true;
+    current = prop(current, "cause");
+  }
+  return false;
+}
+
+function kindOf(e: unknown, step: FailureStep, viaDb: boolean): FailureKind | null {
   if (e instanceof FileTooLargeError) return "file_too_large";
   if (step === "download") return null;
   if (step === "stt") return sttKind(e);
-  return aiKind(e, step) ?? dbKind(e);
+  return aiKind(e, step) ?? dbKind(e, viaDb);
 }
 
 function hasOwnStatusOrCode(e: unknown): boolean {
@@ -121,8 +132,9 @@ export function classify(error: unknown, step: FailureStep = "other"): Failure {
     current = prop(current, "error");
   }
   let last: unknown = current;
+  const viaDb = chainViaDb(current);
   for (let hop = 0; hop <= MAX_HOPS; hop++) {
-    const kind = kindOf(current, step);
+    const kind = kindOf(current, step, viaDb);
     if (kind) return { kind, detail: detailOf(current) };
     const cause = prop(current, "cause");
     const follow = prop(current, "name") === "DrizzleQueryError" || !hasOwnStatusOrCode(current);

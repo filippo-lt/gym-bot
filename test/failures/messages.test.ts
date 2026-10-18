@@ -25,7 +25,7 @@ describe("failure texts", () => {
       "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in Vercel. Commands still work.",
     );
     expect(failureText(f("ai_refused"), "text")).toBe(
-      "Anthropic refused the request. Check the account's credit. Commands still work.",
+      "Anthropic refused the request. If this keeps happening, check the account's credit. Commands still work.",
     );
     expect(failureText(f("ai_network"), "text")).toBe("I couldn't reach Claude. Please try again.");
   });
@@ -43,7 +43,7 @@ describe("failure texts", () => {
       "I couldn't read the photo: the Anthropic API key was rejected. Check ANTHROPIC_API_KEY in Vercel.",
     );
     expect(failureText(f("ai_refused"), "photo")).toBe(
-      "I couldn't read the photo: Anthropic refused the request. Check the account's credit.",
+      "I couldn't read the photo: Anthropic refused the request. If this keeps happening, check the account's credit.",
     );
     expect(failureText(f("ai_network"), "photo")).toBe(
       "I couldn't read the photo: I couldn't reach Claude. Please try again.",

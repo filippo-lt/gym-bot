@@ -36,7 +36,6 @@ export const inbox = pgTable(
   (t) => [
     index("inbox_chat_status_update_idx").on(t.chatId, t.status, t.updateId),
     // Serves oldestOpen and chatsWithOpenRows.
-    // TODO(M9): retention - purge done rows after N days.
     index("inbox_open_idx")
       .on(t.chatId, t.updateId)
       .where(sql`${t.status} IN ('pending', 'processing')`),

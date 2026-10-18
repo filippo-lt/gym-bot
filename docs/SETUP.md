@@ -74,10 +74,15 @@ Each remote write (migrate, restore, Vercel change, redeploy) needs your explici
 
 `RESTORE_DATABASE_URL` has no fallback, so a restore can never hit the database in `DATABASE_URL` by mistake. A host that is not local needs `--allow-remote`.
 
-Local rehearsal:
+Local rehearsal (restore into a third, empty database, never the one you backed up):
 1. `pnpm db:up`. If the local `gymbot` database is empty, migrate it: `MIGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:54329/gymbot pnpm db:migrate`.
-2. `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot pnpm backup` (writes a file in `backups/`). Set `DATABASE_URL` here because `.env.local` holds production.
-3. `RESTORE_DATABASE_URL=postgres://postgres:postgres@localhost:54329/gymbot pnpm backup:restore backups/<file>.json --dry-run`.
+2. `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot pnpm backup` (writes a file in `backups/`). Set `DATABASE_URL` here because `.env.local` holds production. Backing up production instead is read-only, but only do it with your OK.
+3. Create an empty database: `docker exec gymbot-db-1 psql -U postgres -c "create database gymbot_restore"`.
+4. Migrate it: `MIGRATION_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot_restore pnpm db:migrate`.
+5. Dry run: `RESTORE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot_restore pnpm backup:restore backups/<file>.json --dry-run`.
+6. The same command without `--dry-run`.
+
+After deploying M9, run `pnpm telegram:setup <url>` so `/usage` and `/export` appear in the command menu.
 
 ## Verify
 1. `pnpm check:setup`. Every line should show a green check.

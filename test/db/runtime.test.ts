@@ -473,14 +473,14 @@ describe("invocation deadline and notices", () => {
     const summary = await processChat({
       ...base,
       startedAt: 0,
-      now: () => 80_000, // 5 s left: only the first handled row may run
+      now: () => 10_000, // young invocation: a swept row must not use up the first-row grace
       handle: async (p) => void handled.push((p as { n: number }).n),
     });
     expect(handled).toEqual([1001]);
     expect(summary.failed).toBe(1);
   });
 
-  it("the first row always runs, even when late", async () => {
+  it("the first row runs when the invocation is under 15 s old", async () => {
     await enqueue(main.db, { update_id: 1, chat_id: CHAT, payload: { message: { voice: {} } } });
     const summary = await processChat({
       ...base,
@@ -489,6 +489,18 @@ describe("invocation deadline and notices", () => {
       handle: noop,
     });
     expect(summary.processed).toBe(1);
+  });
+
+  it("a first voice row reached late (20 s in, 65 s left) waits", async () => {
+    await enqueue(main.db, { update_id: 1, chat_id: CHAT, payload: { message: { voice: {} } } });
+    const summary = await processChat({
+      ...base,
+      startedAt: 0,
+      now: () => 20_000,
+      handle: noop,
+    });
+    expect(summary.processed).toBe(0);
+    expect(summary.stoppedReason).toBe("deadline");
   });
 
   it("stores a classified error without message text", async () => {

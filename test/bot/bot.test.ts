@@ -97,8 +97,11 @@ describe("createBot", () => {
   });
 
   it("/export replies first with the preparing message", async () => {
+    // No database here: the export itself fails and logs; only the first reply matters.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const { calls, send } = setup();
     await send("/export");
+    expect(errors).toHaveBeenCalled();
     expect(calls[0]?.method).toBe("sendMessage");
     expect(calls[0]?.payload.text).toBe("Preparing your backup…");
   });

@@ -51,7 +51,7 @@ const AI_TEXTS: Partial<Record<FailureKind, { body: string; tail: string }>> = {
     tail: " Commands still work.",
   },
   ai_refused: {
-    body: "Anthropic refused the request. Check the account's credit.",
+    body: "Anthropic refused the request. If this keeps happening, check the account's credit.",
     tail: " Commands still work.",
   },
   ai_network: { body: "I couldn't reach Claude. Please try again.", tail: "" },

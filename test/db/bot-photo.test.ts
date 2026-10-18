@@ -6,6 +6,7 @@ import { createFakeModel, type ScriptedTurn, toolUse, turn } from "../../src/ai/
 import { createBot } from "../../src/bot/bot.js";
 import { BOARD_UNREADABLE } from "../../src/bot/log-format.js";
 import type { MediaSource } from "../../src/bot/logging-flow.js";
+import { runWithDeadline } from "../../src/runtime/deadline.js";
 import { FileTooLargeError } from "../../src/telegram/files.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
 
@@ -182,6 +183,15 @@ describe("blackboard photo", () => {
       await t.photo(caption);
       expect(t.buttons(t.sent().at(-1)).some((b) => b.text.includes("✓"))).toBe(false);
     }
+  });
+
+  it("the vision timeout is clamped to the invocation deadline", async () => {
+    const t = setup([board()]);
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    await runWithDeadline(Date.now() + 20_000, () => t.photo());
+    const ms = spy.mock.calls.map((c) => c[0]);
+    expect(ms.some((d) => d > 14_000 && d <= 15_000)).toBe(true);
+    expect(ms).not.toContain(40_000);
   });
 
   it("not a board: BOARD_UNREADABLE, no pending row", async () => {

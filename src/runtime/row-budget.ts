@@ -23,6 +23,9 @@ export const MIN_TIME_LEFT_MS: Record<InputKind, number> = {
   other: 45_000,
 };
 
+/** An invocation younger than this still runs its first row whatever the time left. */
+export const FIRST_ROW_GRACE_MS = 15_000;
+
 /** The invocation's hard end for row work: 5 s before the function is killed. */
 export function hardEndMs(startedAt: number): number {
   return startedAt + (MAX_DURATION_S - 5) * 1000;
