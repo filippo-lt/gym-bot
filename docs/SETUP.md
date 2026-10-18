@@ -73,6 +73,6 @@ With Fluid compute (on by default), the function duration on the Hobby plan is:
 |------|---------|---------|
 | Hobby | 300 s | 300 s |
 
-So `maxDuration: 60` for the Telegram webhook is allowed on Hobby.
-SPEC rule: lease = maxDuration + 60 s. With maxDuration 60 s the lease stays 120 s.
+So `maxDuration: 90` for the Telegram webhook is allowed on Hobby (a Claude loop can take about 40 s).
+SPEC rule: lease = maxDuration + 60 s. With maxDuration 90 s the lease is 150 s.
 Set `maxDuration` per function in `vercel.json` (`functions`) when the webhook is added in M2.

@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`cards > clarify message 1`] = `
+"Which exercise is "fp"?
+[Face pull ex:8:0]
+[Front raise ex:8:1]
+[❌ pa:8:no]"
+`;
+
+exports[`cards > confirm card with every reason 1`] = `
+"Save this?
+• Squat — 1 × 50 · 600 kg · Monday's session (26 Oct)
+• Squat — 3 × 8 · 60 kg · extra
+
+Why I'm asking: more than one change; Monday's session (26 Oct); missing: load; sets were guessed; I wasn't sure; far from last time: 600 kg; reps look high: 50; not in today's session
+[✅ pa:3:ok] [✏️ pa:3:ed] [❌ pa:3:no]"
+`;
+
+exports[`cards > memory list 1`] = `
+"Here is what I remember:
+• "fp" = Face pull
+[🗑 "fp" = Face pull md:5]"
+`;
+
+exports[`cards > replaced notice and delete card 1`] = `
+"Replaces: Bench 2 × 6 · 55 kg
+
+Remove this?
+• Remove Squat 2 × 8 · 60 kg
+[✅ pa:4:ok] [❌ pa:4:no]"
+`;
+
+exports[`echo > asks RIR when the last set has none 1`] = `
+"✓ Squat — 2 × 8 · 60 kg · Tue W5
+RIR on the last set?
+[Undo ug:11]
+[0 rir:11:0] [1 rir:11:1] [2 rir:11:2] [3 rir:11:3] [4+ rir:11:4]"
+`;
+
+exports[`echo > asks both RIR and clean 1`] = `
+"✓ Pull-up — 1 × 8 · +10 kg · Tue W5
+RIR on the last set?
+Clean reps?
+[Undo ug:11]
+[0 rir:11:0] [1 rir:11:1] [2 rir:11:2] [3 rir:11:3] [4+ rir:11:4]
+[Clean ✓ cl:11:1] [Not clean cl:11:0]"
+`;
+
+exports[`echo > asks clean for pull-ups and HSPU 1`] = `
+"✓ Pull-up — 1 × 8 · +10 kg · RIR 1 · Tue W5
+Clean reps?
+[Undo ug:11]
+[Clean ✓ cl:11:1] [Not clean cl:11:0]"
+`;

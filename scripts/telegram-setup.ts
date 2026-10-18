@@ -31,6 +31,8 @@ try {
   await api.setMyCommands([
     { command: "today", description: "Today's session" },
     { command: "week", description: "This week" },
+    { command: "undo", description: "Remove my last log" },
+    { command: "memory", description: "What I remember" },
     { command: "help", description: "Commands" },
   ]);
 

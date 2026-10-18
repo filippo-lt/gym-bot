@@ -13,6 +13,7 @@
     "format": "biome check --write .",
     "test": "vitest run --project unit",
     "test:db": "vitest run --project db",
+    "test:golden": "vitest run --project golden",
     "plan:parse": "tsx scripts/plan-parse.ts",
     "plan:seed": "tsx scripts/plan-seed.ts",
     "history:review": "tsx scripts/history-import.ts --review",

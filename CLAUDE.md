@@ -11,6 +11,7 @@ pnpm db:up                 # local Postgres 17 in Docker (127.0.0.1:54329, dbs: 
 pnpm lint                  # Biome (pnpm format to auto-fix)
 pnpm typecheck
 pnpm test                  # unit project (no DB)
+pnpm test:golden           # opt-in, real Anthropic API: ~15 logging phrases -> expected staged actions
 pnpm test:db               # db project; migrates gymbot_test first, refuses non-local/non-_test URLs
 pnpm exec vitest run --project unit test/plan-import/rules.test.ts   # single file
 pnpm exec vitest run --project unit -t "RIR"                         # by test name
@@ -25,7 +26,7 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
 
 ## Architecture
 
-- **Vercel, no framework.** `api/*.ts` are thin Node functions using Web `Request`/`Response` (`export async function GET/POST`). All logic lives in `src/`. Region `dub1` (next to the Supabase project in eu-west-1). Hobby with Fluid compute allows up to 300 s; the M2 webhook will set `maxDuration: 60` with a 120 s chat lease (SPEC §3: lease = maxDuration + 60 s).
+- **Vercel, no framework.** `api/*.ts` are thin Node functions using Web `Request`/`Response` (`export async function GET/POST`). All logic lives in `src/`. Region `dub1` (next to the Supabase project in eu-west-1). Hobby with Fluid compute allows up to 300 s; the webhook and cron tick set `maxDuration: 90` with a 150 s chat lease (SPEC §3: lease = maxDuration + 60 s).
 - **DB.** Supabase used as plain Postgres through Drizzle + postgres-js (`src/db/client.ts`: lazy singleton, `prepare: false`, `max: 1`). Runtime goes through the transaction pooler (6543). Migrations go only through the session pooler (`MIGRATION_DATABASE_URL`). Every table has RLS enabled with no policies, and a db test enforces this. Add tables in `src/db/schema/`, export them from `schema/index.ts`, then run `pnpm db:generate`.
 - **Env.** `src/config/env.ts` has one memoized Zod parser per feature (`dbEnv`, `telegramEnv`, `aiEnv`, `sttEnv`, `cronEnv`), so a script only needs the variables it uses. `APP_TIMEZONE` (`Europe/Rome`) is in `src/config/constants.ts`.
 - **Calendar.** `src/domain/calendar.ts` (Luxon) handles "today" in Rome with a 03:00 day boundary, the plan week from the start date (2026-09-28), and Sat/Sun → no session.
@@ -45,6 +46,15 @@ Scripts load `.env.local`, then `.env`, via `scripts/load-env.ts`. Production co
   - Same `resolved_hash` → no-op.
   - Changed plan content → `SeedConflictError`. Later plan changes must become a new plan version (M7).
   - Equipment values can be re-seeded freely.
+
+### Text logging (M3, `src/ai/`, `src/logging/`, `src/bot/`)
+
+**Claude stages, code decides.** The model only parses intent: its write tools (`log_sets`, `edit_last_entry`, `undo_last_entry`) stage actions and never save. After the loop, pure code (`decidePolicy`, SPEC 5.6d) picks one of three paths: write now (one clear log in today's session), a "Which exercise?" question, or a confirm card (✅ ✏️ ❌). Every number shown to the user is formatted in code (`src/bot/log-format.ts`) from DB or parsed values, never from model text.
+
+- `src/ai/`: Anthropic client, tool schemas, prompt, loop (6 turns, 40 s), cost guard, fake model for tests. `src/logging/`: resolver, units, policy, executor, pending actions, aliases, memory. `src/bot/logging-flow.ts`: the Telegram flow and callbacks.
+- **write_ledger** makes writes idempotent. Source key `u:<update_id>` for a direct write, `p:<pending_id>` for a confirmed card. A retry returns the stored results and writes nothing. A pending request is created once per update (`source_update_id`), and ✅ is claimed in the same transaction as the writes.
+- Callback prefixes (data <= 64 bytes, see `src/bot/callbacks.ts`): `pa:<id>:ok|ed|no`, `ex:<pendingId>:<i>`, `rir:<groupId>:<0-4>` (4 = 4+), `cl:<groupId>:1|0`, `ug:<groupId>`, `ue:<sourceKey>:<idx>`, `md:<memoryId>`.
+- AI is built lazily (`aiEnv()` is read only when free text arrives), so commands work without the key.
 
 ## Domain rules that are easy to break
 

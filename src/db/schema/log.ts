@@ -13,7 +13,7 @@ import {
   timestamp,
   unique,
 } from "drizzle-orm/pg-core";
-import { exercises, plannedItems } from "./plan.js";
+import { exercises, hspuLadder, plannedItems } from "./plan.js";
 
 export const SESSION_STATUSES = ["planned", "done", "modified", "skipped"] as const;
 export const SESSION_ITEM_SOURCES = ["bot", "import"] as const;
@@ -60,6 +60,9 @@ export const logGroups = pgTable("log_groups", {
   source: logSource("source").notNull(),
   importRowKey: text("import_row_key").unique(),
   perSetUnknown: boolean("per_set_unknown").notNull().default(false),
+  note: text("note"),
+  /** HSPU ladder step: user state taken from the last log (SPEC 5.2). */
+  hspuStepId: integer("hspu_step_id").references(() => hspuLadder.id),
   createdAt: createdAt(),
 }).enableRLS();
 

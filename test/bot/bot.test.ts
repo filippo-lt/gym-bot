@@ -1,7 +1,9 @@
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import { describe, expect, it } from "vitest";
-import { createBot, FALLBACK_TEXT, HELP_TEXT } from "../../src/bot/bot.js";
+import { createBot, HELP_TEXT, TEXT_ONLY, UNKNOWN_COMMAND } from "../../src/bot/bot.js";
+import { NO_AI_KEY } from "../../src/bot/log-format.js";
+import type { Flow } from "../../src/bot/logging-flow.js";
 import type { Db } from "../../src/db/seed-plan.js";
 import { sessionFor, weekFor } from "./helpers.js";
 
@@ -21,7 +23,7 @@ const botInfo: UserFromGetMe = {
   supports_join_request_queries: false,
 };
 
-function setup() {
+function setup(flow?: Flow) {
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
   const dates: string[] = [];
   const transformer: Transformer = async (_prev, method, payload) => {
@@ -35,6 +37,7 @@ function setup() {
     token: "123:abc",
     botInfo,
     transformer,
+    ...(flow ? { flow } : {}),
     sessions: {
       getSession: async (_db, date) => {
         dates.push(date);
@@ -70,8 +73,8 @@ describe("createBot", () => {
     ["/week", "Week 5"],
     ["/help", HELP_TEXT],
     ["/start", HELP_TEXT],
-    ["hello there", FALLBACK_TEXT],
-    ["/unknown", FALLBACK_TEXT],
+    ["hello there", NO_AI_KEY],
+    ["/unknown", UNKNOWN_COMMAND],
   ])("%s sends exactly one HTML message", async (text, expected) => {
     const { calls, send } = setup();
     await send(text);
@@ -132,5 +135,61 @@ describe("createBot", () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  describe("routing to the logging flow", () => {
+    function stubFlow() {
+      const seen: string[] = [];
+      const flow: Flow = {
+        text: async (ctx) => void seen.push(`text:${ctx.message?.text}`),
+        callback: async (ctx) => void seen.push(`cb:${ctx.callbackQuery?.data}`),
+        undoCommand: async () => void seen.push("undo"),
+        memoryCommand: async () => void seen.push("memory"),
+      };
+      return { seen, flow };
+    }
+
+    it("sends free text, callbacks and the new commands to the flow", async () => {
+      const { seen, flow } = stubFlow();
+      const { send, bot, calls } = setup(flow);
+      await send("3x8 squat 60");
+      await send("/undo");
+      await send("/memory");
+      await bot.handleUpdate({
+        update_id: 500,
+        callback_query: {
+          id: "cb",
+          chat_instance: "x",
+          from: { id: 42, is_bot: false, first_name: "F" },
+          data: "ug:7",
+        },
+      });
+      expect(seen).toEqual(["text:3x8 squat 60", "undo", "memory", "cb:ug:7"]);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("does not send unknown commands to the flow", async () => {
+      const { seen, flow } = stubFlow();
+      const { send } = setup(flow);
+      await send("/nope");
+      expect(seen).toEqual([]);
+    });
+
+    it("answers non-text messages itself", async () => {
+      const { seen, flow } = stubFlow();
+      const { bot, calls } = setup(flow);
+      await bot.handleUpdate({
+        update_id: 600,
+        message: {
+          message_id: 1,
+          date: 0,
+          chat: { id: 42, type: "private", first_name: "F" },
+          from: { id: 42, is_bot: false, first_name: "F" },
+          voice: { file_id: "f", file_unique_id: "u", duration: 3 },
+        },
+      });
+      expect(seen).toEqual([]);
+      expect(String(calls[0]?.payload.text)).toBe(TEXT_ONLY);
+    });
   });
 });
