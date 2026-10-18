@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { EXERCISE_TYPES, LOAD_BASES } from "../db/schema/plan.js";
+import type { PlanChangeResult } from "../plan/swap-execute.js";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 import { classMoveSchema } from "./class-moves.js";
 
@@ -548,6 +549,7 @@ export interface SessionItemBefore {
 }
 
 export type LedgerResult =
+  | PlanChangeResult
   | {
       kind: "log";
       groupId: number;

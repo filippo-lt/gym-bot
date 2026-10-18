@@ -338,6 +338,9 @@ export function createFlow(deps: FlowDeps): Flow {
         add(directWriteSaved(r, sourceKey, i));
       } else if (r.kind === "skip") {
         add(skipEcho(r, sourceKey, i));
+      } else if (r.kind === "plan_change") {
+        // Part B renders the change line and the Undo button.
+        add({ text: "Saved.", keyboard: [] });
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -1172,6 +1175,12 @@ export function createFlow(deps: FlowDeps): Flow {
         chatId,
         "The tapped request was stale (the log no longer exists); nothing changed.",
       );
+      return;
+    }
+    if (r.status === "refused") {
+      await answer(r.reply);
+      await editQuietly(ctx, r.reply);
+      await remember(chatId, `${r.reply} (nothing saved)`);
       return;
     }
     if (r.status === "expired") {

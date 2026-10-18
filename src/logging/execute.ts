@@ -14,6 +14,7 @@ import {
 import { equipment, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import { readinessLogs } from "../db/schema/progression.js";
 import { trainingDate } from "../domain/calendar.js";
+import { executeSwap } from "../plan/swap-execute.js";
 import { loadFrozenLevel } from "../progression/load-history.js";
 import { ensureSuggestions, freezeReadiness, refreshUserState } from "../progression/store.js";
 import type { Db, Q, Tx } from "./db.js";
@@ -35,7 +36,16 @@ export type ExecuteResult =
   | { status: "done"; results: LedgerResult[] }
   | { status: "expired" }
   /** An edit or delete whose log is gone: nothing was written, the pending is cancelled. */
-  | { status: "stale" };
+  | { status: "stale" }
+  /** A plan change that cannot be saved (already logged, plan changed): nothing was written. */
+  | { status: "refused"; reply: string };
+
+/** Thrown inside the transaction to roll everything back and tell the user why. */
+class RefusedActionError extends Error {
+  constructor(readonly reply: string) {
+    super(reply);
+  }
+}
 
 /** Thrown inside the transaction to roll everything back when a target log no longer exists. */
 class StaleActionError extends Error {}
@@ -464,9 +474,11 @@ async function writeAction(
       return writeSkip(tx, a);
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");
-    case "swap":
-      // Saving a swap (override or plan version) comes with the swap flow.
-      throw new Error("Saving a swap is not implemented yet.");
+    case "swap": {
+      const out = await executeSwap(tx, a.resolved, a.input.replacement.said, trainingDate(now));
+      if ("refused" in out) throw new RefusedActionError(out.refused);
+      return out;
+    }
   }
 }
 
@@ -551,7 +563,7 @@ export async function executeActions(
     }
     return result;
   } catch (error) {
-    if (!(error instanceof StaleActionError)) throw error;
+    if (!(error instanceof StaleActionError) && !(error instanceof RefusedActionError)) throw error;
     // The transaction rolled back (including the pending claim): close the request for good.
     if (opts.pendingId !== undefined) {
       await db
@@ -559,7 +571,9 @@ export async function executeActions(
         .set({ status: "cancelled" })
         .where(and(eq(pendingActions.id, opts.pendingId), eq(pendingActions.status, "open")));
     }
-    return { status: "stale" };
+    return error instanceof RefusedActionError
+      ? { status: "refused", reply: error.reply }
+      : { status: "stale" };
   }
 }
 

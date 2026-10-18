@@ -220,11 +220,12 @@ export async function resolveSwap(
   const scope = input.scope ?? null;
   let days: ResolvedSwap["days"] = scope === "today" ? null : (input.days ?? null);
   const only = futureWeekdays[0];
-  if (days === null && only !== undefined && futureWeekdays.length === 1) {
+  if (scope !== "today" && days === null && only !== undefined && futureWeekdays.length === 1) {
     // One weekday left: nothing to ask. "every_day" when it is not the reference weekday keeps
     // that weekday in (this_day would restrict to the reference weekday).
     days = only === referenceWeekday ? "this_day" : "every_day";
   } else if (
+    scope !== "today" &&
     days === null &&
     futureWeekdays.length > 0 &&
     !futureWeekdays.includes(referenceWeekday)

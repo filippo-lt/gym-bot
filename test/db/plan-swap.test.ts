@@ -277,7 +277,7 @@ describe("resolveSwap", () => {
     const r = await ok(
       swap({
         replacement: {
-          said: "leg press",
+          said: "zxq press",
           slug: "leg_press",
           new: { name: "Leg press x", type: "weighted", muscle_group: "legs" },
         },
