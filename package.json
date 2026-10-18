@@ -16,6 +16,7 @@
     "test:golden": "vitest run --project golden",
     "plan:parse": "tsx scripts/plan-parse.ts",
     "plan:seed": "tsx scripts/plan-seed.ts",
+    "progression:worksheet": "tsx scripts/progression-worksheet.ts",
     "history:review": "tsx scripts/history-import.ts --review",
     "history:import": "tsx scripts/history-import.ts",
     "db:generate": "drizzle-kit generate",

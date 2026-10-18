@@ -14,6 +14,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { exercises, hspuLadder, plannedItems } from "./plan.js";
+import { suggestions } from "./progression.js";
 
 export const SESSION_STATUSES = ["planned", "done", "modified", "skipped"] as const;
 export const SESSION_ITEM_SOURCES = ["bot", "import"] as const;
@@ -55,6 +56,8 @@ export const logGroups = pgTable("log_groups", {
   exerciseId: integer("exercise_id")
     .notNull()
     .references(() => exercises.id),
+  /** The stored suggestion shown for this item/option when logged (SPEC 5.6c drift, 5.6d far-off check). */
+  suggestionId: integer("suggestion_id").references(() => suggestions.id, { onDelete: "set null" }),
   bwKg: numeric("bw_kg", { precision: 5, scale: 2, mode: "number" }),
   readinessLevel: readinessLevel("readiness_level"),
   source: logSource("source").notNull(),
@@ -78,6 +81,8 @@ export const logEntries = pgTable(
     loadKg: numeric("load_kg", { precision: 6, scale: 2, mode: "number" }),
     addedKg: numeric("added_kg", { precision: 6, scale: 2, mode: "number" }),
     assistKg: numeric("assist_kg", { precision: 6, scale: 2, mode: "number" }),
+    /** Band colour when assistance came from a band; kg comes from equipment.bands (SPEC 5.2). */
+    band: text("band"),
     durationS: integer("duration_s"),
     distanceM: numeric("distance_m", { mode: "number" }),
     padHeight: numeric("pad_height", { precision: 5, scale: 1, mode: "number" }),

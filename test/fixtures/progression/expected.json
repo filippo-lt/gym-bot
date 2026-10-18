@@ -1,0 +1,35 @@
+{
+  "_readme": [
+    "Fill every \"TODO\" by hand from seed/review/progression-worksheet.md. Do not run the engine.",
+    "Key = plan item key; OR items have one key per option: \"<item key>:<exercise slug>\".",
+    "Accepted values:",
+    "  {\"sets\":4,\"reps\":[4,6],\"rir\":[1,2],\"load_kg\":60,\"labels\":[\"estimate\"]}   weighted: load_kg",
+    "  {\"sets\":4,\"reps\":3,\"rir\":[1,2],\"added_kg\":2.5,\"labels\":[]}                 pull-up: added_kg (0 = plain bodyweight)",
+    "  {...,\"assist_kg\":10,\"band\":\"red\"}                                              pull-up with a band (assist_kg + band)",
+    "  reps: a number (5 means 5-5) or [min,max]. rir: a number or [min,max]. labels: any order, [] if none.",
+    "  \"none\"                                   no suggestion at all",
+    "  {\"ask\":\"load\"}                          the bot asks instead (also \"bodyweight\" or \"band\"); optional \"labels\"",
+    "Labels: estimate, estimate_check_first_set, back_after_break, baseline_ask_load, bw_stale, fallback_bw, fallback_assisted, max_test_first, friday_reduced, friday_offer_skip, readiness_yellow, readiness_red",
+    "\"TODO\" = not filled yet (the test shows it as todo)."
+  ],
+  "2026-10-26": {
+    "w05-mon-01-0": "TODO",
+    "w05-mon-03-0": "TODO",
+    "w05-mon-04-0": "TODO"
+  },
+  "2026-10-30": {
+    "w05-fri-01-0:squat": "TODO",
+    "w05-fri-01-0:hack_squat": "TODO",
+    "w05-fri-02-0": "TODO",
+    "w05-fri-03-0:cable_row": "TODO",
+    "w05-fri-03-0:machine_row": "TODO",
+    "w05-fri-04-0": "TODO",
+    "w05-fri-05-0": "TODO",
+    "w05-fri-06-0": "TODO"
+  },
+  "2026-11-23": {
+    "w09-mon-01-0": "TODO",
+    "w09-mon-03-0": "TODO",
+    "w09-mon-04-0": "TODO"
+  }
+}
