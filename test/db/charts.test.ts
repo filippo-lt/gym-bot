@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { buildChart } from "../../src/charts/index.js";
 import { loadExerciseChartData, loadVolumeRows } from "../../src/charts/load.js";
 import { connect, exId, resetAndSeed } from "./logging-fixture.js";
 
@@ -79,5 +80,54 @@ describe("loadVolumeRows", () => {
   it("honours sinceDate", async () => {
     const rows = await loadVolumeRows(db, "2026-10-01");
     expect(rows.every((r) => r.week === 2)).toBe(true);
+  });
+});
+
+describe("buildChart", () => {
+  const NOW = new Date("2026-10-08T08:00:00Z");
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+  it("renders squat with two sessions", async () => {
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "squat"), metric: "auto" },
+      NOW,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.png.subarray(0, 4).equals(PNG)).toBe(true);
+      expect(r.caption).toContain("e1RM");
+      expect(r.facts.sessions).toBe(2);
+    }
+  });
+
+  it("is not_enough_data with one session", async () => {
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "pull_up"), metric: "auto" },
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: false, reason: "not_enough_data" });
+  });
+
+  it("is no_numbers for a type without numbers", async () => {
+    await sql`update exercises set type = 'skill_practice', load_basis = null where slug = 'face_pull'`;
+    const r = await buildChart(
+      db,
+      { kind: "exercise", exerciseId: await exId(sql, "face_pull"), metric: "auto" },
+      NOW,
+    );
+    expect(r).toMatchObject({ ok: false, reason: "no_numbers" });
+  });
+
+  it("is unknown_exercise for a missing id", async () => {
+    const r = await buildChart(db, { kind: "exercise", exerciseId: 999999, metric: "auto" }, NOW);
+    expect(r).toMatchObject({ ok: false, reason: "unknown_exercise" });
+  });
+
+  it("renders volume", async () => {
+    const r = await buildChart(db, { kind: "volume" }, NOW);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.png.subarray(0, 4).equals(PNG)).toBe(true);
   });
 });
