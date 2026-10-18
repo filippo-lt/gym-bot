@@ -827,9 +827,10 @@ export function createFlow(deps: FlowDeps): Flow {
       await send(ctx, failureText(failure, "voice"));
       return;
     }
+    // A DB failure here is not a transcription failure: let it throw (inbox retry path).
+    const staticBlock = await promptStatic();
     let transcript: string;
     try {
-      const staticBlock = await promptStatic();
       transcript = (
         await sttConfig.stt.transcribe(audio, {
           filename: "voice.ogg",

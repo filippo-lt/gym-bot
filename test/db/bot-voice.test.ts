@@ -56,6 +56,7 @@ function setup(
   script: ScriptedTurn[],
   opts: {
     transcript?: string | (() => Promise<string>);
+    sttName?: string;
     stt?: boolean;
     dailySecondsCap?: number;
   } = {},
@@ -90,7 +91,7 @@ function setup(
             throw new Error("no key");
           }
         : () => ({
-            stt: { name: "fake", transcribe },
+            stt: { name: opts.sttName ?? "fake", transcribe },
             dailySecondsCap: opts.dailySecondsCap ?? 600,
           }),
     download,
@@ -280,13 +281,14 @@ describe("voice notes", () => {
   it("STT throws: specific text naming the provider, no usage recorded; success records seconds", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const bad = setup([ok], {
+      sttName: "groq:whisper-large-v3-turbo",
       transcript: async () => {
         throw new SttError(429, "groq");
       },
     });
     await bad.voice(7);
     expect(bad.texts()).toEqual([
-      "Too many voice notes for fake right now. Wait a minute or type it.",
+      "Too many voice notes for Groq right now. Wait a minute or type it.",
     ]);
     expect(await count("usage_logs")).toBe(0);
     expect(JSON.stringify(err.mock.calls)).not.toContain("transcription failed (HTTP");
@@ -318,5 +320,18 @@ describe("voice notes", () => {
     ]);
     expect(JSON.stringify(err.mock.calls)).not.toContain("AI budget exceeded");
     expect(JSON.stringify(err.mock.calls)).toContain("ai_timeout");
+  });
+
+  it("a DB failure reading the catalog is not reported as a transcription failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = setup([ok], { transcript: "hi" });
+    await sql`alter table exercises rename to exercises_gone`;
+    try {
+      await expect(t.voice(7)).rejects.toThrow();
+    } finally {
+      await sql`alter table exercises_gone rename to exercises`;
+    }
+    expect(t.texts().join("\n")).not.toContain("transcribe");
+    expect(t.transcribe).not.toHaveBeenCalled();
   });
 });

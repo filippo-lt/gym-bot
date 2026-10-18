@@ -218,7 +218,7 @@ describe("blackboard photo", () => {
   });
 
   it("vision API 529: names Claude, no pending", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const t = setup([]);
     vi.spyOn(t.model, "create").mockRejectedValue(
       new Anthropic.APIError(529, undefined, "secret body", undefined),
@@ -228,6 +228,7 @@ describe("blackboard photo", () => {
       "I couldn't read the photo: Claude (Anthropic) is having problems right now. Try again in a few minutes.",
     ]);
     expect(await count("pending_actions")).toBe(0);
+    expect(JSON.stringify(err.mock.calls)).not.toContain("secret body");
   });
 
   it("FileTooLargeError from the download gives the too-large text", async () => {
