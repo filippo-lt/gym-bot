@@ -239,7 +239,9 @@ export type ConfirmReason =
   | "model_flag"
   | "load_far_off"
   | "reps_far_off"
-  | "delete";
+  | "delete"
+  /** An unsaved request is open: new actions replace it through a card, never a direct write. */
+  | "replaces_pending";
 
 export type PolicyDecision =
   | { mode: "direct" }

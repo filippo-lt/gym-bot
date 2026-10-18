@@ -52,6 +52,7 @@ export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";
 export const DIDNT_GET_IT = "Sorry, I didn't get that. Try /help.";
 export const EXPIRED = "This expired, nothing saved.";
+export const REPLACED = "Replaced by a newer request.";
 export const STALE = "That log no longer exists, nothing changed.";
 export const MEMORY_EMPTY = "I don't know anything about you yet.";
 
@@ -425,7 +426,7 @@ function actionLine(a: StagedAction): string {
   }
 }
 
-/** One-line summary of a request, used in "Previous request cancelled: …". */
+/** One-line summary of a request, used in the "Replaces: …" line. */
 export function summarize(actions: StagedAction[]): string {
   return actions.map(describeAction).join("; ");
 }
@@ -441,7 +442,7 @@ export function confirmCard(args: {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
   if (args.replacedSummary) {
-    lines.push(`Previous request cancelled: ${esc(args.replacedSummary)}`, "");
+    lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
   lines.push(isDelete ? "Remove this?" : "Save this?");
   for (const a of args.actions) lines.push(`• ${actionLine(a)}`);
@@ -461,7 +462,7 @@ export function clarifyCard(args: {
 }): Message {
   const lines: string[] = [];
   if (args.replacedSummary) {
-    lines.push(`Previous request cancelled: ${esc(args.replacedSummary)}`, "");
+    lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
   lines.push(
     args.candidates.length

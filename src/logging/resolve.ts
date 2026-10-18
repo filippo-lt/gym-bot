@@ -40,13 +40,16 @@ import type {
   StageResult,
   UndoLastInput,
 } from "./types.js";
-import { buildEntries, convertLoad, missingFields } from "./units.js";
+import { buildEntries, convertLoad, expandSets, missingFields } from "./units.js";
+import { checkKeys, usedKeys } from "./validate.js";
 
 export const MAX_CANDIDATES = 6;
 /** Slots kept for fuzzy matches when today's session already fills the list. */
 const RESERVED_FUZZY = 3;
 /** A different exercise must score at least this much (and twice the slug's) to contradict a slug. */
 const RIVAL_MIN_SCORE = 5;
+/** A given slug needs at least this fuzzy score against the user's words ("pullups" = 1.5). */
+export const SLUG_FIT_FLOOR = 1.5;
 
 // ---------------------------------------------------------------------------
 // Fuzzy candidates (pure)
@@ -121,6 +124,43 @@ export function rankCandidates(
 // ---------------------------------------------------------------------------
 // Exercise resolution
 
+/**
+ * The model gave a slug AND the user's words. Exact words win over the slug; with no exact
+ * match the slug stands only when the words plausibly name it, otherwise ask (slug first).
+ * Pure, so the phrasing cases are unit-tested against the real catalog.
+ */
+export function judgeGivenSlug(
+  saidRaw: string,
+  given: Labelled,
+  catalog: Labelled[],
+  /** Slug of the exercise an active memory alias maps these words to. */
+  aliasSlug?: string,
+): { kind: "ok"; slug: string } | { kind: "clarify"; candidates: Candidate[] } {
+  const said = normalizeAlias(saidRaw);
+  const slugged = said.replaceAll(" ", "_");
+  const exact = catalog.filter(
+    (c) =>
+      c.slug === slugged ||
+      c.slug === aliasSlug ||
+      normalizeAlias(c.name) === said ||
+      (c.aliases ?? []).some((a) => normalizeAlias(a) === said),
+  );
+  if (exact.some((c) => c.slug === given.slug)) return { kind: "ok", slug: given.slug };
+  if (exact.length === 1) return { kind: "ok", slug: (exact[0] as Labelled).slug };
+  const cand = (c: Labelled): Candidate => ({ slug: c.slug, name: c.name });
+  if (exact.length > 1) return { kind: "clarify", candidates: exact.map(cand) };
+  const own = fuzzyScore(saidRaw, given);
+  const rivals = catalog
+    .filter((c) => c.slug !== given.slug)
+    .map((c) => ({ c, score: fuzzyScore(saidRaw, c) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const top = rivals[0];
+  const outranked = top !== undefined && top.score >= RIVAL_MIN_SCORE && own * 2 < top.score;
+  if (own >= SLUG_FIT_FLOOR && !outranked) return { kind: "ok", slug: given.slug };
+  return { kind: "clarify", candidates: [given, ...rivals.slice(0, 3).map((r) => r.c)].map(cand) };
+}
+
 type ExerciseOutcome =
   | { kind: "ok"; exercise: CatalogExercise }
   | { kind: "clarify"; candidates: Candidate[] };
@@ -157,26 +197,15 @@ async function pickExercise(
   // ("hack squat" with slug squat); when they only look like one, ask.
   const bySlug = ex.slug ? catalog.find((c) => c.slug === ex.slug) : undefined;
   if (bySlug) {
-    const exact = catalog.filter(
-      (c) => c.slug === saidSlugged || c.id === aliasRow?.exerciseId || nameMatches(c),
+    const verdict = judgeGivenSlug(
+      ex.said,
+      bySlug,
+      catalog,
+      aliasRow ? catalog.find((c) => c.id === aliasRow.exerciseId)?.slug : undefined,
     );
-    if (exact.length === 0) {
-      const own = fuzzyScore(ex.said, bySlug);
-      const rival = catalog
-        .filter((c) => c.id !== bySlug.id)
-        .map((c) => ({ c, score: fuzzyScore(ex.said, c) }))
-        .sort((a, b) => b.score - a.score)[0];
-      if (rival && rival.score >= RIVAL_MIN_SCORE && own * 2 < rival.score) {
-        return {
-          kind: "clarify",
-          candidates: [bySlug, rival.c].map((c) => ({ slug: c.slug, name: c.name })),
-        };
-      }
-      return ok(bySlug);
-    }
-    if (exact.some((c) => c.id === bySlug.id)) return ok(bySlug);
-    if (exact.length === 1) return ok(exact[0] as CatalogExercise);
-    return { kind: "clarify", candidates: exact.map((c) => ({ slug: c.slug, name: c.name })) };
+    if (verdict.kind === "ok")
+      return ok(catalog.find((c) => c.slug === verdict.slug) as CatalogExercise);
+    return verdict;
   }
   const saidSlug = catalog.find((c) => c.slug === saidSlugged);
   if (saidSlug) return ok(saidSlug);
@@ -317,6 +346,11 @@ export async function resolveLog(db: Q, input: LogSetsInput, now: Date): Promise
     return { kind: "clarify", said: input.exercise.said, candidates: picked.candidates };
   }
   const exercise = asResolvedExercise(picked.exercise);
+  const invalid = checkKeys(
+    exercise,
+    usedKeys({ hspu_step: input.hspu_step }, ...expandSets(input.sets)),
+  );
+  if (invalid) return { kind: "error", error: invalid };
 
   const planned = await findPlanned(db, ctx, exercise.id, today, target);
   const entries = buildEntries(exercise, input.sets, { rir: input.rir, clean: input.clean });
@@ -405,6 +439,7 @@ export async function resolveClarified(
     exercise: { slug: candidateSlug, said: action.said },
   };
   const r = await resolveLog(db, input, now);
+  if (r.kind === "error") throw new Error(r.error);
   if (r.kind !== "ok") throw new Error("Could not resolve the chosen exercise.");
   return { kind: "log_sets", input, resolved: r.log };
 }
@@ -441,65 +476,16 @@ function applyChanges(
     c.plates_per_side_kg !== undefined ||
     c.pair_total_kg !== undefined
   ) {
-    out.loadKg = convertLoad(exercise, c) ?? e.loadKg;
+    const load = convertLoad(exercise, c);
+    // checkKeys rejects every combination that can't convert before we get here.
+    if (load === null) throw new Error("unreachable: load not convertible after validation");
+    out.loadKg = load;
   }
   if (c.duration_s !== undefined) out.durationS = c.duration_s;
   if (c.distance_m !== undefined) out.distanceM = c.distance_m;
   if (c.pad_height !== undefined) out.padHeight = c.pad_height;
   if (c.band !== undefined) out.note = `band: ${c.band}`;
   return out;
-}
-
-type ChangeKey = keyof EditLastInput["changes"];
-
-const NO_LOAD_TYPES = new Set<ResolvedExercise["type"]>([
-  "bodyweight_reps",
-  "skill_ladder",
-  "skill_practice",
-  "hiit",
-  "mobility",
-  "warmup",
-  "class",
-  "recovery",
-]);
-
-/** Edit keys the exercise type cannot take. Returns a tool error that names the right field. */
-function checkChanges(exercise: ResolvedExercise, c: EditLastInput["changes"]): string | null {
-  const has = (k: ChangeKey) => c[k] !== undefined;
-  const n = exercise.name;
-  const t = exercise.type;
-  if (t === "bodyweight_plus") {
-    if (has("plates_per_side_kg") || has("pair_total_kg")) {
-      return `${has("plates_per_side_kg") ? "plates_per_side_kg" : "pair_total_kg"} does not apply to ${n}. Use added_kg or assist_kg.`;
-    }
-  } else if (NO_LOAD_TYPES.has(t)) {
-    const k = (
-      ["load_kg", "plates_per_side_kg", "pair_total_kg", "added_kg", "assist_kg"] as const
-    ).find(has);
-    if (k) return `${k} does not apply to ${n}: it has no load.`;
-  } else {
-    if (has("added_kg") || has("assist_kg")) {
-      return `${has("added_kg") ? "added_kg" : "assist_kg"} does not apply to ${n}. Use load_kg.`;
-    }
-    if (has("plates_per_side_kg") && exercise.loadBasis !== "barbell_total") {
-      return `plates_per_side_kg only applies to barbell exercises; ${n} does not use a barbell. Use load_kg.`;
-    }
-    if (has("pair_total_kg") && exercise.loadBasis !== "per_hand") {
-      return `pair_total_kg only applies to dumbbell exercises; ${n} does not use dumbbells. Use load_kg.`;
-    }
-    if (
-      has("plates_per_side_kg") &&
-      !has("load_kg") &&
-      convertLoad(exercise, { plates_per_side_kg: c.plates_per_side_kg }) === null
-    ) {
-      return `The bar weight for ${n} is unknown, so plates_per_side_kg cannot be used. Use load_kg.`;
-    }
-  }
-  if ((t === "weighted" || t === "bodyweight_plus") && (has("duration_s") || has("distance_m"))) {
-    return `${has("duration_s") ? "duration_s" : "distance_m"} does not apply to ${n}.`;
-  }
-  if (has("clean") && !exercise.needsClean) return `clean does not apply to ${n}.`;
-  return null;
 }
 
 export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise<StageResult> {
@@ -520,7 +506,7 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
   const step = c.hspu_step ? ladder.find((s) => s.slug === c.hspu_step) : undefined;
   if (c.hspu_step && !step) return fail(`Unknown HSPU step "${c.hspu_step}".`);
 
-  const invalid = checkChanges(exercise, c);
+  const invalid = checkKeys(exercise, usedKeys(c), { checkClean: true });
   if (invalid) return fail(invalid);
 
   const count = before.entries.length;

@@ -86,10 +86,16 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
   return out;
 }
 
-export function decidePolicy(actions: StagedAction[]): PolicyDecision {
+export interface PolicyContext {
+  /** The chat already has an unsaved request (a card, with or without ✏️). */
+  openPending?: boolean;
+}
+
+export function decidePolicy(actions: StagedAction[], ctx: PolicyContext = {}): PolicyDecision {
   const clarify = actions.findIndex((a) => a.kind === "clarify_exercise");
   if (clarify >= 0) return { mode: "clarify", index: clarify };
   const reasons: ConfirmReason[] = [];
+  if (ctx.openPending) reasons.push("replaces_pending");
   if (actions.length > 1) reasons.push("multiple_writes");
   for (const a of actions) {
     for (const r of actionReasons(a)) if (!reasons.includes(r)) reasons.push(r);

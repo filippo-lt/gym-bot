@@ -57,6 +57,7 @@ import {
   memoryList,
   NO_AI_KEY,
   type Place,
+  REPLACED,
   removedText,
   STALE,
   summarize,
@@ -295,21 +296,22 @@ export function createFlow(deps: FlowDeps): Flow {
     });
     // The handler ran twice for one update: the first run already sent (or finished) the card.
     if (reused && (pending.messageId !== null || pending.status !== "open")) return pending;
-    // An older request being corrected (✏️) is replaced silently; any other one is announced.
-    const notice = replaced && !replaced.awaitingEdit ? plainSummary(replaced.actions) : null;
+    // A replaced request is always announced on the new card, and its own card is retired.
+    const notice = replaced ? plainSummary(replaced.actions) : null;
     const id = await send(ctx, renderPending(pending, notice));
     if (id !== undefined) await setPendingMessageId(db, pending.id, id);
+    if (replaced) await retireCard(ctx, chatId, replaced);
     return pending;
   }
 
-  /**
-   * A clear log_sets that restates a request being corrected (✏️) replaces it. Edits and undo
-   * can't be staged while a request is open (the backend refuses), so this never hides a card
-   * behind a change to an older, saved log.
-   */
-  async function dropAwaitingEdit(chatId: number): Promise<void> {
-    const open = await getOpenPending(db, chatId, deps.now());
-    if (open?.awaitingEdit) await cancelPending(db, open.id);
+  /** Best effort: the old card loses its buttons. Telegram errors don't matter here. */
+  async function retireCard(ctx: Context, chatId: number, old: Pending): Promise<void> {
+    if (old.messageId === null) return;
+    try {
+      await ctx.api.editMessageText(chatId, old.messageId, REPLACED);
+    } catch {
+      // message too old, already edited, deleted...
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -384,9 +386,11 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
 
-    const decision = decidePolicy(staged);
+    // With an unsaved request open nothing is written directly: the new actions go to a card
+    // that replaces it (and says so).
+    const open = await getOpenPending(db, chatId, now);
+    const decision = decidePolicy(staged, { openPending: open !== null });
     if (decision.mode === "direct") {
-      await dropAwaitingEdit(chatId);
       const r = await executeActions(db, key, staged, { now });
       if (r.status === "done") {
         for (const m of await echoes(key, staged, r.results)) await send(ctx, m);
@@ -446,11 +450,12 @@ export function createFlow(deps: FlowDeps): Flow {
     });
     if (reused && (pending.messageId !== null || pending.status !== "open")) return;
     const card = deleteQuestion(snap, pending.id, now);
-    if (replaced && !replaced.awaitingEdit) {
-      card.text = `Previous request cancelled: ${esc(plainSummary(replaced.actions))}\n\n${card.text}`;
+    if (replaced) {
+      card.text = `Replaces: ${esc(plainSummary(replaced.actions))}\n\n${card.text}`;
     }
     const id = await send(ctx, card);
     if (id !== undefined) await setPendingMessageId(db, pending.id, id);
+    if (replaced) await retireCard(ctx, chatId, replaced);
   }
 
   async function memoryCommand(ctx: Context): Promise<void> {
@@ -571,7 +576,10 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     if (act === "ed") {
-      if (pending.kind !== "clarify_exercise" && (await markAwaitingEdit(db, id, now))) {
+      if (pending.kind === "clarify_exercise" && pending.status === "open") {
+        await answer();
+        await send(ctx, "Pick one of the buttons above, or send a new message.");
+      } else if (await markAwaitingEdit(db, id, now)) {
         await answer();
         await send(ctx, "OK, tell me what to change.");
       } else {
@@ -626,6 +634,11 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("Already saved.");
       return;
     }
+    if (pending?.status === "open" && pending.kind !== "clarify_exercise") {
+      // The clarify card already became a confirm card (a retried or late tap).
+      await answer("Already answered.");
+      return;
+    }
     const usable =
       pending?.status === "open" &&
       pending.kind === "clarify_exercise" &&
@@ -641,7 +654,14 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("That choice is no longer available.");
       return;
     }
-    const resolved = await resolveClarified(db, clarify, chosen.slug, now);
+    let resolved: Awaited<ReturnType<typeof resolveClarified>>;
+    try {
+      resolved = await resolveClarified(db, clarify, chosen.slug, now);
+    } catch (error) {
+      // The sets don't fit that exercise (e.g. plates on a stack): say so, keep the card.
+      await answer(error instanceof Error ? error.message.slice(0, 190) : "Can't use that one.");
+      return;
+    }
     const said = clarify.said;
     const exercise = resolved.resolved.exercise;
 

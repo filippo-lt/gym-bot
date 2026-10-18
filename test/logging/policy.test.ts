@@ -9,6 +9,14 @@ const reasons = (actions: StagedAction[]) => {
 };
 
 describe("decidePolicy", () => {
+  it("never writes directly while a request is open", () => {
+    expect(decidePolicy([logAction()], { openPending: true })).toEqual({
+      mode: "confirm",
+      reasons: ["replaces_pending"],
+    });
+    expect(decidePolicy([logAction()], { openPending: false })).toEqual({ mode: "direct" });
+  });
+
   it("writes a single clear log in today's session directly", () => {
     expect(decidePolicy([logAction()])).toEqual({ mode: "direct" });
   });

@@ -262,7 +262,7 @@ describe("confirm cards", () => {
     await t.say("first");
     const oldOk = t.buttons(t.lastSent())[0]?.data as string;
     await t.say("second");
-    expect(t.texts()[1]).toContain("Previous request cancelled: ");
+    expect(t.texts()[1]).toContain("Replaces: ");
     await t.tap(oldOk, 1001);
     expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
     expect(t.texts().at(-1)).toBe(EXPIRED);
@@ -282,7 +282,7 @@ describe("confirm cards", () => {
     expect(t.texts().at(-1)).toBe(EXPIRED);
   });
 
-  it("✏️ then a correction replaces the card without a cancelled notice", async () => {
+  it("✏️ then a correction replaces the card and says so", async () => {
     const t = setup([...two(), ...two()]);
     await t.say("first");
     const [, edit] = t.buttons(t.lastSent());
@@ -291,7 +291,7 @@ describe("confirm cards", () => {
     const [p] = await sql`select awaiting_edit from pending_actions`;
     expect(p?.awaiting_edit).toBe(true);
     await t.say("actually different");
-    expect(t.texts().at(-1)).not.toContain("Previous request cancelled");
+    expect(t.texts().at(-1)).toContain("Replaces: ");
     const statuses = await sql`select status from pending_actions order by id`;
     expect(statuses.map((s) => s.status)).toEqual(["replaced", "open"]);
   });
@@ -497,10 +497,10 @@ describe("corrections while a request is open (B1)", () => {
     });
     expect(await count("log_groups")).toBe(1);
 
-    // Restating with log_sets replaces the card, and says nothing about it.
+    // Restating with log_sets replaces the card and says so.
     await t.say("face pulls 22.5");
     expect(t.texts().at(-1)).toContain("Save this?");
-    expect(t.texts().at(-1)).not.toContain("Previous request cancelled");
+    expect(t.texts().at(-1)).toContain("Replaces: ");
     expect(
       (await sql`select status from pending_actions order by id`).map((r) => r.status),
     ).toEqual(["replaced", "open"]);
@@ -511,7 +511,7 @@ describe("corrections while a request is open (B1)", () => {
     const t = setup([tool("log_sets", facePull(20)), ok, tool("log_sets", facePull(25)), ok]);
     await t.say("face pulls 20");
     await t.say("face pulls 25");
-    expect(t.texts().at(-1)).toContain("Previous request cancelled: ");
+    expect(t.texts().at(-1)).toContain("Replaces: ");
   });
 });
 
@@ -606,5 +606,92 @@ describe("retries and stale buttons", () => {
     expect(t.answers().at(-1)?.payload.text).toBe("Can't undo: this log changed since.");
     const loads = await sql`select load_kg::float8 as l from log_entries order by set_index`;
     expect(loads.map((r) => r.l)).toEqual([60, 60]);
+  });
+});
+
+describe("an open request blocks direct writes (round 2)", () => {
+  const two = () => turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog()));
+
+  it("✏️ then restating only bench: a new card with Replaces, nothing written", async () => {
+    const t = setup([
+      two(),
+      ok,
+      tool("log_sets", log("bench_press", { count: 2, reps: 6, load_kg: 57.5 })),
+      ok,
+    ]);
+    await t.say("bench 55 and lateral raise 2x15 6");
+    const first = t.lastSent();
+    await t.tap(t.buttons(first)[1]?.data as string, 1001);
+    await t.say("bench was 57.5");
+    const card = String(t.texts().at(-1));
+    expect(card).toContain("Save this?");
+    expect(card).toContain("Replaces: ");
+    expect(card).toContain("lateral_raise");
+    expect(card).toContain("57.5 kg");
+    expect(await count("log_groups")).toBe(0);
+    // the old card is retired
+    const retired = t.edits().find((c) => c.payload.text === "Replaced by a newer request.");
+    expect(retired?.payload.message_id).toBe(1001);
+    expect(
+      (await sql`select status from pending_actions order by id`).map((r) => r.status),
+    ).toEqual(["replaced", "open"]);
+  });
+
+  it("a restatement without ✏️ gives a new card; the old ✅ is dead; one group at the end", async () => {
+    const t = setup([
+      tool("log_sets", log("face_pull", { count: 1, reps: 15, load_kg: 20 })),
+      ok,
+      tool("log_sets", log("face_pull", { count: 1, reps: 15, load_kg: 22.5 })),
+      ok,
+    ]);
+    await t.say("15 face pulls 20 kg");
+    const oldOk = t.buttons(t.lastSent())[0]?.data as string;
+    await t.say("sorry, 22.5");
+    expect(t.texts().at(-1)).toContain("Replaces: ");
+    const newOk = t.buttons(t.lastSent())[0]?.data as string;
+    await t.tap(oldOk, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("log_groups")).toBe(0);
+    await t.tap(newOk, 1002);
+    expect(await count("log_groups")).toBe(1);
+    const [e] = await sql`select load_kg::float8 as l from log_entries`;
+    expect(e?.l).toBe(22.5);
+  });
+
+  it("/undo with an open card says what it replaces", async () => {
+    const t = setup([tool("log_sets", squatLog()), ok, two(), ok]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("bench and lateral");
+    await t.say("/undo");
+    expect(t.texts().at(-1)).toContain("Replaces: ");
+    expect(t.texts().at(-1)).toContain("Remove ");
+  });
+
+  it("without an open request a clear log is still direct", async () => {
+    const t = setup([tool("log_sets", squatLog()), ok]);
+    await t.say("3x8 squat 60 rir 2");
+    expect(await count("log_groups")).toBe(1);
+  });
+
+  it("✏️ on a clarify card says to use the buttons; a late ex: tap says already answered", async () => {
+    const said = {
+      exercise: { said: "fp" },
+      sets: { count: 2, reps: 15, load_kg: 25 },
+      guessed_fields: [],
+      needs_confirmation: false,
+    };
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("fp 2x15 25");
+    const clarify = t.lastSent();
+    // no ✏️ button on a clarify card; a stray tap must not mark it awaiting edit
+    await t.tap("pa:1:ed", 1001);
+    expect(t.texts().at(-1)).toBe("Pick one of the buttons above, or send a new message.");
+    expect((await sql`select awaiting_edit from pending_actions`)[0]?.awaiting_edit).toBe(false);
+    const face = t.buttons(clarify).find((b) => b.text === "Face pull");
+    await t.tap(face?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain("Save this?");
+    await t.tap(face?.data as string, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe("Already answered.");
+    expect(await count("log_groups")).toBe(0);
   });
 });

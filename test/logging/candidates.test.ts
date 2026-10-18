@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fuzzyScore, rankCandidates } from "../../src/logging/resolve.js";
+import { fuzzyScore, judgeGivenSlug, rankCandidates } from "../../src/logging/resolve.js";
+import { CATALOG } from "../../src/plan-import/exercise-catalog.js";
 
 const catalog = [
   { slug: "face_pull", name: "Face pull", aliases: [] },
@@ -58,5 +59,39 @@ describe("rankCandidates", () => {
       { slug: "squat", name: "Squat" },
     ];
     expect(slugs(rankCandidates("zzz", catalog, today))).toEqual(["squat"]);
+  });
+});
+
+describe("judgeGivenSlug", () => {
+  it.each([
+    ["squats", "squat"],
+    ["pullups", "pull_up"],
+    ["pull ups", "pull_up"],
+    ["face pulls", "face_pull"],
+    ["lateral raises", "lateral_raise"],
+    ["RDLs", "romanian_deadlift"],
+    ["military press", "overhead_press"],
+    ["hack squat", "hack_squat"],
+  ])("accepts %s with slug %s without a question", (said, slug) => {
+    const given = CATALOG.find((c) => c.slug === slug) as (typeof CATALOG)[number];
+    expect(judgeGivenSlug(said, given, CATALOG)).toEqual({ kind: "ok", slug });
+  });
+
+  it("asks when the words don't fit the slug, slug first", () => {
+    const squat = CATALOG.find((c) => c.slug === "squat") as (typeof CATALOG)[number];
+    const r = judgeGivenSlug("fp", squat, CATALOG);
+    expect(r.kind).toBe("clarify");
+    if (r.kind === "clarify") {
+      expect(r.candidates[0]?.slug).toBe("squat");
+      expect(r.candidates.map((c) => c.slug)).toContain("face_pull");
+    }
+  });
+
+  it("an active alias for the words wins over a mismatching slug", () => {
+    const squat = CATALOG.find((c) => c.slug === "squat") as (typeof CATALOG)[number];
+    expect(judgeGivenSlug("fp", squat, CATALOG, "face_pull")).toEqual({
+      kind: "ok",
+      slug: "face_pull",
+    });
   });
 });

@@ -23,7 +23,7 @@ exports[`cards > memory list 1`] = `
 `;
 
 exports[`cards > replaced notice and delete card 1`] = `
-"Previous request cancelled: Bench 2 × 6 · 55 kg
+"Replaces: Bench 2 × 6 · 55 kg
 
 Remove this?
 • Remove Squat 2 × 8 · 60 kg

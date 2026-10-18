@@ -415,6 +415,79 @@ describe("edit and undo", () => {
   });
 });
 
+describe("slug that doesn't fit the words (MAJOR-3)", () => {
+  it("asks for 'fp' with slug squat, then follows the alias once it exists", async () => {
+    const i = input({ exercise: { slug: "squat", said: "fp" } });
+    const r = await stageLogSets(db, i, MON);
+    expect(r.ok && r.action.kind).toBe("clarify_exercise");
+    if (r.ok && r.action.kind === "clarify_exercise") {
+      expect(r.action.candidates[0]?.slug).toBe("squat");
+      expect(r.action.candidates.map((c) => c.slug)).toContain("face_pull");
+    }
+    await saveAlias(db, "fp", await exId(sql, "face_pull"));
+    const again = await stageLogSets(db, i, MON);
+    expect(
+      again.ok && again.action.kind === "log_sets" && again.action.resolved.exercise.slug,
+    ).toBe("face_pull");
+  });
+
+  it("still takes common phrasings with a slug without asking", async () => {
+    for (const [said, slug] of [
+      ["squats", "squat"],
+      ["pull ups", "pull_up"],
+      ["hack squat", "hack_squat"],
+    ] as const) {
+      const r = await resolveLog(
+        db,
+        input({ exercise: { slug, said }, sets: { count: 3, reps: 5 } }),
+        MON,
+      );
+      expect(r.kind === "ok" && r.log.exercise.slug).toBe(slug);
+    }
+  });
+});
+
+describe("keys the exercise can't take (MINOR-4/7)", () => {
+  const fails = async (i: LogSetsInput, field: string) => {
+    const r = await stageLogSets(db, i, MON);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain(field);
+  };
+  const pull = (sets: LogSetsInput["sets"]) =>
+    input({ exercise: { slug: "pull_up", said: "pull up" }, sets });
+
+  it("log_sets names the field instead of dropping it", async () => {
+    await fails(input({ hspu_step: "hspu_negative" }), "hspu_step");
+    await fails(input({ sets: [{ reps: 5, load_kg: 50, pad_height: 10 }] }), "pad_height");
+    await fails(input({ sets: [{ reps: 5, load_kg: 50, band: "red" }] }), "band");
+    await fails(pull({ count: 3, reps: 5, plates_per_side_kg: 10 }), "plates_per_side_kg");
+    await fails(pull({ count: 3, reps: 5, pair_total_kg: 10 }), "pair_total_kg");
+    await fails(input({ sets: [{ reps: 5, pair_total_kg: 40 }] }), "pair_total_kg");
+    await fails(
+      input({ exercise: { slug: "ring_row", said: "ring row" }, sets: [{ reps: 6, load_kg: 20 }] }),
+      "load_kg",
+    );
+    expect((await stageLogSets(db, pull({ count: 3, reps: 5, band: "red" }), MON)).ok).toBe(true);
+  });
+
+  it("edits name them too", async () => {
+    await executeActions(db, "u:60", [await stage(input())], { now: MON });
+    for (const [changes, field] of [
+      [{ hspu_step: "hspu_negative" }, "hspu_step"],
+      [{ pad_height: 10 }, "pad_height"],
+      [{ band: "red" }, "band"],
+    ] as const) {
+      const r = await stageEdit(
+        db,
+        { changes, guessed_fields: [], needs_confirmation: false } as never,
+        MON,
+      );
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toContain(field);
+    }
+  });
+});
+
 describe("edit validation", () => {
   const edit = (changes: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
     stageEdit(
