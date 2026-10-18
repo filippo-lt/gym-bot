@@ -316,9 +316,9 @@ describe("formatToday with advice", () => {
     expect(out).toContain("(optional)");
   });
 
-  it("the earlier-deload hint is one text line", () => {
+  it("the earlier-deload trigger adds no text line (the card is a separate message)", () => {
     const out = formatToday(mon, advice([], { earlierDeloadHint: true }));
-    expect(out).toContain("moving the next deload earlier");
+    expect(out).toBe(formatToday(mon, advice([], { earlierDeloadHint: false })));
   });
 
   it("without advice it is the plain session (unchanged)", () => {

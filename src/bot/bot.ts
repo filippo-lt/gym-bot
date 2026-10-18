@@ -99,6 +99,7 @@ export function createBot(deps: BotDeps): Bot {
     const advice = session.kind === "session" ? await advise(date, short) : null;
     await ctx.reply(formatSession(session, advice, { short }), html);
     await inputs.hspuProposal(ctx, advice);
+    await inputs.deloadProposal(ctx, advice);
   }
   const inputs = createInputs({
     db: deps.db,

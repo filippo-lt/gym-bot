@@ -63,7 +63,7 @@ export interface SessionAdvice {
   bodyweightDate: string | null;
   classAdvice: boolean;
   isTest: boolean;
-  /** Text line only: RED twice in a row or low recovery two weeks (SPEC 5.6c). */
+  /** The trigger for the "move the deload earlier" card (SPEC 5.6c); the card itself is sent by the bot. */
   earlierDeloadHint: boolean;
   items: Map<number, AdviceItem>;
   exercises: Record<number, ExerciseInfo>;
@@ -135,7 +135,7 @@ async function derivedRow(db: Db, date: string) {
   return row ?? null;
 }
 
-/** Text-only "move the deload earlier" hint: today's level plus the last session's, and the last two recovery scores. */
+/** Trigger of the "move the deload earlier" proposal: today's level plus the last session's, and the last two recovery scores. */
 async function deloadHint(db: Db, date: string, todayLevel: ReadinessLevel): Promise<boolean> {
   const [prev] = await db
     .selectDistinct({ d: logGroups.sessionDate })

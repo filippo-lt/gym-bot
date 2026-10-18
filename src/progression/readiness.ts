@@ -178,7 +178,7 @@ export function applyReadiness(
 }
 
 /**
- * Text-only proposal to move the next deload earlier (SPEC 5.6c, default 12; applying it needs plan versioning).
+ * Trigger of the proposal to move the next deload earlier (SPEC 5.6c; the card is `deloadProposal` in inputs-flow).
  * `levelsBySession`: frozen session levels, oldest first. `recoveryByWeek`: weekly recovery scores, oldest first
  * (null = not recorded). True when the last 2 sessions were both RED, or the last 2 weekly scores are both <= 2.
  */

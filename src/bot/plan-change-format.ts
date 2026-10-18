@@ -5,6 +5,7 @@
  */
 import { trainingDate } from "../domain/calendar.js";
 import type { ResolvedSwap } from "../logging/types.js";
+import type { DeloadPreview } from "../plan/deload-proposal.js";
 import { addDays } from "../plan-import/build-plan.js";
 import type { LoadBasis, Weekday } from "../plan-import/types.js";
 import { cb } from "./callbacks.js";
@@ -136,4 +137,41 @@ export function swapCardText(r: ResolvedSwap, today: string = trainingDate(new D
     lines.push(`New exercise: ${esc(r.to.name)} · ${classification(r.to.newSpec)}.`);
   }
   return lines.join("\n");
+}
+
+const dayNum = (date: string) => day(date, "d");
+const dayMonth = (date: string) => day(date, "d LLL");
+
+/** "9–15 Nov", or "30 Nov – 6 Dec" when the week crosses a month. */
+function weekRange(from: string, to: string): string {
+  return day(from, "LLL") === day(to, "LLL")
+    ? `${dayNum(from)}–${dayMonth(to)}`
+    : `${dayMonth(from)} – ${dayMonth(to)}`;
+}
+
+/** Card text for the "move the deload earlier" proposal; every number comes from the preview. */
+export function deloadProposalText(p: DeloadPreview): string {
+  const lines = [
+    `You've been tired 2 sessions in a row. Move the deload earlier? Next week (W${p.insertedWeek}, ${weekRange(p.mondayDate, p.sundayDate)}) becomes a deload, weeks ${p.shiftedFrom}–${p.shiftedTo} move one week later.`,
+  ];
+  if (p.droppedWeek !== null) {
+    const gap = p.droppedWeek + 1 - p.insertedWeek;
+    lines.push(`The W${p.droppedWeek} deload is dropped (it would be only ${gap} weeks after).`);
+  } else if (p.keptDeloadWeek !== null) {
+    lines.push(`The next deload stays, now W${p.keptDeloadWeek}.`);
+  }
+  lines.push(
+    `The plan ${p.newWeeks === p.shiftedTo ? "still" : "now"} ends ${day(p.endDate, "ccc d LLL")}.`,
+  );
+  return lines.join(" ");
+}
+
+/** Reply after ✅. */
+export function deloadAppliedText(c: {
+  insertedWeek: number;
+  droppedWeek: number | null;
+  mondayDate: string;
+}): string {
+  const dropped = c.droppedWeek === null ? "" : ` (W${c.droppedWeek} deload dropped)`;
+  return `Done. From ${day(c.mondayDate, "ccc d LLL")} the deload is W${c.insertedWeek}${dropped}.`;
 }

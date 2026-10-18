@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  deloadAppliedText,
+  deloadProposalText,
   swapCardText,
   swapDaysQuestion,
   swapScopeQuestion,
@@ -94,5 +96,58 @@ describe("swapCardText", () => {
   it("escapes HTML in names", () => {
     const t = swapCardText(resolvedSwap({ scope: "today", from: { id: 1, name: "A <b>" } }), TODAY);
     expect(t).toContain("A &lt;b&gt;");
+  });
+});
+
+describe("deload proposal text", () => {
+  const w6 = {
+    insertedWeek: 7,
+    mondayDate: "2026-11-09",
+    sundayDate: "2026-11-15",
+    shiftedFrom: 7,
+    shiftedTo: 12,
+    droppedWeek: 8,
+    keptDeloadWeek: null,
+    newWeeks: 12,
+    endDate: "2026-12-20",
+  };
+  it("W6 example: drops W8, plan still ends Sun 20 Dec", () => {
+    expect(deloadProposalText(w6)).toBe(
+      "You've been tired 2 sessions in a row. Move the deload earlier? Next week (W7, 9–15 Nov) becomes a deload, weeks 7–12 move one week later. The W8 deload is dropped (it would be only 2 weeks after). The plan still ends Sun 20 Dec.",
+    );
+  });
+  it("W5 example: deload kept, plan now ends Sun 27 Dec", () => {
+    const t = deloadProposalText({
+      ...w6,
+      insertedWeek: 6,
+      mondayDate: "2026-11-02",
+      sundayDate: "2026-11-08",
+      shiftedFrom: 6,
+      droppedWeek: null,
+      keptDeloadWeek: 9,
+      newWeeks: 13,
+      endDate: "2026-12-27",
+    });
+    expect(t).toContain(
+      "Next week (W6, 2–8 Nov) becomes a deload, weeks 6–12 move one week later.",
+    );
+    expect(t).toContain("The next deload stays, now W9.");
+    expect(t).toContain("The plan now ends Sun 27 Dec.");
+  });
+  it("a week across two months shows both", () => {
+    const t = deloadProposalText({
+      ...w6,
+      mondayDate: "2026-11-30",
+      sundayDate: "2026-12-06",
+    });
+    expect(t).toContain("(W7, 30 Nov – 6 Dec)");
+  });
+  it("applied line", () => {
+    expect(deloadAppliedText({ insertedWeek: 7, droppedWeek: 8, mondayDate: "2026-11-09" })).toBe(
+      "Done. From Mon 9 Nov the deload is W7 (W8 deload dropped).",
+    );
+    expect(
+      deloadAppliedText({ insertedWeek: 6, droppedWeek: null, mondayDate: "2026-11-02" }),
+    ).toBe("Done. From Mon 2 Nov the deload is W6.");
   });
 });

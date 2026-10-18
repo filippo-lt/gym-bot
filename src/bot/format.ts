@@ -2,7 +2,6 @@ import { DateTime } from "luxon";
 import type { FallbackPrescription } from "../plan-import/types.js";
 import type { AdviceItem, SessionAdvice } from "../progression/session-advice.js";
 import {
-  EARLIER_DELOAD_HINT,
   FRIDAY_ASK_CLASS,
   heavyGroupFor,
   type LabelContext,
@@ -356,7 +355,6 @@ export function formatToday(
     })) {
       lines.push(esc(l));
     }
-    if (advice.earlierDeloadHint) lines.push(esc(EARLIER_DELOAD_HINT));
   }
   lines.push("");
 
