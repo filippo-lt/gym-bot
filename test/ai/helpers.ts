@@ -90,6 +90,9 @@ export function fakeUsage(totals = { day: 0, month: 0 }): UsageStore & { recorde
     async record(u) {
       recorded.push(u);
     },
+    async weekTotals() {
+      return { tokens: 0, sttSeconds: 0 };
+    },
     async sttSecondsToday() {
       return 0;
     },

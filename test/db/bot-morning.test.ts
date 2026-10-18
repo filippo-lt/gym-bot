@@ -76,9 +76,10 @@ const edits = (c: Call[]) => c.filter((x) => x.method === "editMessageText");
 const sends = (c: Call[]) => c.filter((x) => x.method === "sendMessage");
 
 async function morning(): Promise<void> {
-  await runDueJobs({ db, now: new Date("2026-10-27T05:00:00Z"), send: async () => {} }, [
-    morningJob,
-  ]);
+  await runDueJobs(
+    { db, now: new Date("2026-10-27T05:00:00Z"), send: async () => {}, sendFile: async () => {} },
+    [morningJob],
+  );
 }
 
 describe("morning readiness tap", () => {

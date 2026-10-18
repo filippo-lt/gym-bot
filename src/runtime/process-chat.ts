@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/client.js";
+import { classify, describeFailure, type Failure } from "../failures/classify.js";
+import { runWithDeadline } from "./deadline.js";
 import { claim, markDone, markRetryOrFailed, oldestOpen, resetStuck } from "./inbox.js";
 import { acquireOrRenew, release } from "./lease.js";
+import { FIRST_ROW_GRACE_MS, hardEndMs, inputKind, MIN_TIME_LEFT_MS } from "./row-budget.js";
 
 export type StoppedReason =
   | "lease_held"
@@ -23,21 +26,18 @@ export type ProcessChatDeps = {
   chatId: number;
   handle: (payload: unknown) => Promise<void>;
   sendTyping: (chatId: number) => Promise<void>;
-  notifyFailed: (chatId: number, payload: unknown) => Promise<void>;
+  notifyFailed: (chatId: number, payload: unknown, failure: Failure) => Promise<void>;
+  /** Sent on the first failure of a row that will be retried. */
+  notifyRetrying: (chatId: number, failure: Failure) => Promise<void>;
   /** Epoch ms; no new row is claimed after this. */
   deadline: number;
+  /** Epoch ms the invocation started (default: when processChat starts). */
+  startedAt?: number;
   now?: () => number;
   owner?: string;
 };
 
 const MAX_ROUNDS = 3;
-
-/** Name and code only: driver errors can carry SQL params, i.e. message text. */
-function describeError(error: unknown): string {
-  if (!(error instanceof Error)) return "unknown error";
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? `${error.name} (${code})` : error.name;
-}
 
 async function ignoreErrors(fn: () => Promise<void>): Promise<void> {
   try {
@@ -51,9 +51,15 @@ async function ignoreErrors(fn: () => Promise<void>): Promise<void> {
  * A "busy" or "lease_held" exit can leave a message waiting until the next webhook or cron tick
  * (at most 15 min). That is accepted by SPEC §3.
  */
-async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSummary) {
+async function runRound(
+  deps: ProcessChatDeps,
+  owner: string,
+  summary: ProcessSummary,
+  invocation: { startedAt: number; handlerRuns: number },
+) {
   const { db, chatId } = deps;
   const now = deps.now ?? Date.now;
+  const { startedAt } = invocation;
 
   if (!(await acquireOrRenew(db, chatId, owner))) {
     summary.stoppedReason = "lease_held";
@@ -64,7 +70,9 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
       if (stuck.status !== "failed") continue;
       summary.failed += 1;
       console.error(`inbox ${stuck.id}: failed (timed out)`);
-      await ignoreErrors(() => deps.notifyFailed(chatId, stuck.payload));
+      await ignoreErrors(() =>
+        deps.notifyFailed(chatId, stuck.payload, { kind: "row_timeout", detail: "lease expired" }),
+      );
     }
     let claimMisses = 0;
     while (now() < deps.deadline) {
@@ -81,6 +89,16 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
         summary.stoppedReason = "busy";
         return;
       }
+      // The first row runs when the invocation is still young (its timeouts are clamped); a
+      // later row, or a first row reached late, that cannot fit waits for the next
+      // invocation, attempts untouched.
+      if (
+        (invocation.handlerRuns > 0 || now() - startedAt >= FIRST_ROW_GRACE_MS) &&
+        hardEndMs(startedAt) - now() < MIN_TIME_LEFT_MS[inputKind(row.payload)]
+      ) {
+        summary.stoppedReason = "deadline";
+        return;
+      }
       const claimed = await claim(db, row.id, owner);
       if (!claimed) {
         claimMisses += 1;
@@ -93,9 +111,11 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
 
       await ignoreErrors(() => deps.sendTyping(chatId));
       try {
-        await deps.handle(claimed.payload);
+        invocation.handlerRuns += 1;
+        await runWithDeadline(hardEndMs(startedAt), () => deps.handle(claimed.payload));
       } catch (error) {
-        const status = await markRetryOrFailed(db, claimed.id, owner, describeError(error));
+        const failure = classify(error, "other");
+        const status = await markRetryOrFailed(db, claimed.id, owner, describeFailure(failure));
         if (status === null) {
           // The sweep already resolved this row (and notified, if it failed): nothing to add.
           console.error(`inbox ${claimed.id}: handler failed after the claim was lost`);
@@ -104,8 +124,10 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
         console.error(`inbox ${claimed.id}: ${status} (attempt ${claimed.attempts})`);
         if (status === "failed") {
           summary.failed += 1;
-          await ignoreErrors(() => deps.notifyFailed(chatId, claimed.payload));
+          await ignoreErrors(() => deps.notifyFailed(chatId, claimed.payload, failure));
         } else {
+          if (claimed.attempts === 1)
+            await ignoreErrors(() => deps.notifyRetrying(chatId, failure));
           // Do not burn every attempt in one invocation: retry on the next webhook or tick.
           summary.stoppedReason = "retry_later";
           return;
@@ -122,7 +144,9 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
           console.error(`inbox ${claimed.id}: handled after the claim was lost`);
         }
       } catch (error) {
-        console.error(`inbox ${claimed.id}: handled but not marked done (${describeError(error)})`);
+        console.error(
+          `inbox ${claimed.id}: handled but not marked done (${describeFailure(classify(error, "other"))})`,
+        );
         summary.stoppedReason = "retry_later";
         return;
       }
@@ -136,6 +160,7 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
 export async function processChat(deps: ProcessChatDeps): Promise<ProcessSummary> {
   const owner = deps.owner ?? randomUUID();
   const now = deps.now ?? Date.now;
+  const invocation = { startedAt: deps.startedAt ?? now(), handlerRuns: 0 };
   const summary: ProcessSummary = {
     chatId: deps.chatId,
     processed: 0,
@@ -144,7 +169,7 @@ export async function processChat(deps: ProcessChatDeps): Promise<ProcessSummary
   };
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    await runRound(deps, owner, summary);
+    await runRound(deps, owner, summary, invocation);
     // A row may have arrived while we were releasing: look once more.
     if (["lease_held", "busy", "retry_later"].includes(summary.stoppedReason)) break;
     if (now() >= deps.deadline) break;

@@ -5,6 +5,8 @@
       "**",
       "!node_modules",
       "!.claude",
+      "!backups",
+      "!import",
       "!drizzle/meta",
       "!.vercel",
       "!seed/*.json",

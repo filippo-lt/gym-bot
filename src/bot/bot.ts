@@ -12,6 +12,7 @@ import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js"
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
 import { parseChartCallback, parseHistoryCallback } from "./callbacks.js";
 import { trySendFallback } from "./chart-fallback.js";
+import { createExportCommand } from "./export-command.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
@@ -147,6 +148,7 @@ export function createBot(deps: BotDeps): Bot {
   bot.command("readiness", (ctx) => inputs.readinessCommand(ctx));
   bot.command("bw", (ctx) => inputs.bodyweightCommand(ctx));
   bot.command("class", (ctx) => inputs.classCommand(ctx));
+  bot.command("export", createExportCommand({ db: deps.db, now: deps.now }));
 
   bot.command("week", async (ctx) => {
     const week = await queries.getWeek(deps.db, trainingDate(deps.now()));
@@ -226,6 +228,7 @@ export function createBot(deps: BotDeps): Bot {
 
   bot.command("undo", (ctx) => flow.undoCommand(ctx));
   bot.command("memory", (ctx) => flow.memoryCommand(ctx));
+  bot.command("usage", (ctx) => flow.usageCommand(ctx));
   bot.command("skip", (ctx) => flow.skipCommand(ctx));
 
   // /history buttons: before the generic handler, which would hand them to the logging flow.

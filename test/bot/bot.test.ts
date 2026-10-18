@@ -96,6 +96,20 @@ describe("createBot", () => {
     expect(String(calls[0]?.payload.text)).toContain(expected);
   });
 
+  it("/export replies first with the preparing message", async () => {
+    // No database here: the export itself fails and logs; only the first reply matters.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { calls, send } = setup();
+    try {
+      await send("/export");
+      expect(errors).toHaveBeenCalled();
+      expect(calls[0]?.method).toBe("sendMessage");
+      expect(calls[0]?.payload.text).toBe("Preparing your backup…");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it("uses the training date from now()", async () => {
     const { dates, send } = setup();
     await send("/today");
@@ -158,6 +172,7 @@ describe("createBot", () => {
         callback: async (ctx) => void seen.push(`cb:${ctx.callbackQuery?.data}`),
         undoCommand: async () => void seen.push("undo"),
         memoryCommand: async () => void seen.push("memory"),
+        usageCommand: async () => void seen.push("usage"),
         skipCommand: async () => void seen.push("skip"),
       };
       return { seen, flow };
@@ -169,6 +184,7 @@ describe("createBot", () => {
       await send("3x8 squat 60");
       await send("/undo");
       await send("/memory");
+      await send("/usage");
       await send("/skip");
       await bot.handleUpdate({
         update_id: 500,
@@ -179,7 +195,7 @@ describe("createBot", () => {
           data: "ug:7",
         },
       });
-      expect(seen).toEqual(["text:3x8 squat 60", "undo", "memory", "skip", "cb:ug:7"]);
+      expect(seen).toEqual(["text:3x8 squat 60", "undo", "memory", "usage", "skip", "cb:ug:7"]);
       expect(calls).toHaveLength(0);
     });
 
@@ -412,6 +428,7 @@ describe("query commands", () => {
       callback: async (ctx) => void seenByFlow.push(String(ctx.callbackQuery?.data)),
       undoCommand: async () => {},
       memoryCommand: async () => {},
+      usageCommand: async () => {},
       skipCommand: async () => {},
     };
     const h = reads({ kind: "unknown" });

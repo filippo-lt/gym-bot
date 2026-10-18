@@ -4,6 +4,7 @@
  * (SPEC 5.6d). Every number shown to the user comes from code, never from the model.
  */
 import { z } from "zod";
+import type { BudgetCap } from "../ai/budget.js";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 import { classMoveSchema } from "./class-moves.js";
 
@@ -592,7 +593,10 @@ export interface TokenUsage {
 
 /** Usage storage, injected into the AI loop (usage_logs in production). */
 export interface UsageStore {
+  /** Weighted tokens (see `countedTokens`) for today and the calendar month, Rome dates. */
   totals(now: Date): Promise<{ day: number; month: number }>;
+  /** Weighted tokens and voice seconds for the Rome Mon-Sun week containing `now`. */
+  weekTotals(now: Date): Promise<{ tokens: number; sttSeconds: number }>;
   record(usage: TokenUsage, now: Date): Promise<void>;
   /** Voice seconds transcribed today (Europe/Rome date). */
   sttSecondsToday(now: Date): Promise<number>;
@@ -620,4 +624,4 @@ export type IntentResult =
       /** Read-tool results as the model saw them, in call order. */
       reads: ReadRecord[];
     }
-  | { kind: "budget_reached" };
+  | { kind: "budget_reached"; cap: BudgetCap };

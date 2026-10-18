@@ -10,6 +10,7 @@ import type {
 } from "../logging/types.js";
 import { overTokenBudget, tokenUsageOf } from "./budget.js";
 import { AI_BUDGET_MS, AI_MAX_TURNS } from "./constants.js";
+import { AiTimeoutError } from "./errors.js";
 import type { IntentModel, MessageParam } from "./model.js";
 import { buildSystem } from "./prompt.js";
 import { executeTool, READ_TOOLS, TOOLS } from "./tools.js";
@@ -166,12 +167,10 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const budgetMs = p.budgetMs ?? AI_BUDGET_MS;
 
   /** Checked before every model call: a long loop can reach the cap mid-way. */
-  const overBudget = async () => {
-    return overTokenBudget(p.usage, p.now, p);
-  };
+  const overBudget = () => overTokenBudget(p.usage, p.now, p);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error("AI budget exceeded")), budgetMs);
+  const timer = setTimeout(() => controller.abort(new AiTimeoutError()), budgetMs);
   const system = buildSystem(p.promptStatic, p.promptContext);
   const messages: MessageParam[] = [{ role: "user", content: p.text }];
   const staged: StagedAction[] = [];
@@ -183,7 +182,8 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
     let turns = 0;
     while (turns < maxTurns) {
       // Nothing staged so far is written when the cap is hit: the bot only reports it.
-      if (await overBudget()) return { kind: "budget_reached" };
+      const cap = await overBudget();
+      if (cap) return { kind: "budget_reached", cap };
       turns++;
       const res = await p.model.create({
         system,
