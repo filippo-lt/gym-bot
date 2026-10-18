@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import type { Db } from "../db/client.js";
+import type { Db } from "../db/seed-plan.js";
 import { loadSessionAdvice, type SessionAdvice } from "../progression/session-advice.js";
 import { cb } from "./callbacks.js";
 import { formatSession } from "./format.js";
@@ -42,7 +42,7 @@ export function morningMessage(
 ): Message {
   if (readiness) {
     return {
-      text: `${MORNING_GREETING}\nReadiness: ${READINESS_EMOJI[readiness]}\n\n${todayText}`,
+      text: `${MORNING_GREETING}\nNoted: ${READINESS_EMOJI[readiness]}\n\n${todayText}`,
       keyboard: [],
     };
   }
