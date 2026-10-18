@@ -57,6 +57,7 @@ export const HELP_TEXT = [
   "/readiness — how you feel today",
   "/bw — log your bodyweight, e.g. /bw 78.5",
   "/class — log Thursday's class",
+  "/swap — swap an exercise, e.g. /swap face pulls for band pull-aparts",
   "/plan — week, phases and next deload",
   "/history — last sessions of an exercise, e.g. /history squat",
   "/undo — remove your last log",
@@ -500,7 +501,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
 }
 
 /** Under a "Remove this?" header a removal needs no "Remove" of its own. */
-function actionLine(a: StagedAction, underRemoveHeader = false): string {
+function actionLine(a: StagedAction, underRemoveHeader = false, today?: string): string {
   switch (a.kind) {
     case "log_sets":
       return lineText(viewFromResolved(a.resolved));
@@ -513,7 +514,7 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
     case "save_memory":
       return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
     case "swap":
-      return swapCardText(a.resolved);
+      return swapCardText(a.resolved, today);
     case "set_band_kg":
       return `Set the ${esc(a.input.colour)} band to ${fmt(a.input.kg)} kg of assistance${
         a.previousKg !== null ? ` (was ${fmt(a.previousKg)} kg)` : ""
@@ -591,6 +592,8 @@ export function confirmCard(args: {
   replacedSummary?: string | null;
   /** Voice transcript or photo read-out, shown first. */
   heard?: string | null;
+  /** Training date for relative wording in plan-change lines; defaults to the real clock. */
+  today?: string;
 }): Message {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
@@ -600,7 +603,7 @@ export function confirmCard(args: {
   }
   const isSkip = args.actions.every((a) => a.kind === "skip_items");
   lines.push(isDelete ? "Remove this?" : isSkip ? "Skip this?" : "Save this?");
-  for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete)}`);
+  for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete, args.today)}`);
   const why = reasonPhrases(args.actions, args.reasons);
   if (why.length) lines.push("", `Why I'm asking: ${esc(why.join("; "))}`);
   const keyboard: Button[] = [{ text: "✅", data: cb.pending(args.id, "ok") }];

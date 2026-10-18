@@ -94,6 +94,7 @@ export function countUnresolvedErrors(events: IntentEvent[]): number {
         return x.kind === "edit_group" || x.kind === "delete_group";
       }
       if (e.tool === "save_memory") return x.kind === "save_memory";
+      if (e.tool === "swap_exercise") return x.kind === "swap";
       // Unknown tool name (a typo): any later staged action is the retry.
       return true;
     });

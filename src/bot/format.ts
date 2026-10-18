@@ -90,6 +90,11 @@ const VARIANT_LABEL: Record<string, string> = {
 };
 
 function itemName(item: SessionItem, hspuStepName?: string | null): string {
+  const name = baseItemName(item, hspuStepName);
+  return item.swappedFrom ? `${name} (instead of ${item.swappedFrom} today)` : name;
+}
+
+function baseItemName(item: SessionItem, hspuStepName?: string | null): string {
   const names = item.options.map((o) => o.name);
   if (names.length > 1) {
     return [names[0], ...names.slice(1).map((n) => n.charAt(0).toLowerCase() + n.slice(1))].join(

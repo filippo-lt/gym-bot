@@ -8,7 +8,7 @@ import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.
 import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
 import { parseHistoryCallback } from "./callbacks.js";
-import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
+import { esc, formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
   HELP_TEXT,
@@ -159,6 +159,18 @@ export function createBot(deps: BotDeps): Bot {
     const history = await reads.getExerciseHistory(deps.db, exerciseId);
     await ctx.reply(history ? formatHistory(history) : HISTORY_UNKNOWN, html);
   }
+
+  bot.command("swap", async (ctx) => {
+    const said = ctx.match.trim();
+    if (said) return void (await flow.text(ctx, said));
+    const session = await queries.getSession(deps.db, today());
+    const names =
+      session.kind === "session"
+        ? [...new Set(session.items.flatMap((i) => i.options.map((o) => o.name)))]
+        : [];
+    const hint = 'Tell me what to swap, e.g. "swap face pulls for band pull-aparts only today".';
+    await ctx.reply(names.length ? `${hint} Today: ${names.map(esc).join(", ")}.` : hint, html);
+  });
 
   bot.command("undo", (ctx) => flow.undoCommand(ctx));
   bot.command("memory", (ctx) => flow.memoryCommand(ctx));

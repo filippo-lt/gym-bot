@@ -4,9 +4,10 @@
  */
 import { dateLabel } from "../logging/describe.js";
 import type { ResolvedEntry } from "../logging/types.js";
+import type { Weekday } from "../plan-import/types.js";
 import type { SessionAdvice } from "../progression/session-advice.js";
 import type { ExerciseHistory, HistorySession } from "../queries/history.js";
-import type { NextItem, PlanOverview } from "../queries/plan-overview.js";
+import type { NextItem, PlanChangeLine, PlanOverview } from "../queries/plan-overview.js";
 import { cb } from "./callbacks.js";
 import { day, esc, formatFinished, guardLength, itemBlock, weekRange } from "./format.js";
 import { type LineView, type Message, setsText } from "./log-format.js";
@@ -158,5 +159,31 @@ export function formatPlan(o: PlanOverview): string {
     const d = o.nextTrainingDay;
     lines.push(`Next training day: ${day(d.date, "ccc d LLL")} — ${esc(d.focus)}`);
   }
+  if (o.changes.length) {
+    lines.push("", "<b>Changes</b>");
+    for (const c of o.changes) lines.push(changeLine(c));
+  }
   return guardLength(lines.join("\n").trim());
+}
+
+const WEEKDAY_SHORT: Record<Weekday, string> = {
+  mon: "Mon",
+  tue: "Tue",
+  wed: "Wed",
+  thu: "Thu",
+  fri: "Fri",
+};
+
+function changeLine({ effectiveFrom, change }: PlanChangeLine): string {
+  const from = `• From ${day(effectiveFrom, "ccc d LLL")}:`;
+  if (change.kind === "swap") {
+    const days =
+      change.weekdays === "all"
+        ? "every day"
+        : change.weekdays.map((d) => WEEKDAY_SHORT[d]).join(", ");
+    return `${from} ${esc(change.from)} → ${esc(change.to)} (${days})`;
+  }
+  const dropped =
+    change.droppedWeek === null ? "no deload dropped" : `W${change.droppedWeek} deload dropped`;
+  return `${from} deload moved to W${change.insertedWeek} (${dropped})`;
 }

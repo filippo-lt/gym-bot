@@ -256,6 +256,15 @@ describe("unresolved tool errors", () => {
     expect(countUnresolvedErrors([err(1, "undo_last_entry"), staged(1, "delete_group")])).toBe(1);
   });
 
+  it("a failed swap_exercise stays unresolved unless a later swap is staged", () => {
+    expect(countUnresolvedErrors([err(1, "swap_exercise")])).toBe(1);
+    expect(countUnresolvedErrors([err(1, "swap_exercise"), staged(2, "log_sets", "x", "y")])).toBe(
+      1,
+    );
+    expect(countUnresolvedErrors([err(1, "swap_exercise"), staged(1, "swap")])).toBe(1);
+    expect(countUnresolvedErrors([err(1, "swap_exercise"), staged(2, "swap")])).toBe(0);
+  });
+
   it("an unknown tool name is fixed by any later staged action", () => {
     expect(countUnresolvedErrors([err(1, "log_set"), staged(2, "log_sets", "bench")])).toBe(0);
     expect(countUnresolvedErrors([err(1, "log_set"), staged(1, "log_sets", "bench")])).toBe(1);

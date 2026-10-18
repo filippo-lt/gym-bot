@@ -16,6 +16,27 @@ import { plan, sessionFor, weekFor } from "./helpers.js";
 
 const strip = (s: string) => s.replace(/<[^>]+>/g, "");
 
+describe("swapped item", () => {
+  it("shows the replacement with what it replaced today", () => {
+    const s = sessionFor(5, "mon", "2026-10-26");
+    const first = s.items[0];
+    if (!first) throw new Error("no item");
+    const swapped = {
+      ...s,
+      items: [
+        {
+          ...first,
+          options: [{ slug: "face_pull", name: "Face pull" }],
+          swappedFrom: "Bench press",
+        },
+        ...s.items.slice(1),
+      ],
+    };
+    expect(formatToday(swapped)).toContain("<b>Face pull (instead of Bench press today)</b>");
+    expect(formatToday(s)).not.toContain("instead of");
+  });
+});
+
 describe("formatToday", () => {
   it("W5 Monday", () => {
     expect(formatToday(sessionFor(5, "mon", "2026-10-26"))).toMatchSnapshot();

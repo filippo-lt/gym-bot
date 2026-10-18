@@ -60,13 +60,15 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import { applySwapAnswer, swapQuestion } from "../plan/swap-stage.js";
+import { undoPlanChange } from "../plan/undo.js";
 import {
   MAX_VOICE_SECONDS,
   type SpeechToText,
   STT_TIMEOUT_MS,
   sttVocabularyPrompt,
 } from "../stt/stt.js";
-import { type CallbackAction, parseCallback } from "./callbacks.js";
+import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
@@ -111,6 +113,7 @@ import {
   VOICE_TOO_LONG,
   viewFromSnapshot,
 } from "./log-format.js";
+import { swapCardText, swapDaysQuestion, swapScopeQuestion } from "./plan-change-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
 
@@ -140,7 +143,8 @@ const VOICE_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_MAX_BYTES = 3.5 * 1024 * 1024;
 
 export interface Flow {
-  text(ctx: Context): Promise<void>;
+  /** `body` replaces the message text (a command's argument, e.g. /swap <text>). */
+  text(ctx: Context, body?: string): Promise<void>;
   voice(ctx: Context): Promise<void>;
   photo(ctx: Context): Promise<void>;
   callback(ctx: Context): Promise<void>;
@@ -150,6 +154,7 @@ export interface Flow {
 }
 
 const PARTLY = "partly_understood";
+const UNDONE_PLAN = "Undone. The plan is back as it was.";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
 const HTML = { parse_mode: "HTML" as const };
 
@@ -339,8 +344,11 @@ export function createFlow(deps: FlowDeps): Flow {
       } else if (r.kind === "skip") {
         add(skipEcho(r, sourceKey, i));
       } else if (r.kind === "plan_change") {
-        // Part B renders the change line and the Undo button.
-        add({ text: "Saved.", keyboard: [] });
+        const swap = a?.kind === "swap" ? a : undefined;
+        add({
+          text: swap ? `Saved. ${swapCardText(swap.resolved, trainingDate(deps.now()))}` : "Saved.",
+          keyboard: [[{ text: "Undo", data: cb.undoPlan(sourceKey, i) }]],
+        });
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -479,6 +487,14 @@ export function createFlow(deps: FlowDeps): Flow {
         heard: p.transcript,
       });
     }
+    const question = swapQuestionCard(p);
+    if (question) {
+      const head = [
+        p.transcript ? `${heardLine(p.transcript)}\n` : "",
+        replacedSummary ? `Replaces: ${esc(replacedSummary)}\n` : "",
+      ].join("");
+      return { ...question, text: `${head}${question.text}` };
+    }
     return confirmCard({
       id: p.id,
       kind: p.kind,
@@ -486,7 +502,26 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: p.reasons,
       replacedSummary,
       heard: p.transcript,
+      today: trainingDate(deps.now()),
     });
+  }
+
+  /** The scope / days question of the first staged swap that still needs one, as a card. */
+  function swapQuestionCard(p: Pending): Message | null {
+    for (const a of p.actions) {
+      if (a.kind !== "swap") continue;
+      const which = swapQuestion(a.resolved);
+      if (!which) continue;
+      const q =
+        which === "scope"
+          ? swapScopeQuestion(a.resolved, p.id, trainingDate(deps.now()))
+          : swapDaysQuestion(a.resolved, p.id);
+      return {
+        text: q.text,
+        keyboard: [q.buttons.map(([label, data]) => ({ text: label, data }))],
+      };
+    }
+    return null;
   }
 
   async function presentPending(
@@ -611,8 +646,8 @@ export function createFlow(deps: FlowDeps): Flow {
     return false;
   }
 
-  async function text(ctx: Context): Promise<void> {
-    const body = ctx.message?.text;
+  async function text(ctx: Context, bodyOverride?: string): Promise<void> {
+    const body = bodyOverride ?? ctx.message?.text;
     const chatId = ctx.chat?.id;
     if (body === undefined || chatId === undefined) return;
     if (!aiConfig()) {
@@ -1061,6 +1096,10 @@ export function createFlow(deps: FlowDeps): Flow {
         await remember(chatOf(ctx), undone.text);
         return;
       }
+      case "sw":
+        return swapButton(ctx, a.id, a.ans, answer, now);
+      case "up":
+        return undoPlanTap(ctx, a.key, a.index, answer);
       case "sk":
         return skip.skipTap(ctx, a, answer);
       case "us":
@@ -1156,6 +1195,10 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("Pick an exercise first.");
       return;
     }
+    if (swapQuestionCard(pending)) {
+      await answer("Answer the question first.");
+      return;
+    }
     const doneText =
       pending.kind === "delete"
         ? "Removed ✓"
@@ -1202,6 +1245,79 @@ export function createFlow(deps: FlowDeps): Flow {
         ? "Nothing skipped (user confirmed): already done or skipped."
         : `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
     );
+  }
+
+  /** `sw:` taps: the scope / days answer of a staged swap; the same message becomes the next question or the card. */
+  async function swapButton(
+    ctx: Context,
+    id: number,
+    ans: "t" | "r" | "d" | "a",
+    answer: Answer,
+    now: Date,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const pending = await getPending(db, id);
+    if (!pending) {
+      await answer(EXPIRED);
+      await remember(chatId, "A tapped request was not found (expired); nothing changed.");
+      return;
+    }
+    if (pending.status === "executed") {
+      await answer("Already saved.");
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      return;
+    }
+    if (pending.status !== "open" || pending.expiresAt.getTime() <= now.getTime()) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped swap button found the request expired; nothing changed.");
+      return;
+    }
+    const index = pending.actions.findIndex((a) => a.kind === "swap" && swapQuestion(a.resolved));
+    const target = pending.actions[index];
+    const asked = target?.kind === "swap" ? swapQuestion(target.resolved) : null;
+    if (
+      target?.kind !== "swap" ||
+      asked === null ||
+      (asked === "scope") !== (ans === "t" || ans === "r")
+    ) {
+      await answer("Already answered.");
+      return;
+    }
+    const actions = pending.actions.map((a, i) =>
+      i === index && a.kind === "swap" ? { ...a, resolved: applySwapAnswer(a.resolved, ans) } : a,
+    );
+    const row = await replacePendingActions(db, id, actions);
+    if (!row) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
+      await remember(chatId, "A tapped swap button found the request expired; nothing changed.");
+      return;
+    }
+    await edit(ctx, renderPending(row, null));
+    await answer();
+    await remember(chatId, `Swap question answered (${ans}): ${plainSummary(row.actions)}`);
+  }
+
+  /** `up:` taps: undo a saved plan change while it is still unused. */
+  async function undoPlanTap(
+    ctx: Context,
+    key: string,
+    index: number,
+    answer: Answer,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const outcome = await db.transaction((tx) => undoPlanChange(tx, key, index));
+    if (!outcome.ok) {
+      await answer(outcome.reply);
+      await send(ctx, outcome.reply);
+      await remember(chatId, `Plan change not undone: ${outcome.reply}`);
+      return;
+    }
+    await editQuietly(ctx, UNDONE_PLAN);
+    await answer("Undone.");
+    await remember(chatId, "Plan change undone (Undo button): the plan is back as it was.");
   }
 
   /** Toggles and Save of a class-with-moves card: the heavy mask rides in the button, the pending holds the moves. */
