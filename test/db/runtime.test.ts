@@ -480,7 +480,7 @@ describe("invocation deadline and notices", () => {
     const summary = await processChat({
       ...base,
       startedAt: 0,
-      now: () => 12_000, // 68 s left < 75 s voice minimum: runs only through the first-row grace
+      now: () => 12_000, // 73 s left < 75 s voice minimum: runs only through the first-row grace
       handle: async (p) => void handled.push((p as { n: number }).n),
     });
     expect(handled).toEqual([1001]);

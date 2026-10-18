@@ -17,7 +17,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | deployed 18 Oct, live test pending | #12 |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
-| 8 | Morning message + charts | PR open, not merged | #13 |
+| 8 | Morning message + charts | merged to dev, not deployed | #13 |
 | 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | PR open, not merged | M9 PR |
 
 ## What happened, in short
@@ -46,7 +46,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
   - migration 0006 (`job_runs`, `pending_actions.input_source`/`transcript`) applied to production; STT env vars set in Vercel; health and tick OK after deploy
   - decisions: voice notes are mixed Italian/English, so no language is forced; every voice write needs a tap, even a single clear log; a ✏️ correction keeps the voice origin; on the photo card "Not heavy" saves in one tap; a photo without a caption never starts with groups ticked; set counts show only what is written ("6 sets", "6+ sets", or none); a heavy-only report keeps the stored moves and photo, a report with moves replaces them
   - design and plan: `docs/superpowers/specs/2026-10-18-m6-voice-photo-design.md`, `docs/superpowers/plans/2026-10-18-m6-voice-photo.md`
-- **M8 (#13, PR open, 18 Oct):**
+- **M8 (#13, merged to dev 18 Oct, not deployed):**
   - morning job: Mon–Fri 06:00–10:00 Rome, the exact `/today` text with 😴 / 🙂 / 💪 buttons; a tap re-freezes today until the first log and edits the message in place; Friday asks about Thursday first and re-sends the session after Save; "plan finished" once on Mon 21 Dec; quiet at weekends, before/after the plan and once something is logged
   - charts: `/chart <exercise>` (e1RM per session; most reps per set; pull-ups both; HSPU per step; holds in seconds), `/chart volume` (hard sets per week per muscle group), `/chart` buttons, and the `render_chart` chat tool (image after the reply, one per message)
   - renderer: Vega-Lite → SVG → PNG with `@resvg/resvg-js` and a bundled Inter font; no native build, no hosted chart service
