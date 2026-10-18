@@ -91,6 +91,7 @@ All series are computed by pure functions from the log tables (bot and import ro
 - A read tool in the AI loop: `render_chart({ metric: "load" | "reps" | "volume", exercise?: string, weeks?: number })`.
 - The tool resolves the exercise, builds the series, and returns the **computed facts** to the model (first/last/best values with dates, session count). It also records a pending chart on the turn. It doesn't send anything itself.
 - After the loop, the flow sends the reply text, then the chart photo (code caption). At most one chart per message; a second call in the same turn returns "one chart per message" to the model.
+- A message that also stages a write (a confirm card or a direct log) gets no chart: the card or the echo stays the only answer, and the user can ask for the chart again (Claude's call after the final review).
 - `metric: "load"` renders the e1RM panel (for types without load math it falls back to the reps/seconds panel and the facts say so); `"reps"` renders the most-reps panel (seconds for `timed`); `"volume"` renders the volume chart. `/chart <exercise>` picks by type as above.
 - The image is sent after the text reply in the same invocation, **also when the number guard replaces the model's text with the code fallback**.
 - Unknown / ambiguous exercise → the tool result says so with the candidates. The model asks; no image.

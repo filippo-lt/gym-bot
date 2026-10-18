@@ -88,7 +88,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 PR open; M7 and M
 - After a re-import, undo of an earlier bot log restores the status recorded at log time, even if the fresh export changed it.
 - If marking a scheduled job done fails after its message was sent, the job can send again 5 minutes later while its window is open.
 - A photo over 3.5 MB gets the generic "couldn't read that photo" reply instead of a "too large" message.
-- M8: if marking the morning job done fails after the send, it can repeat every 5 minutes inside its 06:00–10:00 window (same runner issue as above; proposed for M9).
+- M8: if marking the morning job done fails after the send, it can repeat every 5 minutes inside its 06:00–10:00 window (same runner issue as above; proposed for M9). On a Friday with Thursday unreported, a failure between the class card and the morning message re-sends the class card too.
 - M8: a Telegram redelivery of a class-card Save on Friday re-sends the Friday session (no duplicate write; `executeActions` has no replay flag).
 - M8: with no plan at all the morning job is recorded as failed instead of skipped.
 
