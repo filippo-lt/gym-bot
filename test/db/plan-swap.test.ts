@@ -223,6 +223,15 @@ describe("resolveSwap", () => {
     );
   });
 
+  it("refuses a rest swap when no later session has the exercise", async () => {
+    // The last Monday of the plan: nothing after it.
+    expect(await refused(swap({ scope: "rest" }), "2026-12-14")).toBe(
+      "Face pull isn't in a later session; use only today.",
+    );
+    // Without a scope the question is still asked (only today is possible).
+    expect((await ok(swap(), "2026-12-14")).futureWeekdays).toEqual([]);
+  });
+
   it("replies when the exercise is the same", async () => {
     expect(await refused(swap({ replacement: { said: "face pull" } }))).toContain("same");
   });

@@ -123,4 +123,21 @@ describe("applySwap", () => {
     }
     for (const i of run(false).items) expect(i.fallbackPrescription).toEqual(fb);
   });
+
+  it("clears the fallback when the new options have no bodyweight_plus exercise, keeps it otherwise", () => {
+    const fb = { kind: "x" } as unknown as ItemSpec["fallbackPrescription"];
+    const c = base();
+    c.items = c.items.map((i) => ({ ...i, fallbackPrescription: fb }));
+    const run = (hasBodyweightPlus: (ids: number[]) => boolean) =>
+      applySwap(c, {
+        ...swap,
+        hasBodyweightPlus,
+        weekdays: ["tue"],
+        fromDate: "2026-09-28",
+      }).content;
+    for (const i of run(() => false).items) {
+      expect(i.fallbackPrescription).toEqual(i.optionExerciseIds.includes(3) ? null : fb);
+    }
+    for (const i of run((ids) => ids.includes(1)).items) expect(i.fallbackPrescription).toEqual(fb);
+  });
 });

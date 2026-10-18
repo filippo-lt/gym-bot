@@ -425,6 +425,11 @@ export function editEchoMessage(a: EditAction, sourceKey: string, index: number)
 // ---------------------------------------------------------------------------
 // Confirm and clarify cards
 
+/** Prefix of a pending reason that carries the text of a refused swap. */
+export const SWAP_REFUSED = "swap_refused:";
+export const refusalTexts = (reasons: string[]): string[] =>
+  reasons.filter((r) => r.startsWith(SWAP_REFUSED)).map((r) => r.slice(SWAP_REFUSED.length));
+
 const humanField = (f: string) => f.replace(/_kg$/, "").replaceAll("_", " ");
 const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
 
@@ -434,6 +439,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
     (a): a is Extract<StagedAction, { kind: "log_sets" }> => a.kind === "log_sets",
   );
   const out: string[] = [];
+  const refusals = refusalTexts(reasons);
   for (const r of reasons) {
     switch (r) {
       case "multiple_writes":
@@ -471,7 +477,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         out.push("from a voice note");
         break;
       case "partly_understood":
-        out.push("part of your message couldn't be saved");
+        out.push(
+          ["part of your message couldn't be saved", ...refusals].join(refusals.length ? ": " : ""),
+        );
         break;
       case "model_flag":
         out.push("I wasn't sure");
@@ -702,6 +710,8 @@ export function clarifyCard(args: {
   candidates: Candidate[];
   replacedSummary?: string | null;
   partlyUnderstood?: boolean;
+  /** Texts of swaps refused at staging, shown after the "couldn't be saved" line. */
+  refusals?: string[];
   heard?: string | null;
 }): Message {
   const lines: string[] = [];
@@ -714,7 +724,11 @@ export function clarifyCard(args: {
       ? `Which exercise is "${esc(args.said)}"?`
       : `I couldn't find an exercise called "${esc(args.said)}".`,
   );
-  if (args.partlyUnderstood) lines.push("Part of your message couldn't be saved.");
+  if (args.partlyUnderstood) {
+    lines.push(
+      ["Part of your message couldn't be saved.", ...(args.refusals ?? []).map(esc)].join(" "),
+    );
+  }
   const keyboard: Keyboard = args.candidates.map((c, i) => [
     { text: c.name, data: cb.exercise(args.id, i, args.actionIndex) },
   ]);

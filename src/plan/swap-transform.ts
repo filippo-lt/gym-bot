@@ -17,6 +17,11 @@ export interface SwapSpec {
   fromDate: string;
   weekdays: Weekday[] | "all";
   clearHspuStep: boolean;
+  /**
+   * Whether the new options include a bodyweight_plus exercise. A changed item without one drops its
+   * fallback prescription (it was written for a pull-up). Omitted: the fallback is kept.
+   */
+  hasBodyweightPlus?: (newOptionIds: number[]) => boolean;
   /** Recomputes RIR for a changed item from its new options (called only for changed items). */
   rirFor: (
     item: ItemSpec,
@@ -48,7 +53,10 @@ export function applySwap(
       rirMin,
       rirMax,
       hspuStepId: s.clearHspuStep ? null : item.hspuStepId,
-      fallbackPrescription: s.clearHspuStep ? null : item.fallbackPrescription,
+      fallbackPrescription:
+        s.clearHspuStep || s.hasBodyweightPlus?.(optionExerciseIds) === false
+          ? null
+          : item.fallbackPrescription,
     };
   });
   return { content: { weeks: content.weeks, items }, changedItems };

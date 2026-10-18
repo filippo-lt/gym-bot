@@ -146,12 +146,16 @@ describe("swap questions", () => {
     await t.say("swap hack squat for cable row");
     expect(t.texts()[0]).toContain("For which sessions?");
     const id = await pendingId();
-    expect(t.buttons(t.lastSent()).map((b) => b.data)).toEqual([`sw:${id}:t`, `sw:${id}:r`]);
+    expect(t.buttons(t.lastSent()).map((b) => b.data)).toEqual([
+      `sw:${id}:t`,
+      `sw:${id}:r`,
+      `pa:${id}:no`,
+    ]);
 
     await t.tap(`sw:${id}:r`);
     const days = t.edits().at(-1);
     expect(String(days?.payload.text)).toContain("Swap it on which days?");
-    expect(t.buttons(days).map((b) => b.data)).toEqual([`sw:${id}:d`, `sw:${id}:a`]);
+    expect(t.buttons(days).map((b) => b.data)).toEqual([`sw:${id}:d`, `sw:${id}:a`, `pa:${id}:no`]);
 
     await t.tap(`sw:${id}:d`);
     const card = t.edits().at(-1);
@@ -161,6 +165,21 @@ describe("swap questions", () => {
       `pa:${id}:ed`,
       `pa:${id}:no`,
     ]);
+    expect(await count("plan_versions")).toBe(1);
+  });
+
+  it("both questions have a Cancel button that drops the request", async () => {
+    const t = setup([tool("swap_exercise", swapInput()), ok]);
+    await t.say("swap hack squat for cable row");
+    const id = await pendingId();
+    expect(t.buttons(t.lastSent()).at(-1)).toEqual({ text: "Cancel", data: `pa:${id}:no` });
+    await t.tap(`sw:${id}:r`);
+    expect(t.buttons(t.edits().at(-1)).at(-1)).toEqual({ text: "Cancel", data: `pa:${id}:no` });
+    await t.tap(`pa:${id}:no`);
+    expect((await sql`select status from pending_actions where id = ${id}`)[0]?.status).not.toBe(
+      "open",
+    );
+    expect(await count("session_overrides")).toBe(0);
     expect(await count("plan_versions")).toBe(1);
   });
 
@@ -317,6 +336,16 @@ describe("/swap and staging refusals", () => {
     await t.say("swap unobtainium for cable row, and bench 2x6 55");
     expect(await count("log_groups")).toBe(0);
     expect(t.texts()[0]).toContain("part of your message couldn't be saved");
+    expect(t.texts()[0]).toContain("Which exercise do you mean:");
+  });
+
+  it("an unreadable swap input gets the fixed sentence, not the model's claim", async () => {
+    const t = setup([
+      tool("swap_exercise", { exercise: { said: "hack squat" } }),
+      turn(text("Done, swapped!")),
+    ]);
+    await t.say("swap hack squat");
+    expect(t.texts()).toEqual(["I couldn't read that swap. Tell me the two exercise names again."]);
   });
 });
 
@@ -359,7 +388,11 @@ describe("swap with other actions and refusals", () => {
     await t.tap(pick?.data ?? "");
     const after = t.edits().at(-1);
     expect(String(after?.payload.text)).toContain("For which sessions?");
-    expect(t.buttons(after).map((b) => b.data)).toEqual([`sw:${id}:t`, `sw:${id}:r`]);
+    expect(t.buttons(after).map((b) => b.data)).toEqual([
+      `sw:${id}:t`,
+      `sw:${id}:r`,
+      `pa:${id}:no`,
+    ]);
     await t.tap(`sw:${id}:t`);
     expect(String(t.edits().at(-1)?.payload.text)).toContain("Save this?");
   });

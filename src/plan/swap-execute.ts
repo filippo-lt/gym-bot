@@ -221,6 +221,7 @@ export async function executeSwap(
     fromDate: effectiveFrom,
     weekdays,
     clearHspuStep: fromRow?.type === "skill_ladder",
+    hasBodyweightPlus: (ids) => ids.some((id) => byId.get(id)?.type === "bodyweight_plus"),
     rirFor: (item, newOptionIds, weekIsDeload) => {
       const { rir_min, rir_max } = computeRir({
         options: newOptionIds.flatMap((id) => {

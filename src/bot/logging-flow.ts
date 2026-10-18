@@ -109,9 +109,11 @@ import {
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
   type Place,
+  refusalTexts,
   removedText,
   replacedText,
   STALE,
+  SWAP_REFUSED,
   stripMarkdown,
   summarize,
   VOICE_BLANK,
@@ -176,6 +178,9 @@ function capValue(ai: AiConfig, cap: BudgetCap): number {
 }
 
 const PARTLY = "partly_understood";
+/** Reasons that carry the text of a swap refused at staging (shown on the card). */
+const refusalReasons = (texts: string[]) => texts.map((t) => `${SWAP_REFUSED}${t}`);
+const keptRefusals = (reasons: string[]) => reasons.filter((r) => r.startsWith(SWAP_REFUSED));
 const UNDONE_PLAN = "Undone. The plan is back as it was.";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
 const HTML = { parse_mode: "HTML" as const };
@@ -499,6 +504,7 @@ export function createFlow(deps: FlowDeps): Flow {
           candidates: a.candidates,
           replacedSummary,
           partlyUnderstood: p.reasons.includes(PARTLY),
+          refusals: refusalTexts(p.reasons),
           heard: p.transcript,
         });
       }
@@ -544,7 +550,10 @@ export function createFlow(deps: FlowDeps): Flow {
           : swapDaysQuestion(a.resolved, p.id);
       return {
         text: q.text,
-        keyboard: [q.buttons.map(([label, data]) => ({ text: label, data }))],
+        keyboard: [
+          q.buttons.map(([label, data]) => ({ text: label, data })),
+          [{ text: "Cancel", data: cb.pending(p.id, "no") }],
+        ],
       };
     }
     return null;
@@ -854,7 +863,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await presentPending(ctx, {
         kind: "clarify_exercise",
         actions: staged,
-        reasons: partly ? [PARTLY] : [],
+        reasons: partly ? [PARTLY, ...refusalReasons(result.swapRefusals)] : [],
         updateId,
         now,
         inputSource: cardSource,
@@ -874,7 +883,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await presentPending(ctx, {
         kind,
         actions: staged,
-        reasons: decision.reasons,
+        reasons: [...decision.reasons, ...refusalReasons(result.swapRefusals)],
         updateId,
         now,
         inputSource: cardSource,
@@ -1673,6 +1682,7 @@ export function createFlow(deps: FlowDeps): Flow {
             said: q.said,
             candidates: q.candidates,
             partlyUnderstood: partly,
+            refusals: refusalTexts(pending.reasons),
             heard: pending.transcript,
           }),
         );
@@ -1689,7 +1699,7 @@ export function createFlow(deps: FlowDeps): Flow {
         : "confirm";
       const row = await replacePendingActions(db, pendingId, actions, {
         kind,
-        reasons: next.reasons,
+        reasons: [...next.reasons, ...keptRefusals(pending.reasons)],
       });
       if (!row) {
         await answer(EXPIRED);

@@ -318,6 +318,14 @@ describe("getAlternativeFacts", () => {
     expect(hack?.samePatternInCatalog).toEqual([]);
   });
 
+  it("same-pattern exercises come from the version effective today", async () => {
+    await sql`insert into plan_versions (plan_id, version, effective_from, reason, source_hash, resolved_hash)
+      select plan_id, 2, '2026-09-29', 'empty', source_hash, resolved_hash from plan_versions where version = 1`;
+    const f = await getAlternativeFacts(db, { id: await exId(sql, "cable_row") }, "2026-10-01");
+    expect(f?.movementTags).toEqual(["row"]);
+    expect(f?.samePatternInCatalog).toEqual([]);
+  });
+
   it("returns active limitations and preferences only", async () => {
     const f = await getAlternativeFacts(db, { id: await exId(sql, "bench_press") }, "2026-09-28");
     expect(f?.limitations).toEqual(["Left shoulder sensitive on dips"]);

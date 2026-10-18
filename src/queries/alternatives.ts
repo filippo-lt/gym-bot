@@ -1,5 +1,5 @@
 /** Read-only facts for "alternative to X?" questions. Claude proposes; code supplies facts. */
-import { arrayOverlaps, eq, inArray } from "drizzle-orm";
+import { and, arrayOverlaps, eq, inArray } from "drizzle-orm";
 import { WEEKDAY_ORDER } from "../bot/session.js";
 import { equipment, exercises, plannedItemOptions, plannedItems } from "../db/schema/plan.js";
 import { trainingDate } from "../domain/calendar.js";
@@ -105,8 +105,8 @@ export async function getAlternativeFacts(
   }
 
   let samePatternInCatalog: AlternativeFacts["samePatternInCatalog"] = [];
-  if (movementTags.length > 0) {
-    // Single-option items only: an OR item would pull in exercises of another pattern.
+  if (movementTags.length > 0 && version) {
+    // Single-option items of the version effective today: an OR item would pull in exercises of another pattern.
     const rows = await db
       .select({
         itemId: plannedItems.id,
@@ -120,7 +120,12 @@ export async function getAlternativeFacts(
       .innerJoin(plannedItemOptions, eq(plannedItemOptions.plannedItemId, plannedItems.id))
       .innerJoin(exercises, eq(exercises.id, plannedItemOptions.exerciseId))
       .leftJoin(equipment, eq(equipment.id, exercises.equipmentId))
-      .where(arrayOverlaps(plannedItems.tags, movementTags));
+      .where(
+        and(
+          arrayOverlaps(plannedItems.tags, movementTags),
+          eq(plannedItems.planVersionId, version.versionId),
+        ),
+      );
     const counts = new Map<number, number>();
     for (const r of rows) counts.set(r.itemId, (counts.get(r.itemId) ?? 0) + 1);
     const found = new Map<string, { slug: string; name: string; equipment: string | null }>();

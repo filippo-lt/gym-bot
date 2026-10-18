@@ -73,11 +73,9 @@ export function stagedEvent(a: StagedAction, turn: number): IntentEvent {
   return { type: "staged", turn, said: null, slug: null, kind: a.kind };
 }
 
-/**
- * Tool errors that nothing fixed. A fix has to come in a LATER turn (the model saw the error
- * and tried again): a log_sets error is fixed by a later log_sets/clarify with the same words
- * or slug; an edit/undo error only by a later edit or delete (a log never fixes it).
- */
+/** Shown when the model's swap input does not parse. */
+export const SWAP_UNREADABLE = "I couldn't read that swap. Tell me the two exercise names again.";
+
 /** Code-built refusal texts of swaps that no later swap fixed (they are shown to the user as they are). */
 export function unresolvedSwapRefusals(
   errors: { turn: number; reply: string }[],
@@ -88,6 +86,11 @@ export function unresolvedSwapRefusals(
     .map((e) => e.reply);
 }
 
+/**
+ * Tool errors that nothing fixed. A fix has to come in a LATER turn (the model saw the error
+ * and tried again): a log_sets error is fixed by a later log_sets/clarify with the same words
+ * or slug; an edit/undo error only by a later edit or delete (a log never fixes it).
+ */
 export function countUnresolvedErrors(events: IntentEvent[]): number {
   let n = 0;
   for (const e of events) {
@@ -252,8 +255,13 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           addStaged(staged, metas, events, exec.staged, turns, tu.input);
         } else if (exec.isError && !READ_TOOLS.includes(tu.name)) {
           events.push({ type: "error", turn: turns, tool: tu.name, ...exerciseOf(tu.input) });
-          if (tu.name === "swap_exercise" && !exec.toolResultContent.startsWith("Invalid input")) {
-            swapErrors.push({ turn: turns, reply: exec.toolResultContent });
+          if (tu.name === "swap_exercise") {
+            // A zod-invalid swap has no code-built refusal: the user gets a fixed sentence.
+            const invalid = exec.toolResultContent.startsWith("Invalid input");
+            swapErrors.push({
+              turn: turns,
+              reply: invalid ? SWAP_UNREADABLE : exec.toolResultContent,
+            });
           }
         }
         if (exec.read && !exec.isError) {
