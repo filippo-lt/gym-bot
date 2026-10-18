@@ -106,6 +106,14 @@ describe("env", () => {
     }
   });
 
+  it("rejects the Supabase transaction pooler port", async () => {
+    process.env.DATABASE_URL = "postgresql://u:p@aws-0-eu-west-1.pooler.supabase.com:6543/postgres";
+    const { dbEnv } = await load();
+    expect(() => dbEnv()).toThrowError(
+      /DATABASE_URL: must not use the Supabase transaction pooler/,
+    );
+  });
+
   it("parses dbEnv", async () => {
     process.env.DATABASE_URL = "postgres://x";
     const { dbEnv } = await load();
