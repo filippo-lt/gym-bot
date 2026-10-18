@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { classCard } from "../bot/inputs-flow.js";
 import { APP_TIMEZONE } from "../config/constants.js";
@@ -20,7 +20,7 @@ export const classQuestionJob: Job = {
     return { date };
   },
   async run(ctx, date) {
-    const [plan] = await ctx.db.select().from(plans).limit(1);
+    const [plan] = await ctx.db.select().from(plans).orderBy(desc(plans.id)).limit(1);
     if (!plan || planWeekFor(date, plan.startDate, plan.weeks).status !== "active") {
       return "skipped";
     }

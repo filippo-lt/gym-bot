@@ -1,4 +1,4 @@
-import { Bot, type Context, InlineKeyboard, type Transformer } from "grammy";
+import { Bot, type Context, type Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
@@ -10,7 +10,13 @@ import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-ov
 import { parseHistoryCallback } from "./callbacks.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
-import { HELP_TEXT, type Message, TEXT_ONLY, UNKNOWN_COMMAND } from "./log-format.js";
+import {
+  HELP_TEXT,
+  inlineKeyboard,
+  type Message,
+  TEXT_ONLY,
+  UNKNOWN_COMMAND,
+} from "./log-format.js";
 import { type AiSource, createFlow, type Flow, type MediaSource } from "./logging-flow.js";
 import {
   formatHistory,
@@ -99,14 +105,7 @@ export function createBot(deps: BotDeps): Bot {
     now: deps.now,
     sendToday: (ctx) => sendSession(ctx, today()),
   });
-  const withKeyboard = (m: Message) => {
-    const kb = new InlineKeyboard();
-    m.keyboard.forEach((row, i) => {
-      for (const b of row) kb.text(b.text, b.data);
-      if (i < m.keyboard.length - 1) kb.row();
-    });
-    return { ...html, reply_markup: kb };
-  };
+  const withKeyboard = (m: Message) => ({ ...html, reply_markup: inlineKeyboard(m.keyboard) });
 
   bot.command(["start", "help"], (ctx) => ctx.reply(HELP_TEXT, html));
 

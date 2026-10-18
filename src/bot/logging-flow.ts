@@ -4,7 +4,7 @@
  * All numbers in replies are formatted by log-format.ts from DB or parsed values.
  */
 import { eq } from "drizzle-orm";
-import { type Context, InlineKeyboard } from "grammy";
+import type { Context } from "grammy";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
 import { overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
@@ -88,6 +88,7 @@ import {
   expiredText,
   groupsToMask,
   heardLine,
+  inlineKeyboard,
   type Keyboard,
   type Message,
   maskToGroups,
@@ -152,17 +153,8 @@ const PARTLY = "partly_understood";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
 const HTML = { parse_mode: "HTML" as const };
 
-function markup(kb: Keyboard): InlineKeyboard {
-  const k = new InlineKeyboard();
-  kb.forEach((row, i) => {
-    for (const b of row) k.text(b.text, b.data);
-    if (i < kb.length - 1) k.row();
-  });
-  return k;
-}
-
 function opts(m: { keyboard: Keyboard }) {
-  return m.keyboard.length ? { ...HTML, reply_markup: markup(m.keyboard) } : HTML;
+  return m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
 }
 
 /** Sends a message and returns its id (undefined when the API result carries none). */

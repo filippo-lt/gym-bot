@@ -3,7 +3,7 @@
  * Writes go through the same executor (write_ledger, Undo) as logs; every number comes from DB rows or parsed input.
  */
 import { and, desc, eq, gt } from "drizzle-orm";
-import { type Context, InlineKeyboard } from "grammy";
+import type { Context } from "grammy";
 import { logGroups } from "../db/schema/log.js";
 import { exercises } from "../db/schema/plan.js";
 import { proposals } from "../db/schema/progression.js";
@@ -20,6 +20,7 @@ import { day, esc } from "./format.js";
 import {
   directWriteSaved,
   CLASS_HEAVY_GROUPS as GROUPS,
+  inlineKeyboard,
   type Message,
   maskToGroups,
 } from "./log-format.js";
@@ -31,16 +32,8 @@ export const READINESS_QUESTION = "How do you feel today?";
 
 const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
 
-function markup(m: Message): InlineKeyboard {
-  const k = new InlineKeyboard();
-  m.keyboard.forEach((row, i) => {
-    for (const b of row) k.text(b.text, b.data);
-    if (i < m.keyboard.length - 1) k.row();
-  });
-  return k;
-}
-
-const opts = (m: Message) => (m.keyboard.length ? { ...HTML, reply_markup: markup(m) } : HTML);
+const opts = (m: Message) =>
+  m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
 
 /** "78.5", "78,5", "78.5kg" -> 78.5; null when it is not a plausible bodyweight. */
 export function parseKg(arg: string): number | null {

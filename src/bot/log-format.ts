@@ -2,6 +2,7 @@
  * Telegram texts and keyboards for logging (M3). Pure: every number here comes from DB rows or
  * parsed input, never from model text. Output is Telegram HTML, so user-provided text is escaped.
  */
+import { InlineKeyboard } from "grammy";
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
 import { trainingDate } from "../domain/calendar.js";
@@ -28,6 +29,16 @@ export interface Button {
   data: string;
 }
 export type Keyboard = Button[][];
+/** Telegram inline keyboard for a Keyboard (one row per inner array). */
+export function inlineKeyboard(kb: Keyboard): InlineKeyboard {
+  const k = new InlineKeyboard();
+  kb.forEach((row, i) => {
+    for (const b of row) k.text(b.text, b.data);
+    if (i < kb.length - 1) k.row();
+  });
+  return k;
+}
+
 export interface Message {
   text: string;
   keyboard: Keyboard;

@@ -46,10 +46,11 @@ export async function runDueJobs(
 ): Promise<{ job: string; date: string; outcome: JobOutcome }[]> {
   const results: { job: string; date: string; outcome: JobOutcome }[] = [];
   for (const job of jobs) {
-    const win = job.window(ctx.now);
-    if (!win) continue;
-    const { date } = win;
+    let date = "";
     try {
+      const win = job.window(ctx.now);
+      if (!win) continue;
+      date = win.date;
       if (!(await claim(ctx, job.name, date))) {
         results.push({ job: job.name, date, outcome: "busy" });
         continue;

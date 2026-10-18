@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Message } from "../../src/bot/log-format.js";
 import { classQuestionJob } from "../../src/jobs/class-question.js";
-import { type JobContext, runDueJobs } from "../../src/jobs/runner.js";
+import { type Job, type JobContext, runDueJobs } from "../../src/jobs/runner.js";
 import { connect, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -94,5 +94,17 @@ describe("class question job", () => {
     const r = await runDueJobs(ctx, [classQuestionJob]);
     expect(r[0]?.outcome).toBe("failed");
     expect((await sql`select status from job_runs`)[0]?.status).toBe("claimed");
+  });
+
+  it("a throwing window is failed and later jobs still run", async () => {
+    const bad: Job = {
+      name: "bad",
+      window: () => {
+        throw new Error("x");
+      },
+      run: async () => "sent",
+    };
+    const r = await runDueJobs(ctxAt("2026-10-22T19:00:00Z"), [bad, classQuestionJob]);
+    expect(r.map((x) => x.outcome)).toEqual(["failed", "sent"]);
   });
 });
