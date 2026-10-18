@@ -41,10 +41,10 @@ export const cb = {
   memory: (id: number) => `md:${id}`,
   undoWrite: (key: string, index: number) => `uw:${key}:${index}`,
   readiness: (level: "t" | "o" | "s") => `rd:${level}`,
-  /** The class Thursday (ISO date) rides along as YYYYMMDD, so a late Save lands on the card's own day. */
   /** Morning-message buttons: the message's own date rides along as YYYYMMDD. */
   readinessMorning: (level: "t" | "o" | "s", date: string) =>
     `rd:${level}:m:${date.replaceAll("-", "")}`,
+  /** The class Thursday (ISO date) rides along as YYYYMMDD, so a late Save lands on the card's own day. */
   classMask: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}`,
   classSave: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}:ok`,
   classMoves: (pendingId: number, mask: number) => `cm:${pendingId}:${mask}`,

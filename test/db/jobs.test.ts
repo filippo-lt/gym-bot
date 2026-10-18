@@ -1,5 +1,8 @@
+import type { Transformer } from "grammy";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { createBot } from "../../src/bot/bot.js";
 import { formatFinished } from "../../src/bot/format.js";
+import { READINESS_QUESTION } from "../../src/bot/inputs-flow.js";
 import type { Message } from "../../src/bot/log-format.js";
 import { MORNING_GREETING, renderTodayText } from "../../src/bot/morning.js";
 import { CLASS_QUESTION, classQuestionJob } from "../../src/jobs/class-question.js";
@@ -123,7 +126,7 @@ describe("morning job", () => {
     await sql`update plan_weeks set start_date = (date '2026-10-12' + (week - 1) * 7)`;
   });
 
-  it("W5 weekday: greeting + exact /today text + 3 morning buttons; readiness and suggestions stored", async () => {
+  it("weekday: greeting + exact /today text + 3 morning buttons; readiness and suggestions stored", async () => {
     // History for last week's Tuesday main item, so the engine has something to suggest from.
     const [g] = await sql`
       insert into log_groups (session_date, performed_at, planned_item_id, exercise_id, source)
@@ -194,5 +197,60 @@ describe("morning job", () => {
     await mtick("2026-10-30T05:00:00Z");
     expect(sent).toHaveLength(1);
     expect(sent[0]?.text.startsWith(MORNING_GREETING)).toBe(true);
+  });
+
+  const botInfo = {
+    id: 1,
+    is_bot: true as const,
+    first_name: "GymBot",
+    username: "gymbot",
+    can_join_groups: false,
+    can_read_all_group_messages: false,
+    supports_inline_queries: false,
+    can_connect_to_business: false,
+    has_main_web_app: false,
+    has_topics_enabled: false,
+    allows_users_to_create_topics: false,
+    can_manage_bots: false,
+    supports_join_request_queries: false,
+  };
+  async function todayViaBot(now: Date): Promise<string> {
+    const texts: string[] = [];
+    const transformer: Transformer = async (_prev, method, payload) => {
+      if (method === "sendMessage") texts.push(String((payload as { text: string }).text));
+      return {
+        ok: true,
+        result: { message_id: 1, date: 0, chat: { id: 42, type: "private" }, text: "" },
+      } as never;
+    };
+    const bot = createBot({ db, now: () => now, token: "123:abc", botInfo, transformer });
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: { id: 42, type: "private", first_name: "F" },
+        from: { id: 42, is_bot: false, first_name: "F" },
+        text: "/today",
+        entities: [{ type: "bot_command", offset: 0, length: 6 }],
+      },
+    });
+    return texts[0] as string;
+  }
+
+  it("morning text is exactly greeting + the real /today text + readiness question", async () => {
+    const now = new Date("2026-10-27T05:00:00Z");
+    await mtick(now.toISOString());
+    const viaBot = await todayViaBot(now);
+    expect(sent[0]?.text).toBe(`${MORNING_GREETING}\n\n${viaBot}\n\n${READINESS_QUESTION}`);
+  });
+
+  it("RED Thursday: the morning message carries the class advice line", async () => {
+    await sql`update planned_items set weekday = 'thu', item_order = 9 where week = 3 and weekday = 'tue' and item_order = 1`;
+    await sql`insert into readiness_logs (date, at, kind, source, level) values
+      ('2026-10-29', '2026-10-29T04:00:00Z', 'button_ok', 'derived', 'RED')`;
+    await mtick("2026-10-29T05:00:00Z");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain("Go easy in class tonight, or skip it.");
   });
 });
