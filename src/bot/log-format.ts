@@ -69,6 +69,8 @@ export const HELP_TEXT = [
   "• I skipped Bulgarian today",
   "• undo that",
   "",
+  "You can also send a voice note, or a photo of the class board.",
+  "",
   "Or ask me, for example:",
   "• what did I squat last week?",
   "• alternative to dips?",

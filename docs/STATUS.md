@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (end of M5)._
+_Last updated: 18 Oct 2026 (end of M6 build)._
 
 ## Milestones (SPEC §8)
 
@@ -15,7 +15,7 @@ _Last updated: 18 Oct 2026 (end of M5)._
 | 3 | Text logging (Claude intent, cards, RIR/clean, edit/undo, aliases, write_ledger) | live | #3–#7 |
 | 4 | Queries (`/next`, `/session`, `/history`, `/plan`, history/alternatives in chat, memory, number guard) | live | #8 |
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
-| 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | next | |
+| 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | built, not deployed | |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
 | 8 | Morning message + charts | todo | |
 | 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | todo | |
@@ -38,10 +38,18 @@ _Last updated: 18 Oct 2026 (end of M5)._
   - migration 0005 applied to production
   - decisions: break cut = 10 % of total load taken from added weight; pull-up assistance = resistance bands; heavy-Thursday Friday reduction = 2 × 4 at RIR 3–4 with load −15 %, rounded down; Thursday input = `/class` buttons plus chat
   - #11: deload weeks keep the deload pull-up prescription when the gate is closed
+- **M6 (built, not deployed):**
+  - voice notes: Telegram download, speech to text (Groq `whisper-large-v3-turbo`, or OpenAI `whisper-1`), then the normal intent pipeline. Every voice write goes through a confirm card showing "🎤 heard: …"; reads get the heard line first
+  - class board photo: one forced vision call reads the moves, then a card shows the per-group breakdown with untick-able toggles (heavy groups start unticked unless the caption names them). Photos over 3.5 MB are refused
+  - class rows keep moves and photo; undo restores the whole previous row
+  - scheduled jobs (`src/jobs/`, run from the cron tick): the Thursday 21:00–23:00 Rome class question, skipped when the class is logged or outside the plan
+  - migration 0006 (`job_runs`, `pending_actions.input_source`/`transcript`) is not applied to production
 
 ## Open items
 
 **For the user (manual):**
+- **M6 deploy:** add `GROQ_API_KEY`, `STT_PROVIDER=groq` and `STT_DAILY_SECONDS_CAP` in Vercel; say OK to apply migration 0006 (`pnpm db:migrate`) before deploying.
+- **M6 live test:** send a voice note and a class board photo; check the first Thursday 21:00 class question on 22 Oct.
 - Revoke the Telegram bot token in BotFather, update `.env.local` and Vercel, redeploy, then run `pnpm telegram:setup https://gym-bot-xi.vercel.app`.
 - Remove the unused `SUPABASE_DB_PASSWORD` and the Supabase integration's unused service-role key from Vercel.
 - Send band colours with their kg of assistance (or answer the bot the first time it asks).

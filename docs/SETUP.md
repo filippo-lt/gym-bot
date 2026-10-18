@@ -26,7 +26,12 @@ MIGRATION_DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1
 
 ## 3. API keys
 - Anthropic: create a key at console.anthropic.com. Put it in `ANTHROPIC_API_KEY`.
-- Groq or OpenAI: needed later (voice, milestone 6). Set `STT_PROVIDER` and the matching key.
+- Voice notes (speech to text):
+  1. Create a key at console.groq.com (API Keys). Put it in `GROQ_API_KEY`.
+  2. Set `STT_PROVIDER=groq` (default model `whisper-large-v3-turbo`). To use OpenAI instead, set `STT_PROVIDER=openai` and `OPENAI_API_KEY` (`whisper-1`).
+  3. Optional: `STT_DAILY_SECONDS_CAP` (default 1800) is the most voice seconds transcribed per day. A single note is limited to 120 s.
+  4. Add the same variables in Vercel. Without a key, voice notes get a "voice isn't configured" reply and text still works.
+- Migration 0006 (`job_runs`, and `input_source`/`transcript` on `pending_actions`) is needed for M6. Apply it with `pnpm db:migrate` only after the user's OK.
 
 ## 4. Secrets
 Generate two random secrets:
