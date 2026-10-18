@@ -162,6 +162,7 @@ export function createBot(deps: BotDeps): Bot {
 
   bot.command("undo", (ctx) => flow.undoCommand(ctx));
   bot.command("memory", (ctx) => flow.memoryCommand(ctx));
+  bot.command("usage", (ctx) => flow.usageCommand(ctx));
   bot.command("skip", (ctx) => flow.skipCommand(ctx));
 
   // /history buttons: before the generic handler, which would hand them to the logging flow.

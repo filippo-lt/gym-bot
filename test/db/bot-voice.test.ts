@@ -11,10 +11,10 @@ import {
 import { createBot } from "../../src/bot/bot.js";
 import {
   VOICE_BLANK,
-  VOICE_BUDGET,
   VOICE_FAILED,
   VOICE_NOT_CONFIGURED,
   VOICE_TOO_LONG,
+  voiceBudgetText,
 } from "../../src/bot/log-format.js";
 import type { MediaSource } from "../../src/bot/logging-flow.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
@@ -272,7 +272,7 @@ describe("voice notes", () => {
   it("budget reached", async () => {
     const t = setup([ok], { transcript: "hello", dailySecondsCap: 10 });
     await t.voice(11);
-    expect(t.texts()).toEqual([VOICE_BUDGET]);
+    expect(t.texts()).toEqual([voiceBudgetText(0, 10)]);
     expect(t.transcribe).not.toHaveBeenCalled();
   });
 

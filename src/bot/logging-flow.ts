@@ -5,12 +5,14 @@
  */
 import { eq } from "drizzle-orm";
 import type { Context } from "grammy";
+import { DateTime } from "luxon";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
 import { overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
 import { buildDynamicText } from "../ai/prompt.js";
+import { APP_TIMEZONE } from "../config/constants.js";
 import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
@@ -71,9 +73,9 @@ import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
   BOARD_UNREADABLE,
-  BUDGET_REACHED,
   bandQuestion,
   bandSaved,
+  budgetReachedText,
   cancelledText,
   clarifyCard,
   classMovesCard,
@@ -105,14 +107,15 @@ import {
   stripMarkdown,
   summarize,
   VOICE_BLANK,
-  VOICE_BUDGET,
   VOICE_FAILED,
   VOICE_NOT_CONFIGURED,
   VOICE_TOO_LONG,
   viewFromSnapshot,
+  voiceBudgetText,
 } from "./log-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
+import { formatUsage } from "./usage-format.js";
 
 export interface AiConfig {
   model: IntentModel;
@@ -146,6 +149,7 @@ export interface Flow {
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
+  usageCommand(ctx: Context): Promise<void>;
   skipCommand(ctx: Context): Promise<void>;
 }
 
@@ -667,7 +671,8 @@ export function createFlow(deps: FlowDeps): Flow {
     }
 
     if (result.kind === "budget_reached") {
-      await send(ctx, BUDGET_REACHED);
+      const cap = result.cap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
+      await send(ctx, budgetReachedText(result.cap, cap, now));
       return;
     }
 
@@ -803,8 +808,9 @@ export function createFlow(deps: FlowDeps): Flow {
     }
     const now = deps.now();
     const usage = createUsageStore(db);
-    if ((await usage.sttSecondsToday(now)) + note.duration > sttConfig.dailySecondsCap) {
-      await send(ctx, VOICE_BUDGET);
+    const usedSeconds = await usage.sttSecondsToday(now);
+    if (usedSeconds + note.duration > sttConfig.dailySecondsCap) {
+      await send(ctx, voiceBudgetText(usedSeconds, sttConfig.dailySecondsCap));
       return;
     }
     let transcript: string;
@@ -845,8 +851,10 @@ export function createFlow(deps: FlowDeps): Flow {
     if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
     const now = deps.now();
     const usage = createUsageStore(db);
-    if (await overTokenBudget(usage, now, ai)) {
-      await send(ctx, BUDGET_REACHED);
+    const overCap = await overTokenBudget(usage, now, ai);
+    if (overCap) {
+      const cap = overCap === "day" ? ai.dailyTokenCap : ai.monthlyTokenCap;
+      await send(ctx, budgetReachedText(overCap, cap, now));
       return;
     }
     const caption = ctx.message?.caption?.trim() || undefined;
@@ -936,6 +944,34 @@ export function createFlow(deps: FlowDeps): Flow {
 
   async function memoryCommand(ctx: Context): Promise<void> {
     await send(ctx, memoryList(await listMemory(db)));
+  }
+
+  async function usageCommand(ctx: Context): Promise<void> {
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    const totals = await usage.totals(now);
+    const sttSecondsToday = await usage.sttSecondsToday(now);
+    const ai = aiConfig();
+    let sttCap: number | null = null;
+    try {
+      sttCap = deps.media?.stt?.().dailySecondsCap ?? null;
+    } catch {
+      // voice not configured: show the usage without a cap
+    }
+    await send(
+      ctx,
+      formatUsage({
+        date: DateTime.fromJSDate(now, { zone: APP_TIMEZONE }).toISODate() as string,
+        dayTokens: totals.day,
+        monthTokens: totals.month,
+        sttSecondsToday,
+        caps: {
+          day: ai?.dailyTokenCap ?? null,
+          month: ai?.monthlyTokenCap ?? null,
+          sttSeconds: sttCap,
+        },
+      }),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -1493,6 +1529,7 @@ export function createFlow(deps: FlowDeps): Flow {
     callback,
     undoCommand,
     memoryCommand,
+    usageCommand,
     skipCommand: skip.skipCommand,
   };
 }

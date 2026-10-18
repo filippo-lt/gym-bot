@@ -323,6 +323,7 @@ const promptContext: PromptContext = {
 };
 const usage: UsageStore = {
   totals: async () => ({ day: 0, month: 0 }),
+  weekTotals: async () => ({ tokens: 0, sttSeconds: 0 }),
   record: async () => {},
   sttSecondsToday: async () => 0,
   recordStt: async () => {},

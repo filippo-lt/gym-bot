@@ -167,9 +167,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const budgetMs = p.budgetMs ?? AI_BUDGET_MS;
 
   /** Checked before every model call: a long loop can reach the cap mid-way. */
-  const overBudget = async () => {
-    return overTokenBudget(p.usage, p.now, p);
-  };
+  const overBudget = () => overTokenBudget(p.usage, p.now, p);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new AiTimeoutError()), budgetMs);
@@ -184,7 +182,8 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
     let turns = 0;
     while (turns < maxTurns) {
       // Nothing staged so far is written when the cap is hit: the bot only reports it.
-      if (await overBudget()) return { kind: "budget_reached" };
+      const cap = await overBudget();
+      if (cap) return { kind: "budget_reached", cap };
       turns++;
       const res = await p.model.create({
         system,

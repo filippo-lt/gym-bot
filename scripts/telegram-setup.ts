@@ -42,6 +42,7 @@ try {
     { command: "history", description: "Last sessions of an exercise" },
     { command: "undo", description: "Remove my last log" },
     { command: "memory", description: "What I remember" },
+    { command: "usage", description: "AI and voice usage" },
     { command: "help", description: "Commands" },
   ]);
 

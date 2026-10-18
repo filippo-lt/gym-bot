@@ -161,6 +161,9 @@ describe("runIntent", () => {
     ]);
     const recorded: number[] = [];
     const usage = {
+      async weekTotals() {
+        return { tokens: 0, sttSeconds: 0 };
+      },
       async totals() {
         const total = recorded.reduce((a, b) => a + b, 0);
         return { day: total, month: total };
@@ -175,7 +178,7 @@ describe("runIntent", () => {
     };
     const backend = fakeBackend();
     const res = await runIntent({ ...base, model, backend, usage });
-    expect(res).toEqual({ kind: "budget_reached" });
+    expect(res).toEqual({ kind: "budget_reached", cap: "day" });
     expect(model.requests).toHaveLength(1);
     expect(backend.calls).toEqual(["log_sets:bench"]);
   });
@@ -183,7 +186,7 @@ describe("runIntent", () => {
   it.each([
     ["day", { day: 1000, month: 0 }],
     ["month", { day: 0, month: 10000 }],
-  ])("blocks the model call at the %s cap", async (_n, totals) => {
+  ])("blocks the model call at the %s cap and carries it", async (cap, totals) => {
     const model = createFakeModel([[text("x")]]);
     const res = await runIntent({
       ...base,
@@ -191,7 +194,7 @@ describe("runIntent", () => {
       backend: fakeBackend(),
       usage: fakeUsage(totals),
     });
-    expect(res).toEqual({ kind: "budget_reached" });
+    expect(res).toEqual({ kind: "budget_reached", cap });
     expect(model.requests).toHaveLength(0);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BUDGET_REACHED,
+  budgetReachedText,
   cancelledText,
   clarifyCard,
   classMovesCard,
@@ -24,6 +24,7 @@ import {
   stripMarkdown,
   TEXT_ONLY,
   UNKNOWN_COMMAND,
+  voiceBudgetText,
 } from "../../src/bot/log-format.js";
 import { HISTORY_UNKNOWN, HISTORY_USAGE, SESSION_USAGE } from "../../src/bot/query-format.js";
 import { skipEcho, skipList, skipUndone } from "../../src/bot/skip-format.js";
@@ -450,7 +451,7 @@ describe("HTML-safe constants", () => {
     TEXT_ONLY,
     UNKNOWN_COMMAND,
     NO_AI_KEY,
-    BUDGET_REACHED,
+    BUDGET_DAY: budgetReachedText("day", 200_000, new Date("2026-10-18T10:00:00Z")),
     DIDNT_GET_IT,
     EXPIRED,
     STALE,
@@ -643,5 +644,30 @@ describe("classMovesCard", () => {
     expect(m.keyboard[0]?.map((b) => b.text)).toEqual(["✓ Pull", "Push", "✓ Legs"]);
     expect(m.keyboard[0]?.map((b) => b.data)).toEqual(["cm:9:4", "cm:9:7", "cm:9:1"]);
     expect(m.keyboard[1]?.[1]?.data).toBe("cm:9:5:ok");
+  });
+});
+
+describe("budget texts", () => {
+  it("day", () => {
+    expect(budgetReachedText("day", 200_000, new Date("2026-10-18T10:00:00Z"))).toBe(
+      "AI daily budget reached (200,000 tokens). Resets at midnight (Rome). Commands still work.",
+    );
+  });
+  it("month", () => {
+    expect(budgetReachedText("month", 3_000_000, new Date("2026-10-18T10:00:00Z"))).toBe(
+      "AI monthly budget reached (3,000,000 tokens). Resets on 1 Nov. Commands still work.",
+    );
+  });
+  it("month uses the Rome date at year end", () => {
+    expect(budgetReachedText("month", 3_000_000, new Date("2026-12-31T22:30:00Z"))).toContain(
+      "Resets on 1 Jan.",
+    );
+  });
+  it("voice never shows used above the cap", () => {
+    expect(voiceBudgetText(1800, 1800)).toBe(
+      "Voice budget reached (30 of 30 min today). Resets at midnight (Rome). Typing still works.",
+    );
+    expect(voiceBudgetText(1790, 1800)).toContain("30 of 30 min");
+    expect(voiceBudgetText(600, 1800)).toContain("10 of 30 min");
   });
 });
