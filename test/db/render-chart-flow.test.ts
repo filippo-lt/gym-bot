@@ -9,7 +9,8 @@ import {
   turn,
 } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
-import { NUMBER_GUARD_FALLBACK } from "../../src/bot/log-format.js";
+import { CHART_FAILED } from "../../src/bot/query-format.js";
+import type { ChartBuilder } from "../../src/queries/chart-tool.js";
 import { connect, exId, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -52,12 +53,20 @@ const botInfo = {
 } as unknown as UserFromGetMe;
 const CHAT_OBJ = { id: 42, type: "private" as const, first_name: "F" };
 
-function setup(script: ScriptedTurn[]) {
+interface SetupOpts {
+  buildChart?: ChartBuilder;
+  failPhoto?: boolean;
+  transcript?: string;
+}
+
+function setup(script: ScriptedTurn[], opts: SetupOpts = {}) {
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
   const transformer: Transformer = async (_prev, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
+    if (opts.failPhoto && method === "sendPhoto") throw new Error("photo refused");
     return { ok: true, result: true } as never;
   };
+  const model = createFakeModel(script);
   const bot = createBot({
     db,
     now: () => MON,
@@ -65,11 +74,30 @@ function setup(script: ScriptedTurn[]) {
     botInfo,
     transformer,
     ai: {
-      model: createFakeModel(script),
+      model,
       dailyTokenCap: 1_000_000,
       monthlyTokenCap: 10_000_000,
     },
+    charts: opts.buildChart ? { buildChart: opts.buildChart } : undefined,
+    media: {
+      stt: () => ({
+        stt: { name: "fake", transcribe: async () => opts.transcript ?? "" },
+        dailySecondsCap: 600,
+      }),
+      download: async () => new Uint8Array([1]),
+    },
   });
+  const voice = () =>
+    bot.handleUpdate({
+      update_id: 5001,
+      message: {
+        message_id: 2,
+        date: 0,
+        chat: CHAT_OBJ,
+        from: { id: 42, is_bot: false, first_name: "F" },
+        voice: { file_id: "f1", file_unique_id: "u1", duration: 5 },
+      },
+    });
   const say = (body: string) =>
     bot.handleUpdate({
       update_id: 5000,
@@ -81,7 +109,9 @@ function setup(script: ScriptedTurn[]) {
         text: body,
       },
     });
-  return { calls, say, methods: () => calls.map((c) => c.method) };
+  const shownOnce = (needle: string) =>
+    calls.filter((c) => String(c.payload.text ?? c.payload.caption ?? "").includes(needle)).length;
+  return { model, calls, say, voice, shownOnce, methods: () => calls.map((c) => c.method) };
 }
 
 const chart = (input: unknown) => turn(toolUse("render_chart", input));
@@ -99,15 +129,65 @@ describe("render_chart in chat", () => {
     expect(String(t.calls[1]?.payload.caption)).toContain("2 sessions");
   });
 
-  it("still sends the photo after the code fallback when the number guard rejects the reply", async () => {
+  it("guard-rejected reply with no other fallback: photo alone, caption once", async () => {
     const t = setup([
+      chart({ metric: "load", exercise: "squat" }),
+      turn(text("Your e1RM went from 11 to 999 kg.")),
+    ]);
+    await t.say("how is my squat going?");
+    expect(t.methods()).toEqual(["sendPhoto"]);
+    expect(t.shownOnce("2 sessions")).toBe(1);
+  });
+
+  it("empty reply: photo alone, caption once", async () => {
+    const t = setup([chart({ metric: "load", exercise: "squat" }), turn(text(""))]);
+    await t.say("chart squat");
+    expect(t.methods()).toEqual(["sendPhoto"]);
+    expect(t.shownOnce("2 sessions")).toBe(1);
+  });
+
+  it("guard-rejected reply with another read's fallback: that text, then the photo", async () => {
+    const t = setup([
+      turn(toolUse("get_exercise_history", { exercise: { said: "squat", slug: "squat" } })),
       chart({ metric: "load", exercise: "squat" }),
       turn(text("Your e1RM went from 11 to 999 kg.")),
     ]);
     await t.say("how is my squat going?");
     expect(t.methods()).toEqual(["sendMessage", "sendPhoto"]);
     expect(String(t.calls[0]?.payload.text)).not.toContain("999");
-    expect(t.calls[0]?.payload.text).not.toBe(NUMBER_GUARD_FALLBACK);
+    expect(String(t.calls[0]?.payload.text)).not.toContain(String(t.calls[1]?.payload.caption));
+  });
+
+  it("voice: the heard line leads the photo caption", async () => {
+    const t = setup([chart({ metric: "load", exercise: "squat" }), turn(text(""))], {
+      transcript: "chart my squat",
+    });
+    await t.voice();
+    expect(t.methods()).toEqual(["sendPhoto"]);
+    expect(String(t.calls[0]?.payload.caption).startsWith("🎤 heard: chart my squat")).toBe(true);
+  });
+
+  it("a photo upload failure after the text sends the chart-failed text and does not throw", async () => {
+    const t = setup(
+      [chart({ metric: "load", exercise: "squat" }), turn(text("Up over 2 sessions."))],
+      { failPhoto: true },
+    );
+    await t.say("how is my squat going?");
+    expect(t.methods()).toEqual(["sendMessage", "sendPhoto", "sendMessage"]);
+    expect(t.calls[2]?.payload.text).toBe(CHART_FAILED);
+  });
+
+  it("a throwing chart builder gives the model an error and sends no photo", async () => {
+    const t = setup(
+      [chart({ metric: "load", exercise: "squat" }), turn(text("I couldn't draw it."))],
+      {
+        buildChart: async () => {
+          throw new Error("resvg missing");
+        },
+      },
+    );
+    await t.say("how is my squat going?");
+    expect(t.methods()).toEqual(["sendMessage"]);
   });
 
   it("refuses a second chart in the same message", async () => {
@@ -118,6 +198,9 @@ describe("render_chart in chat", () => {
     ]);
     await t.say("charts please");
     expect(t.methods()).toEqual(["sendMessage", "sendPhoto"]);
+    expect(String(t.calls[1]?.payload.caption)).toContain("2 sessions");
+    const results = JSON.stringify(t.model.messageSnapshots.at(-1));
+    expect(results).toContain("one chart per message");
   });
 
   it("sends no photo for an unknown exercise", async () => {

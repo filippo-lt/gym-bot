@@ -60,6 +60,7 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import type { ChartBuilder } from "../queries/chart-tool.js";
 import {
   MAX_VOICE_SECONDS,
   type SpeechToText,
@@ -111,6 +112,7 @@ import {
   VOICE_TOO_LONG,
   viewFromSnapshot,
 } from "./log-format.js";
+import { CHART_FAILED } from "./query-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
 
@@ -133,6 +135,8 @@ export interface FlowDeps {
   now: () => Date;
   ai?: AiSource;
   media?: MediaSource;
+  /** Test seam: replace the chart builder used by the render_chart tool. */
+  buildChart?: ChartBuilder;
 }
 
 const VOICE_MAX_BYTES = 20 * 1024 * 1024;
@@ -644,7 +648,10 @@ export function createFlow(deps: FlowDeps): Flow {
     const context = await buildPromptContext(db, chatId, now);
     await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
-    const backend = createLoggingBackend(db, now, { openPending: context.pending });
+    const backend = createLoggingBackend(db, now, {
+      openPending: context.pending,
+      buildChart: deps.buildChart,
+    });
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
@@ -677,12 +684,27 @@ export function createFlow(deps: FlowDeps): Flow {
     if (staged.length === 0) {
       // The chart (if any) follows the reply, also when the number guard swapped the text.
       const chart = backend.takeChart();
-      const sendChart = async () => {
+      // A failed upload must not fail the update after the text went out (inbox retry).
+      const sendChart = async (prefix = "") => {
         if (!chart) return;
-        await ctx.replyWithPhoto(new InputFile(chart.png, "chart.png"), {
-          caption: chart.caption,
-          ...HTML,
-        });
+        try {
+          await ctx.replyWithPhoto(new InputFile(chart.png, "chart.png"), {
+            caption: prefix + chart.caption,
+            ...HTML,
+          });
+        } catch (error) {
+          console.error("chart: photo failed", error instanceof Error ? error.name : "");
+          await send(ctx, CHART_FAILED);
+        }
+      };
+      // Nothing else to say: the photo and its caption are the whole answer.
+      const sendPhotoOnly = async () => {
+        if (!chart) return false;
+        const fits = heard.length + chart.caption.length <= 1000;
+        if (heard && !fits) await send(ctx, { text: heard.trimEnd(), keyboard: [] });
+        await sendChart(fits ? heard : "");
+        await appendMessage(db, chatId, "assistant", htmlToPlain(chart.caption));
+        return true;
       };
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
@@ -708,6 +730,7 @@ export function createFlow(deps: FlowDeps): Flow {
         ]);
         if (!checked.ok) {
           console.warn(`ai: reply rejected, ${checked.unknown.length} unknown number(s)`);
+          if (!fallback?.fallbackHtml && (await sendPhotoOnly())) return;
           await sendFallback(fallback?.fallbackHtml ?? null);
           return;
         }
@@ -721,6 +744,7 @@ export function createFlow(deps: FlowDeps): Flow {
         await sendFallback(fallback.fallbackHtml);
         return;
       }
+      if (!result.truncated && (await sendPhotoOnly())) return;
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
         : DIDNT_GET_IT;

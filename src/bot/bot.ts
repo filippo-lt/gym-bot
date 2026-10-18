@@ -83,7 +83,14 @@ export function createBot(deps: BotDeps): Bot {
   if (deps.transformer) bot.api.config.use(deps.transformer);
   const queries = deps.sessions ?? { getSession, getWeek };
   const flow =
-    deps.flow ?? createFlow({ db: deps.db, now: deps.now, ai: deps.ai, media: deps.media });
+    deps.flow ??
+    createFlow({
+      db: deps.db,
+      now: deps.now,
+      ai: deps.ai,
+      media: deps.media,
+      buildChart: deps.charts?.buildChart,
+    });
   const reads = deps.reads ?? {
     lookupExercise,
     getExerciseHistory: (db: Db, id: number) => getExerciseHistory(db, id),

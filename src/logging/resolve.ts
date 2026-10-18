@@ -9,7 +9,7 @@ import { equipment, exercises as exercisesTable, plannedItems } from "../db/sche
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
 import { acceptedHspuStep } from "../progression/load-history.js";
 import { ensureSuggestions } from "../progression/store.js";
-import { type ChartSlot, readRenderChart } from "../queries/chart-tool.js";
+import { type ChartBuilder, type ChartSlot, readRenderChart } from "../queries/chart-tool.js";
 import { readAlternatives, readExerciseHistory, readSession } from "../queries/read-tools.js";
 import { type CatalogExercise, type LadderStep, loadCatalog, loadLadder } from "./catalog.js";
 import type { Db, Q } from "./db.js";
@@ -771,6 +771,8 @@ export async function stageBandKg(db: Q, input: SetBandKgInput): Promise<StageRe
 export interface BackendOptions {
   /** The chat's unsaved request, if any: edits and undo then act on nothing but saved logs. */
   openPending?: { summary: string } | null;
+  /** Test seam: replace the chart builder (loaded lazily by default). */
+  buildChart?: ChartBuilder;
 }
 
 export function createLoggingBackend(
@@ -790,7 +792,7 @@ export function createLoggingBackend(
     getSession: (input: GetSessionInput) => readSession(db, clock(), input),
     getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
     getAlternatives: (input) => readAlternatives(db, input),
-    renderChart: (input) => readRenderChart(db, clock(), input, slot),
+    renderChart: (input) => readRenderChart(db, clock(), input, slot, options.buildChart),
     takeChart: () => slot.chart,
     stageSaveMemory: async (input) => stageSaveMemory(input),
     stageReadiness: async (input) => stageReadiness(input, clock()),
