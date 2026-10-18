@@ -379,6 +379,18 @@ describe("cards", () => {
     expect(esc.text.split("\n")[0]).toBe("🎤 heard: a &lt; b");
   });
 
+  it("clarifyCard shows the heard line first", () => {
+    const m = clarifyCard({
+      id: 8,
+      actionIndex: 0,
+      said: "fp",
+      candidates: [{ slug: "face_pull", name: "Face pull" }],
+      replacedSummary: "Bench",
+      heard: "fp two by fifteen",
+    });
+    expect(m.text.startsWith("🎤 heard: fp two by fifteen\n\nReplaces: Bench")).toBe(true);
+  });
+
   it("clarify message", () => {
     const m = clarifyCard({
       id: 8,

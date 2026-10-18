@@ -436,6 +436,7 @@ export function createFlow(deps: FlowDeps): Flow {
           candidates: a.candidates,
           replacedSummary,
           partlyUnderstood: p.reasons.includes(PARTLY),
+          heard: p.transcript,
         });
       }
     }
@@ -1146,6 +1147,7 @@ export function createFlow(deps: FlowDeps): Flow {
             said: q.said,
             candidates: q.candidates,
             partlyUnderstood: partly,
+            heard: pending.transcript,
           }),
         );
         await remember(chatId, `${chose} Asked which exercise "${q.said}" is.`);

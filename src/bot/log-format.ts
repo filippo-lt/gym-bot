@@ -539,6 +539,13 @@ export function stripMarkdown(text: string): string {
 
 const HEARD_MAX = 300;
 
+/** The "🎤 heard:" line (capped, escaped) and a blank line, first on every voice-origin card. */
+function pushHeard(lines: string[], heard: string | null | undefined): void {
+  if (!heard) return;
+  const text = heard.length > HEARD_MAX ? `${heard.slice(0, HEARD_MAX)}…` : heard;
+  lines.push(`🎤 heard: ${esc(text)}`, "");
+}
+
 export function confirmCard(args: {
   id: number;
   kind: Pending["kind"];
@@ -551,10 +558,7 @@ export function confirmCard(args: {
 }): Message {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
-  if (args.heard) {
-    const text = args.heard.length > HEARD_MAX ? `${args.heard.slice(0, HEARD_MAX)}…` : args.heard;
-    lines.push(`🎤 heard: ${esc(text)}`, "");
-  }
+  pushHeard(lines, args.heard);
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
@@ -577,8 +581,10 @@ export function clarifyCard(args: {
   candidates: Candidate[];
   replacedSummary?: string | null;
   partlyUnderstood?: boolean;
+  heard?: string | null;
 }): Message {
   const lines: string[] = [];
+  pushHeard(lines, args.heard);
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
