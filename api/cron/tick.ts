@@ -4,7 +4,7 @@ import { requireCronAuth } from "../../src/http/auth.js";
 import { JOBS } from "../../src/jobs/index.js";
 import { runDueJobs } from "../../src/jobs/runner.js";
 import { STOP_TAKING_AT_S } from "../../src/runtime/constants.js";
-import { chatsWithOpenRows } from "../../src/runtime/inbox.js";
+import { chatsWithOpenRows, purgeOldRows } from "../../src/runtime/inbox.js";
 import { type ProcessSummary, processChat } from "../../src/runtime/process-chat.js";
 import { botHandlers, sendToOwner } from "../../src/runtime/telegram-runtime.js";
 
@@ -35,6 +35,13 @@ export async function GET(request: Request): Promise<Response> {
       console.error("tick: jobs failed", error instanceof Error ? error.name : "");
     }
 
+    // Retention: failures are logged by name only and never block the sweep.
+    try {
+      await purgeOldRows(db, new Date());
+    } catch (error) {
+      console.error("tick: inbox purge failed", error instanceof Error ? error.name : "");
+    }
+
     const swept: ProcessSummary[] = [];
     const chats = await chatsWithOpenRows(db);
     if (chats.length > 0) {
@@ -46,6 +53,7 @@ export async function GET(request: Request): Promise<Response> {
             chatId,
             ...handlers,
             deadline: start + STOP_TAKING_AT_S * 1000,
+            startedAt: start,
           }),
         );
       }

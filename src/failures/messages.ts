@@ -94,7 +94,7 @@ export function failureText(f: Failure, input: Input, provider = "the provider")
 }
 
 export function retryingText(f: Failure): string {
-  return `⚠️ Something went wrong (${reasonPhrase(f)}) while handling your last message. I'll retry automatically in a few minutes.`;
+  return `⚠️ Something went wrong (${reasonPhrase(f)}) while handling your last message. I'll retry automatically, so don't send it again.`;
 }
 
 export function failedText(f: Failure): string {

@@ -8,6 +8,7 @@ import type { Context } from "grammy";
 import { DateTime } from "luxon";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
 import { type BudgetCap, overTokenBudget } from "../ai/budget.js";
+import { AI_BUDGET_MS } from "../ai/constants.js";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
 import { checkNumbers } from "../ai/number-guard.js";
@@ -64,6 +65,7 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import { clampTimeout } from "../runtime/deadline.js";
 import {
   MAX_VOICE_SECONDS,
   type SpeechToText,
@@ -665,6 +667,7 @@ export function createFlow(deps: FlowDeps): Flow {
         now,
         dailyTokenCap: ai.dailyTokenCap,
         monthlyTokenCap: ai.monthlyTokenCap,
+        budgetMs: clampTimeout(AI_BUDGET_MS),
       });
     } catch (error) {
       // Timeouts and API errors: tell the user once instead of burning the inbox retries.
@@ -835,7 +838,7 @@ export function createFlow(deps: FlowDeps): Flow {
         await sttConfig.stt.transcribe(audio, {
           filename: "voice.ogg",
           prompt: sttVocabularyPrompt(staticBlock.catalog.map((e) => e.name)),
-          signal: AbortSignal.timeout(STT_TIMEOUT_MS),
+          signal: AbortSignal.timeout(clampTimeout(STT_TIMEOUT_MS)),
         })
       ).trim();
     } catch (error) {
@@ -892,7 +895,7 @@ export function createFlow(deps: FlowDeps): Flow {
         model: ai.model,
         image,
         caption,
-        signal: AbortSignal.timeout(BOARD_TIMEOUT_MS),
+        signal: AbortSignal.timeout(clampTimeout(BOARD_TIMEOUT_MS)),
       });
     } catch (error) {
       const failure = classify(error, "vision");

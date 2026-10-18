@@ -89,11 +89,14 @@ describe("classify", () => {
     const e = named("DrizzleQueryError", { cause: named("WeirdError") });
     expect(classify(e)).toEqual({ kind: "unknown", detail: "WeirdError" });
   });
-  it("caller aborts are ai_timeout on ai/vision/other", () => {
+  it("caller aborts are ai_timeout on ai/vision; a bare name elsewhere is not", () => {
     expect(classify(new Anthropic.APIUserAbortError(), "vision").kind).toBe("ai_timeout");
     const dom = new DOMException("signal timed out", "TimeoutError");
     expect(classify(dom, "vision").kind).toBe("ai_timeout");
     expect(classify(new DOMException("x", "AbortError"), "ai").kind).toBe("ai_timeout");
-    expect(classify(dom).kind).toBe("ai_timeout");
+    expect(classify(dom, "ai").kind).toBe("ai_timeout");
+    expect(classify(dom, "other").kind).toBe("unknown");
+    expect(classify(dom).kind).toBe("unknown");
+    expect(classify(new Anthropic.APIUserAbortError(), "other").kind).toBe("ai_timeout");
   });
 });

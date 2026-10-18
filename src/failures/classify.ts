@@ -69,16 +69,17 @@ function sttKind(e: unknown): FailureKind | null {
   return name === "TimeoutError" || name === "AbortError" ? "stt_timeout" : null;
 }
 
-function aiKind(e: unknown): FailureKind | null {
+function aiKind(e: unknown, step: FailureStep): FailureKind | null {
   // Caller-signal aborts (e.g. AbortSignal.timeout on the photo path) surface as
-  // APIUserAbortError or a TimeoutError/AbortError DOMException.
+  // APIUserAbortError or a TimeoutError/AbortError DOMException. A bare name is only an AI
+  // timeout on the AI steps: elsewhere (e.g. a deadline-clamped DB call) it proves nothing.
   const name = prop(e, "name");
+  const nameOnly = name === "TimeoutError" || name === "AbortError";
   if (
     e instanceof AiTimeoutError ||
     e instanceof Anthropic.APIConnectionTimeoutError ||
     e instanceof Anthropic.APIUserAbortError ||
-    name === "TimeoutError" ||
-    name === "AbortError"
+    (nameOnly && (step === "ai" || step === "vision"))
   ) {
     return "ai_timeout";
   }
@@ -105,7 +106,7 @@ function kindOf(e: unknown, step: FailureStep): FailureKind | null {
   if (e instanceof FileTooLargeError) return "file_too_large";
   if (step === "download") return null;
   if (step === "stt") return sttKind(e);
-  return aiKind(e) ?? dbKind(e);
+  return aiKind(e, step) ?? dbKind(e);
 }
 
 function hasOwnStatusOrCode(e: unknown): boolean {

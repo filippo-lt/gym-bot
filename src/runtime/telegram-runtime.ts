@@ -5,15 +5,13 @@ import { inlineKeyboard, type Message } from "../bot/log-format.js";
 import type { AiConfig, MediaSource } from "../bot/logging-flow.js";
 import { aiEnv, telegramEnv } from "../config/env.js";
 import { getDb } from "../db/client.js";
+import { failedText, retryingText } from "../failures/messages.js";
 import { createStt } from "../stt/stt.js";
-import { downloadTelegramFile } from "../telegram/files.js";
+import { DOWNLOAD_TIMEOUT_MS, downloadTelegramFile } from "../telegram/files.js";
+import { clampTimeout } from "./deadline.js";
 import type { ProcessChatDeps } from "./process-chat.js";
 
-export const FAILED_MESSAGE =
-  "Sorry — I couldn't process your last message after 3 tries. Please send it again.";
-
 const INIT_TIMEOUT_MS = 10_000;
-const DOWNLOAD_TIMEOUT_MS = 15_000;
 
 let botPromise: Promise<Bot> | undefined;
 let aiConfig: AiConfig | undefined;
@@ -52,7 +50,7 @@ export function getBot(): Promise<Bot> {
           token,
           fileId,
           maxBytes,
-          signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+          signal: AbortSignal.timeout(clampTimeout(DOWNLOAD_TIMEOUT_MS)),
         }),
     };
     const bot = createBot({ db: getDb(), now: () => new Date(), token, ai: lazyAi, media });
@@ -77,7 +75,7 @@ export function getBot(): Promise<Bot> {
 
 /** The injected handlers that processChat needs, backed by the grammY bot. */
 export async function botHandlers(): Promise<
-  Pick<ProcessChatDeps, "handle" | "sendTyping" | "notifyFailed">
+  Pick<ProcessChatDeps, "handle" | "sendTyping" | "notifyFailed" | "notifyRetrying">
 > {
   const bot = await getBot();
   return {
@@ -85,8 +83,11 @@ export async function botHandlers(): Promise<
     sendTyping: async (chatId) => {
       await bot.api.sendChatAction(chatId, "typing");
     },
-    notifyFailed: async (chatId) => {
-      await bot.api.sendMessage(chatId, FAILED_MESSAGE);
+    notifyFailed: async (chatId, _payload, failure) => {
+      await bot.api.sendMessage(chatId, failedText(failure));
+    },
+    notifyRetrying: async (chatId, failure) => {
+      await bot.api.sendMessage(chatId, retryingText(failure));
     },
   };
 }

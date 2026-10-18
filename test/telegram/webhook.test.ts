@@ -18,6 +18,7 @@ vi.mock("../../src/runtime/telegram-runtime.js", () => ({
     handle: async () => {},
     sendTyping: async () => {},
     notifyFailed: async () => {},
+    notifyRetrying: async () => {},
   }),
 }));
 

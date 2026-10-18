@@ -10,7 +10,7 @@ const execute = vi.fn(async () => []);
 const chatsWithOpenRows = vi.fn(async () => [11, 22]);
 
 vi.mock("../../src/db/client.js", () => ({ getDb: () => ({ execute }) }));
-vi.mock("../../src/runtime/inbox.js", () => ({ chatsWithOpenRows }));
+vi.mock("../../src/runtime/inbox.js", () => ({ chatsWithOpenRows, purgeOldRows: async () => 0 }));
 vi.mock("../../src/runtime/process-chat.js", () => ({ processChat }));
 const runDueJobs = vi.fn(async () => [] as unknown[]);
 vi.mock("../../src/jobs/runner.js", () => ({ runDueJobs }));
@@ -21,6 +21,7 @@ vi.mock("../../src/runtime/telegram-runtime.js", () => ({
     handle: async () => {},
     sendTyping: async () => {},
     notifyFailed: async () => {},
+    notifyRetrying: async () => {},
   }),
 }));
 

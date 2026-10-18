@@ -104,7 +104,7 @@ describe("failure texts", () => {
   });
   it("retrying and failed", () => {
     expect(retryingText(f("db"))).toBe(
-      "⚠️ Something went wrong (a database error) while handling your last message. I'll retry automatically in a few minutes.",
+      "⚠️ Something went wrong (a database error) while handling your last message. I'll retry automatically, so don't send it again.",
     );
     expect(failedText(f("row_timeout"))).toBe(
       "Sorry, I couldn't process your last message after 3 tries (it took too long). Please send it again.",
