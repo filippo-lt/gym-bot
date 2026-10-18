@@ -457,7 +457,7 @@ describe("Thursday class with moves", () => {
   });
 
   it("undo of an older moves write is stale after a newer one with the same heavy groups", async () => {
-    const m2 = [{ name: "Squat", sets: 3, groups: ["legs" as const] }];
+    const m2 = [{ name: "Squat", sets: 3, reps: 5, groups: ["legs" as const] }];
     await executeActions(db, "u:330", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
       now: MON,
     });
