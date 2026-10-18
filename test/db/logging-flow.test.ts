@@ -710,7 +710,7 @@ describe("backend with an open request (B1)", () => {
 });
 
 describe("backend", () => {
-  it("returns a compact session without loads", async () => {
+  it("returns a compact session; loads only as code-formatted suggestions", async () => {
     const backend = createLoggingBackend(db, MON);
     const s = (await backend.getSession({ day: "today" })).facts as {
       kind: string;
@@ -721,7 +721,13 @@ describe("backend", () => {
       "squat",
       "hack_squat",
     ]);
-    expect(JSON.stringify(s)).not.toMatch(/"(load|loadKg|load_kg)"/);
+    // No raw load fields: a suggestion carries a formatted `load` text (null here: no history yet).
+    expect(JSON.stringify(s)).not.toMatch(/"(loadKg|load_kg)"/);
+    const squat = s.items.find((i) => i.name === "Squat / hack squat") as unknown as {
+      suggestions: { exercise: string; load: string | null; ask: string | null }[];
+    };
+    expect(squat.suggestions.map((x) => x.load)).toEqual([null, null]);
+    expect(squat.suggestions[0]?.ask).toBe("baseline — tell me your weight");
     const tue = (await backend.getSession({ day: "tue" })).facts as { weekday: string };
     expect(tue.weekday).toBe("tue");
     const sat = createLoggingBackend(db, () => SAT);

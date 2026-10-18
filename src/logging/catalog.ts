@@ -33,6 +33,7 @@ export async function loadCatalog(db: Q): Promise<CatalogExercise[]> {
           baseKg: q.baseKg,
           stepKg: q.stepKg,
           discreteValues: q.discreteValues,
+          bands: q.bands ?? {},
         }
       : null,
   }));

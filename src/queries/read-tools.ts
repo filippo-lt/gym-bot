@@ -4,9 +4,26 @@
  * the bot falls back on when the model's reply fails the number guard.
  */
 import { and, eq } from "drizzle-orm";
-import { extraLine, fallbackLine, formatSession, weekRange } from "../bot/format.js";
+import {
+  advisedPrescription,
+  exerciseBySlug,
+  extraLine,
+  fallbackLine,
+  formatSession,
+  fridayText,
+  HEAVY_TAGS,
+  weekRange,
+} from "../bot/format.js";
+import {
+  askText,
+  range as fmtRange,
+  heavyGroupFor,
+  levelLines,
+  loadText,
+  suggestionNotes,
+} from "../bot/progression-format.js";
 import { formatHistory, historyLines } from "../bot/query-format.js";
-import { getSession } from "../bot/session.js";
+import { getSession, type SessionItem } from "../bot/session.js";
 import { planWeeks } from "../db/schema/plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { dayName, parseDayArg } from "../domain/day-ref.js";
@@ -20,6 +37,13 @@ import {
   HISTORY_DEFAULT_LAST_N,
   type ReadResult,
 } from "../logging/types.js";
+import { currentE1rm } from "../progression/e1rm.js";
+import { loadExerciseInfos, loadPlanEnv, loadSessionRecs } from "../progression/load-history.js";
+import {
+  type AdviceItem,
+  loadSessionAdvice,
+  type SessionAdvice,
+} from "../progression/session-advice.js";
 import { getAlternativeFacts } from "./alternatives.js";
 import { lookupExercise } from "./exercise-lookup.js";
 import { getExerciseHistory } from "./history.js";
@@ -40,13 +64,54 @@ function mondayOf(date: string): string {
   return addDays(date, -index);
 }
 
+/** The engine failing must not take the plan away from a read: the facts then carry no suggestions. */
+async function adviceOrNull(db: Db, date: string, now: Date): Promise<SessionAdvice | null> {
+  try {
+    return await loadSessionAdvice(db, date, now);
+  } catch (error) {
+    console.error(`progression: advice failed (${error instanceof Error ? error.name : "error"})`);
+    return null;
+  }
+}
+
+/** Suggested loads of one item, formatted in code (never by the model). */
+function suggestionFacts(
+  item: SessionItem,
+  adv: AdviceItem | undefined,
+  advice: SessionAdvice,
+  heavy: ("pull" | "push" | "legs")[],
+) {
+  if (!adv) return { suggestions: [], adjusted_prescription: null, friday: null, hidden: false };
+  const ctx = { bodyweightDate: advice.bodyweightDate };
+  const suggestions = item.options.map((o) => {
+    const ex = exerciseBySlug(advice, o.slug);
+    const s = ex ? (adv.suggestions[ex.id] ?? null) : null;
+    return {
+      exercise: o.slug,
+      load: ex && s ? loadText(ex, s) : null,
+      sets_reps: s ? `${s.sets} x ${fmtRange(s.repsMin, s.repsMax)}` : null,
+      rir: s ? fmtRange(s.rirMin, s.rirMax) : null,
+      labels: suggestionNotes(s, ctx),
+      ask: s ? askText(s, ctx) : null,
+    };
+  });
+  const group = heavyGroupFor(item.tags, heavy, HEAVY_TAGS);
+  return {
+    suggestions,
+    adjusted_prescription: advisedPrescription(item, adv),
+    friday: fridayText(adv, group ? `heavy ${group} Thursday` : "heavy Thursday"),
+    hidden: adv.hidden,
+  };
+}
+
 export async function readSession(db: Db, now: Date, input: GetSessionInput): Promise<ReadResult> {
   const today = trainingDate(now);
   const ref = parseDayArg(input.date ?? input.day ?? "today", today);
   if (!ref.ok) return refused(ref.error);
   const date = ref.date;
   const s = await getSession(db, date);
-  const fallbackHtml = formatSession(s);
+  const advice = s.kind === "session" ? await adviceOrNull(db, date, now) : null;
+  const fallbackHtml = formatSession(s, advice);
   const base = { requestedDate: date, label: dateLabel(date), isToday: date === today };
   if (s.kind === "before_start") {
     return { facts: { ...base, kind: "before_start", startDate: s.startDate }, fallbackHtml };
@@ -67,7 +132,11 @@ export async function readSession(db: Db, now: Date, input: GetSessionInput): Pr
       fallbackHtml,
     };
   }
-  const next = nextItem(s);
+  const next = nextItem(
+    s,
+    new Set([...(advice?.items ?? [])].filter(([, a]) => a.hidden).map(([id]) => id)),
+  );
+  const heavy = s.thursday && s.thursday !== "not_reported" ? s.thursday.heavy : [];
   return {
     facts: {
       ...base,
@@ -79,6 +148,22 @@ export async function readSession(db: Db, now: Date, input: GetSessionInput): Pr
       focus: s.focus,
       deload: s.isDeload,
       weekRange: week,
+      readiness: advice
+        ? {
+            level: advice.level,
+            what_it_means: levelLines(advice.level, advice.levelKinds, {
+              restDay: advice.restDaySuggested,
+              classAdvice: advice.classAdvice,
+            }),
+            ask_thursday_class_first: advice.askClassFirst,
+            stored_for_a_past_day: advice.mode === "stored",
+          }
+        : null,
+      suggestions_note: advice
+        ? "Loads in each item's suggestions are code-computed estimates: quote them as given."
+        : date > today
+          ? "No suggested loads for a future day."
+          : "No suggested loads for this day.",
       items: s.items
         .filter((i) => i.subItem === 0)
         .map((i) => ({
@@ -89,7 +174,11 @@ export async function readSession(db: Db, now: Date, input: GetSessionInput): Pr
           prescription: i.prescriptionRaw,
           rir: range(i.rirMin, i.rirMax),
           status: i.status,
-          fallback: i.fallback ? fallbackLine(i.fallback) : null,
+          fallback:
+            i.fallback && !advice?.items.get(i.plannedItemId)?.pullup
+              ? fallbackLine(i.fallback)
+              : null,
+          ...(advice ? suggestionFacts(i, advice.items.get(i.plannedItemId), advice, heavy) : {}),
           extras: s.items
             .filter((e) => e.subItem > 0 && e.itemOrder === i.itemOrder)
             .map((e) => extraLine(e)),
@@ -185,10 +274,31 @@ export async function readExerciseHistory(
         sets: s.sets,
         line: lines[i],
       })),
-      suggestion: "not available yet",
+      current_e1rm: await e1rmFact(db, found.exercise.id),
     },
     fallbackHtml: formatHistory(history),
   };
+}
+
+/** Current e1RM of an exercise, formatted in code; null when there is none yet (SPEC 5.2). */
+async function e1rmFact(db: Db, exerciseId: number) {
+  try {
+    const env = await loadPlanEnv(db);
+    if (!env) return null;
+    const infos = await loadExerciseInfos(db, [exerciseId]);
+    const info = infos[exerciseId];
+    if (!info) return null;
+    const recs = await loadSessionRecs(db, env, infos, [exerciseId], null);
+    const e = currentE1rm(recs.get(exerciseId) ?? [], info);
+    if (!e) return null;
+    return {
+      value: `${Math.round(e.value * 10) / 10} kg`,
+      label: e.basis === "single" || e.importedOnly ? "estimate" : null,
+    };
+  } catch (error) {
+    console.error(`progression: e1rm failed (${error instanceof Error ? error.name : "error"})`);
+    return null;
+  }
 }
 
 export async function readAlternatives(db: Db, input: GetAlternativesInput): Promise<ReadResult> {

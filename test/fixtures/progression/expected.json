@@ -1,0 +1,119 @@
+{
+  "_readme": [
+    "Fill every \"TODO\" by hand from seed/review/progression-worksheet.md. Do not run the engine.",
+    "Key = plan item key; OR items have one key per option: \"<item key>:<exercise slug>\".",
+    "Accepted values:",
+    "  {\"sets\":4,\"reps\":[4,6],\"rir\":[1,2],\"load_kg\":60,\"labels\":[\"estimate\"]}   weighted: load_kg",
+    "  {\"sets\":4,\"reps\":3,\"rir\":[1,2],\"added_kg\":2.5,\"labels\":[]}                 pull-up: added_kg (0 = plain bodyweight)",
+    "  {...,\"assist_kg\":10,\"band\":\"red\"}                                              pull-up with a band (assist_kg + band)",
+    "  reps: a number (5 means 5-5) or [min,max]. rir: a number or [min,max]. labels: any order, [] if none.",
+    "  \"none\"                                   no suggestion at all",
+    "  {\"ask\":\"load\"}                          the bot asks instead (also \"bodyweight\" or \"band\"); optional \"labels\"",
+    "Labels: estimate, estimate_check_first_set, back_after_break, baseline_ask_load, bw_stale, fallback_bw, fallback_assisted, max_test_first, friday_reduced, friday_offer_skip, readiness_yellow, readiness_red",
+    "\"TODO\" = not filled yet (the test shows it as todo)."
+  ],
+  "2026-10-26": {
+    "w05-mon-01-0": {
+      "sets": 4,
+      "reps": 3,
+      "rir": [1, 2],
+      "added_kg": 2.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-mon-03-0": {
+      "sets": 3,
+      "reps": 6,
+      "rir": [1, 2],
+      "load_kg": 77.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-mon-04-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 52.5,
+      "labels": ["estimate_check_first_set"]
+    }
+  },
+  "2026-10-30": {
+    "w05-fri-01-0:squat": {
+      "sets": 2,
+      "reps": 4,
+      "rir": [3, 4],
+      "load_kg": 70,
+      "labels": ["friday_reduced", "estimate"]
+    },
+    "w05-fri-01-0:hack_squat": {
+      "sets": 2,
+      "reps": 4,
+      "rir": [3, 4],
+      "load_kg": 87.5,
+      "labels": ["friday_reduced", "estimate_check_first_set"]
+    },
+    "w05-fri-02-0": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 25,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-03-0:cable_row": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 50,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-03-0:machine_row": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 52.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-04-0": {
+      "sets": 2,
+      "reps": 8,
+      "rir": [1, 3],
+      "load_kg": 15,
+      "labels": ["estimate_check_first_set", "friday_offer_skip"]
+    },
+    "w05-fri-05-0": {
+      "sets": 2,
+      "reps": [12, 15],
+      "rir": [1, 3],
+      "load_kg": 27.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-06-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 22.5,
+      "labels": ["estimate_check_first_set"]
+    }
+  },
+  "2026-11-23": {
+    "w09-mon-01-0": {
+      "sets": 4,
+      "reps": 3,
+      "rir": [1, 2],
+      "added_kg": 5,
+      "labels": []
+    },
+    "w09-mon-03-0": {
+      "sets": 3,
+      "reps": [5, 6],
+      "rir": [1, 2],
+      "load_kg": 85,
+      "labels": []
+    },
+    "w09-mon-04-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 57.5,
+      "labels": []
+    }
+  }
+}

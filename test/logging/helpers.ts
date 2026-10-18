@@ -28,6 +28,7 @@ export const entry = (over: Partial<ResolvedEntry> = {}): ResolvedEntry => ({
   durationS: null,
   distanceM: null,
   padHeight: null,
+  band: null,
   rir: null,
   rirPlus: false,
   clean: null,

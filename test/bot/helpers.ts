@@ -32,8 +32,8 @@ export function sessionFor(
   const items: SessionItem[] = plan.items
     .filter((i) => i.week === week && i.weekday === weekday)
     .sort((a, b) => a.order - b.order || a.sub_item - b.sub_item)
-    .map((i) => ({
-      plannedItemId: 0,
+    .map((i, idx) => ({
+      plannedItemId: idx + 1,
       itemOrder: i.order,
       subItem: i.sub_item,
       block: i.block,

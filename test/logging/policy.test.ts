@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { decidePolicy, isLoadFarOff, isRepsFarOff } from "../../src/logging/policy.js";
+import {
+  decidePolicy,
+  farOffLoadRef,
+  isLoadFarOff,
+  isRepsFarOff,
+} from "../../src/logging/policy.js";
 import type { StagedAction } from "../../src/logging/types.js";
-import { editInput, entry, logAction, logInput, snapshot } from "./helpers.js";
+import { editInput, entry, logAction, logInput, snapshot, squat } from "./helpers.js";
 
 const reasons = (actions: StagedAction[]) => {
   const d = decidePolicy(actions);
@@ -182,5 +187,89 @@ describe("isRepsFarOff", () => {
   it("skips null or zero references", () => {
     expect(isRepsFarOff(50, null)).toBe(false);
     expect(isRepsFarOff(50, 0)).toBe(false);
+  });
+});
+
+describe("far-off reference (SPEC 5.6d)", () => {
+  // Barbell step 2.5 kg (helpers' squat): 60 kg is far from 95 but not from 55.
+  const log = (suggested: number | null, last: number | null) =>
+    logAction({
+      entries: [entry({ loadKg: 60 })],
+      suggestedSystemLoad: suggested,
+      lastSession:
+        last === null ? null : { sessionDate: "2026-09-21", maxSystemLoad: last, bestReps: 8 },
+    });
+
+  it("uses the stored suggestion first", () => {
+    const a = log(95, 55);
+    expect(farOffLoadRef(a)).toEqual({ load: 60, ref: 95, source: "suggested" });
+    expect(reasons([a])).toEqual(["load_far_off"]);
+  });
+
+  it("a close suggestion wins over a far last session", () => {
+    expect(reasons([log(62.5, 30)])).toEqual("direct");
+  });
+
+  it("falls back to the last session, and to no check at all", () => {
+    expect(farOffLoadRef(log(null, 30))).toEqual({ load: 60, ref: 30, source: "last" });
+    expect(reasons([log(null, null)])).toEqual("direct");
+  });
+
+  it("an edit compares with the suggestion the group was logged against", () => {
+    const e: StagedAction = {
+      kind: "edit_group",
+      input: editInput({ load_kg: 60 }),
+      before: snapshot(),
+      after: snapshot({ entries: [entry({ setIndex: 1, loadKg: 60 }), entry({ setIndex: 2 })] }),
+      setIndexes: [1],
+      lastSession: null,
+      suggestedSystemLoad: 95,
+    };
+    expect(farOffLoadRef(e)).toMatchObject({ ref: 95, source: "suggested" });
+  });
+
+  it("a band set with no kg has no system load, so no check", () => {
+    const pullUp = {
+      ...squat,
+      type: "bodyweight_plus" as const,
+      loadBasis: "bodyweight_plus" as const,
+      equipment: null,
+    };
+    const a = logAction({
+      exercise: pullUp,
+      entries: [entry({ loadKg: null, addedKg: 0, assistKg: null, band: "red" })],
+      bwKg: 80,
+      suggestedSystemLoad: 40,
+    });
+    expect(farOffLoadRef(a)).toBeNull();
+  });
+});
+
+describe("skip_items policy", () => {
+  const skip = (priority: "High" | "PRIMARY", whole = false): StagedAction => ({
+    kind: "skip_items",
+    sessionDate: "2026-10-19",
+    whole,
+    items: [{ plannedItemId: 1, planName: "Bulgarian split squat", priority }],
+  });
+
+  it("writes a single non-PRIMARY skip directly", () => {
+    expect(decidePolicy([skip("High")])).toEqual({ mode: "direct" });
+  });
+
+  it("confirms a PRIMARY skip and the whole session", () => {
+    expect(reasons([skip("PRIMARY")])).toEqual(["skip_primary"]);
+    expect(reasons([skip("High", true)])).toEqual(["skip_session"]);
+    expect(reasons([skip("PRIMARY", true)])).toEqual(["skip_session", "skip_primary"]);
+  });
+
+  it("confirms a skip on another day and an ambiguous match", () => {
+    const a = skip("High") as Extract<StagedAction, { kind: "skip_items" }>;
+    expect(reasons([{ ...a, otherDay: true }])).toEqual(["not_in_today"]);
+    expect(reasons([{ ...a, ambiguous: true }])).toEqual(["skip_ambiguous"]);
+  });
+
+  it("confirms a skip together with another write", () => {
+    expect(reasons([skip("High"), logAction()])).toEqual(["multiple_writes"]);
   });
 });

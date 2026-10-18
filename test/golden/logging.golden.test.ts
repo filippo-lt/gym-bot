@@ -10,11 +10,16 @@ import type {
   GetExerciseHistoryInput,
   GetSessionInput,
   IntentResult,
+  LogBodyweightInput,
+  LogClassInput,
   LoggingBackend,
+  LogReadinessInput,
   LogSetsInput,
   PromptContext,
   PromptStatic,
   SaveMemoryInput,
+  SetBandKgInput,
+  SkipItemsInput,
   StagedAction,
   UsageStore,
 } from "../../src/logging/types.js";
@@ -29,7 +34,12 @@ type Call =
   | { tool: "get_session"; input: GetSessionInput }
   | { tool: "get_exercise_history"; input: GetExerciseHistoryInput }
   | { tool: "get_alternatives"; input: GetAlternativesInput }
-  | { tool: "save_memory"; input: SaveMemoryInput };
+  | { tool: "save_memory"; input: SaveMemoryInput }
+  | { tool: "log_readiness"; input: LogReadinessInput }
+  | { tool: "log_bodyweight"; input: LogBodyweightInput }
+  | { tool: "log_class"; input: LogClassInput }
+  | { tool: "set_band_kg"; input: SetBandKgInput }
+  | { tool: "skip_items"; input: SkipItemsInput };
 
 function recordingBackend() {
   const calls: Call[] = [];
@@ -70,7 +80,32 @@ function recordingBackend() {
               extras: [],
             },
             { name: "Overhead press", prescription: "3 x 5 @ RIR 2", status: "planned" },
+            {
+              name: "Squat / hack squat",
+              options: ["squat", "hack_squat"],
+              prescription: "3 x 6-8",
+              status: "planned",
+              suggestions: [
+                {
+                  exercise: "squat",
+                  load: "62.5 kg",
+                  sets_reps: "3 x 6-8",
+                  rir: "1-2",
+                  labels: ["estimate"],
+                  ask: null,
+                },
+                {
+                  exercise: "hack_squat",
+                  load: null,
+                  sets_reps: null,
+                  rir: null,
+                  labels: [],
+                  ask: null,
+                },
+              ],
+            },
           ],
+          readiness: { level: "GREEN" },
           next: { kind: "item", name: "Pull-ups", position: 1, total: 2 },
           weekRange: { start: "2026-10-26", end: "2026-11-01", label: "26 Oct – 1 Nov" },
         },
@@ -97,7 +132,7 @@ function recordingBackend() {
               line: "Tue 20 Oct · W4 — 1 × 8 · 60 kg",
             },
           ],
-          suggestion: "not available yet",
+          current_e1rm: { value: "81.7 kg", label: "estimate" },
         },
         fallbackHtml: "<b>History</b>",
       };
@@ -155,6 +190,7 @@ function recordingBackend() {
               guessedFields: input.guessed_fields,
               needsConfirmation: input.needs_confirmation,
               lastSession: null,
+              suggestedSystemLoad: null,
             },
           } as StagedAction)
         : { kind: "clarify_exercise", input, said: input.exercise.said, candidates: [] };
@@ -175,6 +211,43 @@ function recordingBackend() {
         preview: "Staged edit of the last Bench press entry.",
       };
     },
+    async stageReadiness(input) {
+      calls.push({ tool: "log_readiness", input });
+      return {
+        ok: true,
+        action: { kind: "log_readiness", input, date: "2026-10-27" },
+        preview: "Staged a readiness note.",
+      };
+    },
+    async stageBodyweight(input) {
+      calls.push({ tool: "log_bodyweight", input });
+      return {
+        ok: true,
+        action: { kind: "log_bodyweight", input, date: "2026-10-27" },
+        preview: "Staged bodyweight.",
+      };
+    },
+    async stageClass(input) {
+      calls.push({ tool: "log_class", input });
+      return {
+        ok: true,
+        action: { kind: "log_class", input, date: "2026-10-22" },
+        preview: "Staged the class report.",
+      };
+    },
+    async stageBandKg(input) {
+      calls.push({ tool: "set_band_kg", input });
+      return {
+        ok: true,
+        action: {
+          kind: "set_band_kg",
+          input,
+          equipmentSlug: "pullup",
+          previousKg: null,
+        },
+        preview: "Staged the band kg.",
+      };
+    },
     async stageUndoLast() {
       calls.push({ tool: "undo_last_entry" });
       return {
@@ -182,6 +255,10 @@ function recordingBackend() {
         action: { kind: "delete_group", snapshot },
         preview: "Staged removal of the last Bench press entry.",
       };
+    },
+    async stageSkip(input) {
+      calls.push({ tool: "skip_items", input });
+      return { ok: false, error: "not used in this golden set" };
     },
   };
   return { backend, calls };
@@ -281,7 +358,17 @@ function guardOk(text: string, res: Extract<IntentResult, { kind: "ok" }>) {
 }
 
 const toolNames = (calls: Call[]) => calls.map((c) => c.tool);
-const WRITE_TOOLS = ["log_sets", "edit_last_entry", "undo_last_entry", "save_memory"];
+const WRITE_TOOLS = [
+  "log_sets",
+  "edit_last_entry",
+  "undo_last_entry",
+  "skip_items",
+  "save_memory",
+  "log_readiness",
+  "log_bodyweight",
+  "log_class",
+  "set_band_kg",
+];
 
 const logs = (calls: Call[]) =>
   calls
@@ -296,8 +383,10 @@ beforeAll(() => {
 
 describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
   it("3x8 squat 60 rir 2", async () => {
-    const [l, ...rest] = logs((await run("3x8 squat 60 rir 2")).calls);
-    expect(rest).toHaveLength(0);
+    const { calls, res } = await run("3x8 squat 60 rir 2");
+    // The model sometimes re-sends the identical call; the loop stages it once.
+    expect(res.staged).toHaveLength(1);
+    const [l] = logs(calls);
     expect(l?.exercise.slug).toBe("squat");
     const u = l && uniform(l);
     expect(u).toMatchObject({ count: 3, reps: 8, load_kg: 60 });
@@ -471,9 +560,39 @@ describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
     });
 
     it("what should I squat today?", async () => {
-      const { calls, res } = await ask("what should I squat today?");
+      const { calls, res, text } = await ask("what should I squat today?");
+      expect(toolNames(calls)).toContain("get_session");
       expect(calls.some((c) => WRITE_TOOLS.includes(c.tool))).toBe(false);
-      expect(res.replyText).toBeTruthy();
+      // The suggestion is quoted from get_session, never computed by the model.
+      expect(res.replyText).toContain("62.5");
+      guardOk(text, res);
+    });
+
+    it("slept badly", async () => {
+      const { calls } = await ask("slept badly");
+      const r = calls.find((c) => c.tool === "log_readiness");
+      expect(r && "input" in r && r.input.signal).toBe("bad_sleep");
+      expect(calls.some((c) => c.tool === "save_memory" || c.tool === "log_sets")).toBe(false);
+    });
+
+    it("I'm 78.5 kg today", async () => {
+      const { calls } = await ask("I'm 78.5 kg today");
+      const b = calls.find((c) => c.tool === "log_bodyweight");
+      expect(b && "input" in b && b.input.kg).toBe(78.5);
+    });
+
+    it("class was heavy on legs", async () => {
+      const { calls } = await ask("class was heavy on legs");
+      const c = calls.find((x) => x.tool === "log_class");
+      expect(c && "input" in c && c.input.heavy_groups).toEqual(["legs"]);
+      expect(calls.some((x) => x.tool === "log_sets")).toBe(false);
+    });
+
+    it("red band is 15 kg", async () => {
+      const { calls } = await ask("red band is 15 kg");
+      const b = calls.find((c) => c.tool === "set_band_kg");
+      expect(b && "input" in b && b.input.kg).toBe(15);
+      expect(b && "input" in b && b.input.colour.toLowerCase()).toContain("red");
     });
 
     it("my left shoulder is sensitive on dips", async () => {

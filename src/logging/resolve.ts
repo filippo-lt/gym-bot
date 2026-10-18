@@ -5,13 +5,21 @@
  */
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { logGroups } from "../db/schema/log.js";
-import { plannedItems } from "../db/schema/plan.js";
-import { trainingDate } from "../domain/calendar.js";
+import { equipment, exercises as exercisesTable, plannedItems } from "../db/schema/plan.js";
+import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { acceptedHspuStep } from "../progression/load-history.js";
+import { ensureSuggestions } from "../progression/store.js";
 import { readAlternatives, readExerciseHistory, readSession } from "../queries/read-tools.js";
 import { type CatalogExercise, type LadderStep, loadCatalog, loadLadder } from "./catalog.js";
 import type { Db, Q } from "./db.js";
 import { dateLabel, describeEntries } from "./describe.js";
-import { lastBotGroup, lastSessionRef, latestBwKg } from "./groups.js";
+import {
+  groupSuggestedLoad,
+  lastBotGroup,
+  lastSessionRef,
+  latestBwKg,
+  storedSuggestion,
+} from "./groups.js";
 import { activeAliases, normalizeAlias } from "./memory.js";
 import {
   addDays,
@@ -24,13 +32,17 @@ import {
   WEEKDAY_ORDER,
   weekRefFor,
 } from "./plan-context.js";
+import { stageSkip } from "./skip.js";
 import type {
   Candidate,
   Day,
   EditLastInput,
   GetSessionInput,
   GroupSnapshot,
+  LogBodyweightInput,
+  LogClassInput,
   LoggingBackend,
+  LogReadinessInput,
   LogSetsInput,
   MatchKind,
   PlannedItemInfo,
@@ -38,11 +50,12 @@ import type {
   ResolvedExercise,
   ResolvedLog,
   SaveMemoryInput,
+  SetBandKgInput,
   StagedAction,
   StageResult,
   UndoLastInput,
 } from "./types.js";
-import { buildEntries, convertLoad, expandSets, missingFields } from "./units.js";
+import { buildEntries, convertLoad, expandSets, missingFields, normalizeBand } from "./units.js";
 import { checkConflicts, checkKeys, usedKeys } from "./validate.js";
 
 export const MAX_CANDIDATES = 6;
@@ -167,7 +180,7 @@ type ExerciseOutcome =
   | { kind: "ok"; exercise: CatalogExercise }
   | { kind: "clarify"; candidates: Candidate[] };
 
-async function pickExercise(
+export async function pickExercise(
   db: Q,
   ex: LogSetsInput["exercise"],
   catalog: CatalogExercise[],
@@ -236,7 +249,7 @@ async function pickExercise(
 // ---------------------------------------------------------------------------
 // Planned item
 
-function dateForDay(ctx: PlanContext | null, today: string, day: Day | undefined): string {
+export function dateForDay(ctx: PlanContext | null, today: string, day: Day | undefined): string {
   if (!day || day === "today" || !ctx) return today;
   const ref = weekRefFor(ctx, today);
   if (!ref) return today;
@@ -313,9 +326,50 @@ async function resolveHspuStep(
     .where(and(eq(logGroups.exerciseId, exerciseId), isNotNull(logGroups.hspuStepId)))
     .orderBy(desc(logGroups.performedAt), desc(logGroups.id))
     .limit(1);
+  // An accepted "move to the next step" proposal is the current step until a newer log (SPEC 5.2).
+  const accepted = await acceptedHspuStep(db, exerciseId);
+  const acceptedStep =
+    accepted != null ? ladder.find((s) => s.order === accepted.stepOrder) : undefined;
+  if (acceptedStep) return acceptedStep;
   const fromLast = last?.stepId != null ? ladder.find((s) => s.id === last.stepId) : undefined;
   if (fromLast) return fromLast;
   return plannedStepId != null ? (ladder.find((s) => s.id === plannedStepId) ?? null) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Suggestion reference (SPEC 5.6d far-off check)
+
+/**
+ * System load of the stored suggestion for the matched item/option. Computes today's suggestions when none is stored
+ * yet (the user logs without /today first); a failing engine never blocks logging.
+ */
+async function suggestedLoadFor(
+  db: Q,
+  planned: PlannedMatch,
+  exercise: ResolvedExercise,
+  today: string,
+  now: Date,
+): Promise<number | null> {
+  if (!planned.info) return null;
+  if (exercise.type !== "weighted" && exercise.type !== "bodyweight_plus") return null;
+  const find = () =>
+    storedSuggestion(
+      db,
+      planned.sessionDate,
+      planned.info?.id ?? 0,
+      planned.info?.subItem ?? 0,
+      exercise.id,
+    );
+  let row = await find();
+  if (!row && planned.sessionDate === today) {
+    try {
+      await ensureSuggestions(db, today, { asOf: now.toISOString() });
+      row = await find();
+    } catch (error) {
+      console.error(`suggestions: not computed (${error instanceof Error ? error.name : "error"})`);
+    }
+  }
+  return row?.systemLoad ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,6 +454,7 @@ export async function resolveLog(
       guessedFields: input.guessed_fields,
       needsConfirmation: input.needs_confirmation,
       lastSession: await lastSessionRef(db, exercise, today),
+      suggestedSystemLoad: await suggestedLoadFor(db, planned, exercise, today, now),
     },
   };
 }
@@ -520,7 +575,14 @@ function applyChanges(
   if (c.duration_s !== undefined) out.durationS = c.duration_s;
   if (c.distance_m !== undefined) out.distanceM = c.distance_m;
   if (c.pad_height !== undefined) out.padHeight = c.pad_height;
-  if (c.band !== undefined) out.note = `band: ${c.band}`;
+  if (c.band !== undefined) {
+    const band = normalizeBand(c.band) || null;
+    out.band = band;
+    if (c.assist_kg === undefined) {
+      // The colour decides the assistance; an unmapped colour has no kg.
+      out.assistKg = band ? (exercise.equipment?.bands?.[band] ?? null) : 0;
+    }
+  }
   return out;
 }
 
@@ -604,6 +666,7 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
     entries,
   };
   const lastSession = await lastSessionRef(db, exercise, trainingDate(now), before.groupId);
+  const suggestedSystemLoad = exerciseChanged ? null : await groupSuggestedLoad(db, before.groupId);
   const sets =
     setIndexes.length === count
       ? "all sets"
@@ -618,6 +681,7 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
       setIndexes,
       lastSession,
       plannedRepsMax,
+      suggestedSystemLoad,
     },
     preview: `Staged edit of ${before.exercise.name} (${dateLabel(before.sessionDate)}, ${sets}): now ${exercise.name} ${describeEntries(entries)}. ${TAIL}`,
   };
@@ -644,6 +708,60 @@ export function stageSaveMemory(input: SaveMemoryInput): StageResult {
   };
 }
 
+export function stageReadiness(input: LogReadinessInput, now: Date): StageResult {
+  return {
+    ok: true,
+    action: { kind: "log_readiness", input, date: trainingDate(now) },
+    preview: `Staged a readiness note (${input.signal}) for today. The bot saves it with an Undo button. Do not repeat numbers.`,
+  };
+}
+
+export function stageBodyweight(input: LogBodyweightInput, now: Date): StageResult {
+  return {
+    ok: true,
+    action: { kind: "log_bodyweight", input, date: trainingDate(now) },
+    preview:
+      "Staged today's bodyweight. The bot saves it with an Undo button. Do not repeat numbers.",
+  };
+}
+
+export function stageClass(input: LogClassInput, now: Date): StageResult {
+  const heavy = [...new Set(input.heavy_groups)];
+  return {
+    ok: true,
+    action: {
+      kind: "log_class",
+      input: { heavy_groups: heavy },
+      date: thursdayOnOrBefore(trainingDate(now)),
+    },
+    preview:
+      "Staged the Thursday class report. The bot saves it with an Undo button. Do not repeat numbers.",
+  };
+}
+
+/** The pull-up equipment is where band colours live (SPEC 5.2). */
+export async function stageBandKg(db: Q, input: SetBandKgInput): Promise<StageResult> {
+  const colour = normalizeBand(input.colour);
+  if (!colour) return fail("Which band colour?");
+  const [row] = await db
+    .select({ slug: equipment.slug, bands: equipment.bands })
+    .from(exercisesTable)
+    .innerJoin(equipment, eq(equipment.id, exercisesTable.equipmentId))
+    .where(eq(exercisesTable.type, "bodyweight_plus"))
+    .limit(1);
+  if (!row) return fail("No pull-up equipment found.");
+  return {
+    ok: true,
+    action: {
+      kind: "set_band_kg",
+      input: { colour, kg: input.kg },
+      equipmentSlug: row.slug,
+      previousKg: row.bands?.[colour] ?? null,
+    },
+    preview: `Staged the ${colour} band kg. The bot will ask the user to confirm. Do not repeat numbers.`,
+  };
+}
+
 export interface BackendOptions {
   /** The chat's unsaved request, if any: edits and undo then act on nothing but saved logs. */
   openPending?: { summary: string } | null;
@@ -666,8 +784,13 @@ export function createLoggingBackend(
     getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
     getAlternatives: (input) => readAlternatives(db, input),
     stageSaveMemory: async (input) => stageSaveMemory(input),
+    stageReadiness: async (input) => stageReadiness(input, clock()),
+    stageBodyweight: async (input) => stageBodyweight(input, clock()),
+    stageClass: async (input) => stageClass(input, clock()),
+    stageBandKg: (input) => stageBandKg(db, input),
     stageLogSets: (input) => stageLogSets(db, input, clock()),
     stageEdit: async (input) => blocked() ?? stageEdit(db, input, clock()),
     stageUndoLast: async (_input: UndoLastInput) => blocked() ?? stageUndoLast(db, clock()),
+    stageSkip: (input) => stageSkip(db, input, clock()),
   };
 }

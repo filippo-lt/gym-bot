@@ -84,7 +84,15 @@ export async function seedPlan(
         await tx
           .insert(schema.equipment)
           .values(values)
-          .onConflictDoUpdate({ target: schema.equipment.slug, set: values });
+          .onConflictDoUpdate({
+            target: schema.equipment.slug,
+            set: {
+              ...values,
+              // Band kg are user data (set in chat): the seed only fills colours not already there.
+              bands: sql`case when excluded.bands is null then ${schema.equipment.bands}
+                else excluded.bands || coalesce(${schema.equipment.bands}, '{}'::jsonb) end`,
+            },
+          });
       }
       const equipmentIds = new Map(
         (

@@ -361,6 +361,18 @@ describe("seedPlan re-runs and refusals (fixture)", () => {
       await sql`select step_kg::float as s, base_kg::float as b from equipment where slug = 'barbell'`;
     expect(row).toEqual({ s: 5, b: 20 });
   });
+
+  it("re-seed keeps band kg set by the user and only fills missing colours", async () => {
+    await seedPlan(db, fixture());
+    await sql`update equipment set bands = ${JSON.stringify({ red: 15, green: 30 })}::jsonb where slug = 'bands'`;
+    await seedPlan(db, fixture());
+    const [row] = await sql`select bands from equipment where slug = 'bands'`;
+    // red keeps the user's 15 (seed says 10), green survives, blue is filled from the seed
+    expect(row?.bands).toEqual({ red: 15, green: 30, blue: 20 });
+    // equipment without bands in the seed keeps its (null) bands
+    const [bar] = await sql`select bands from equipment where slug = 'barbell'`;
+    expect(bar?.bands).toBeNull();
+  });
 });
 
 describe("test database guard", () => {

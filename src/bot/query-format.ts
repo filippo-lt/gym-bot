@@ -4,25 +4,18 @@
  */
 import { dateLabel } from "../logging/describe.js";
 import type { ResolvedEntry } from "../logging/types.js";
+import type { SessionAdvice } from "../progression/session-advice.js";
 import type { ExerciseHistory, HistorySession } from "../queries/history.js";
 import type { NextItem, PlanOverview } from "../queries/plan-overview.js";
 import { cb } from "./callbacks.js";
-import {
-  day,
-  esc,
-  extraLine,
-  fallbackLine,
-  formatFinished,
-  guardLength,
-  itemLine,
-  weekRange,
-} from "./format.js";
+import { day, esc, formatFinished, guardLength, itemBlock, weekRange } from "./format.js";
 import { type LineView, type Message, setsText } from "./log-format.js";
+import type { HeavyGroup } from "./session.js";
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
 function entriesOf(s: HistorySession): ResolvedEntry[] {
-  return s.sets.map((x) => ({ ...x, note: null }));
+  return s.sets.map((x) => ({ ...x, band: x.band ?? null, note: null }));
 }
 
 function unique<T>(xs: T[]): T[] {
@@ -111,15 +104,17 @@ export const HISTORY_UNKNOWN = "I don't know that exercise. Try /history squat."
 export const SESSION_USAGE =
   "Which day? For example: /session mon, /session tomorrow, /session 2026-10-26 or /session 26/10.";
 
-export function formatNext(next: NextItem): string {
+export function formatNext(
+  next: NextItem,
+  advice?: SessionAdvice | null,
+  heavy: HeavyGroup[] = [],
+): string {
   switch (next.kind) {
     case "item": {
       const lines = [
         `<b>Next up</b> · ${next.position} of ${next.total}`,
-        itemLine(next.item, next.position),
+        ...itemBlock(next.item, next.position, next.extras, advice, heavy),
       ];
-      if (next.item.fallback) lines.push(`   <i>${esc(fallbackLine(next.item.fallback))}</i>`);
-      for (const extra of next.extras) lines.push(`   ${esc(extraLine(extra))}`);
       return guardLength(lines.join("\n"));
     }
     case "all_done":

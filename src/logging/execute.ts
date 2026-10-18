@@ -4,10 +4,21 @@
  */
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import { memoryItems, pendingActions, writeLedger } from "../db/schema/agent.js";
-import { logEntries, logGroups, sessionItems } from "../db/schema/log.js";
-import { hspuLadder, plannedItems } from "../db/schema/plan.js";
+import {
+  bodyweightLogs,
+  classLogs,
+  logEntries,
+  logGroups,
+  sessionItems,
+} from "../db/schema/log.js";
+import { equipment, hspuLadder, plannedItems } from "../db/schema/plan.js";
+import { readinessLogs } from "../db/schema/progression.js";
+import { trainingDate } from "../domain/calendar.js";
+import { loadFrozenLevel } from "../progression/load-history.js";
+import { ensureSuggestions, freezeReadiness, refreshUserState } from "../progression/store.js";
 import type { Db, Q, Tx } from "./db.js";
-import { groupSnapshot } from "./groups.js";
+import { groupSnapshot, storedSuggestion } from "./groups.js";
+import { writeSkip } from "./skip.js";
 import type {
   BeforeGroup,
   GroupSnapshot,
@@ -41,6 +52,7 @@ const ENTRY_FIELDS: EntryField[] = [
   "rirPlus",
   "clean",
   "note",
+  "band",
 ];
 const GROUP_FIELDS: (keyof BeforeGroup)[] = [
   "exerciseId",
@@ -83,6 +95,7 @@ const entryValues = (groupId: number, e: ResolvedEntry) => ({
   rirPlus: e.rirPlus,
   clean: e.clean,
   note: e.note,
+  band: e.band,
 });
 
 async function ladderId(q: Q, slug: string | undefined | null): Promise<number | null> {
@@ -207,6 +220,16 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
   switch (a.kind) {
     case "log_sets": {
       const r = a.resolved;
+      // The suggestion shown for this item/option and the day's frozen readiness (SPEC 5.2, 5.6c).
+      const suggestion = r.plannedItem
+        ? await storedSuggestion(
+            tx,
+            r.sessionDate,
+            r.plannedItem.id,
+            r.plannedItem.subItem,
+            r.exercise.id,
+          )
+        : null;
       const [g] = await tx
         .insert(logGroups)
         .values({
@@ -215,6 +238,9 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
           plannedItemId: r.plannedItem?.id ?? null,
           subItem: r.plannedItem?.subItem ?? 0,
           exerciseId: r.exercise.id,
+          suggestionId: suggestion?.id ?? null,
+          // The level frozen for the group's own session day; a make-up never takes today's.
+          readinessLevel: await loadFrozenLevel(tx, r.sessionDate),
           bwKg: r.bwKg,
           source: "text",
           note: r.note,
@@ -257,10 +283,12 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
                   .where(eq(plannedItems.id, newPlanned));
           subItem = p?.subItem ?? 0;
         }
+        // The suggestion belonged to the old exercise: drift must not compare against it.
         Object.assign(groupSet, {
           exerciseId: a.after.exercise.id,
           plannedItemId: newPlanned,
           subItem,
+          suggestionId: null,
         });
       }
       if (stepChanged) groupSet.hspuStepId = await ladderId(tx, a.after.hspuStep?.slug);
@@ -322,8 +350,124 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
         content: a.input.content,
       };
     }
+    case "set_band_kg": {
+      const [row] = await tx
+        .select({ bands: equipment.bands })
+        .from(equipment)
+        .where(eq(equipment.slug, a.equipmentSlug));
+      if (!row) throw new Error(`Equipment ${a.equipmentSlug} not found.`);
+      const bands = row.bands ?? {};
+      await tx
+        .update(equipment)
+        .set({ bands: { ...bands, [a.input.colour]: a.input.kg } })
+        .where(eq(equipment.slug, a.equipmentSlug));
+      return {
+        kind: "band",
+        colour: a.input.colour,
+        kg: a.input.kg,
+        previousKg: bands[a.input.colour] ?? null,
+        equipmentSlug: a.equipmentSlug,
+      };
+    }
+    case "log_readiness": {
+      // A /readiness tap carries its button; chat words map to the chat kinds.
+      const kind = a.button ? BUTTON_KIND[a.button] : READINESS_KIND[a.input.signal];
+      const [row] = await tx
+        .insert(readinessLogs)
+        .values({ date: a.date, at: now, kind, source: a.button ? "button" : "chat" })
+        .returning({ id: readinessLogs.id });
+      return {
+        kind: "readiness",
+        id: (row as { id: number }).id,
+        date: a.date,
+        signal: a.button ? BUTTON_WORD[a.button] : a.input.signal,
+      };
+    }
+    case "log_bodyweight": {
+      const [prev] = await tx
+        .select({ id: bodyweightLogs.id, kg: bodyweightLogs.kg })
+        .from(bodyweightLogs)
+        .where(eq(bodyweightLogs.date, a.date));
+      const [row] = await tx
+        .insert(bodyweightLogs)
+        .values({ date: a.date, kg: a.input.kg, source: "bot" })
+        .onConflictDoUpdate({
+          target: bodyweightLogs.date,
+          set: { kg: a.input.kg, source: "bot" },
+        })
+        .returning({ id: bodyweightLogs.id });
+      return {
+        kind: "bodyweight",
+        id: (row as { id: number }).id,
+        date: a.date,
+        kg: a.input.kg,
+        previousKg: prev?.kg ?? null,
+      };
+    }
+    case "log_class": {
+      const [prev] = await tx
+        .select({ id: classLogs.id, heavy: classLogs.heavyGroups })
+        .from(classLogs)
+        .where(eq(classLogs.date, a.date));
+      const [row] = await tx
+        .insert(classLogs)
+        .values({ date: a.date, heavyGroups: a.input.heavy_groups, source: "bot" })
+        .onConflictDoUpdate({
+          target: classLogs.date,
+          set: { heavyGroups: a.input.heavy_groups, source: "bot" },
+        })
+        .returning({ id: classLogs.id });
+      return {
+        kind: "class",
+        id: (row as { id: number }).id,
+        date: a.date,
+        heavyGroups: a.input.heavy_groups,
+        previousGroups: prev?.heavy ?? null,
+      };
+    }
+    case "skip_items":
+      return writeSkip(tx, a);
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");
+  }
+}
+
+/**
+ * A new readiness signal moves the day's level only when it is already frozen and nothing is logged yet. Otherwise the
+ * first log, or /today after 05:00, freezes it later from all signals (SPEC 5.6c).
+ */
+export async function refreezeIfFrozen(db: Db, date: string, now: Date): Promise<void> {
+  if ((await loadFrozenLevel(db, date)) === null) return;
+  await freezeReadiness(db, date, now, { refreeze: true });
+}
+
+const BUTTON_WORD = { t: "tired", o: "ok", s: "strong" } as const;
+const BUTTON_KIND = { t: "button_tired", o: "button_ok", s: "button_strong" } as const;
+
+const READINESS_KIND = {
+  bad_sleep: "chat_bad_sleep",
+  sore: "chat_sore",
+  exhausted: "chat_exhausted",
+  good: "button_strong",
+} as const;
+
+/**
+ * Before a log is written: freeze the day's readiness at the first log and make sure today's suggestions are stored,
+ * so the group can reference them (SPEC 5.2, 5.6c). Idempotent, outside the write transaction; an engine failure never
+ * blocks logging (the group is then saved without a suggestion).
+ */
+async function prepareProgression(db: Db, now: Date, actions: StagedAction[]): Promise<void> {
+  const logs = actions.filter((a) => a.kind === "log_sets");
+  if (logs.length === 0) return;
+  const today = trainingDate(now);
+  try {
+    // Only a log for today's own session starts (and freezes) today's readiness.
+    if (logs.some((a) => a.resolved.sessionDate === today)) await freezeReadiness(db, today, now);
+    if (logs.some((a) => a.resolved.plannedItem && a.resolved.sessionDate === today)) {
+      await ensureSuggestions(db, today, { asOf: now.toISOString() });
+    }
+  } catch (error) {
+    console.error(`progression: not prepared (${error instanceof Error ? error.name : "error"})`);
   }
 }
 
@@ -352,8 +496,20 @@ export async function executeActions(
   } = {},
 ): Promise<ExecuteResult> {
   const now = opts.now ?? new Date();
+  await prepareProgression(db, now, actions);
   try {
-    return await runActions(db, sourceKey, actions, opts, now);
+    const result = await runActions(db, sourceKey, actions, opts, now);
+    // A chat readiness note before the first log of the day moves today's level (SPEC 5.6c).
+    if (result.status === "done" && result.results.some((r) => r.kind === "readiness")) {
+      try {
+        await refreezeIfFrozen(db, trainingDate(now), now);
+      } catch (error) {
+        console.error(
+          `readiness: re-freeze failed (${error instanceof Error ? error.name : "error"})`,
+        );
+      }
+    }
+    return result;
   } catch (error) {
     if (!(error instanceof StaleActionError)) throw error;
     // The transaction rolled back (including the pending claim): close the request for good.
@@ -417,6 +573,7 @@ function runActions(
       }
     }
     const results: LedgerResult[] = [];
+    let touchedHistory = false;
     for (const [i, action] of actions.entries()) {
       const placeholder: LedgerResult = { kind: "log", groupId: 0 };
       const inserted = await tx
@@ -438,7 +595,17 @@ function runActions(
         .set({ result })
         .where(and(eq(writeLedger.sourceKey, sourceKey), eq(writeLedger.actionIndex, i)));
       results.push(result);
+      if (
+        action.kind === "log_sets" ||
+        action.kind === "edit_group" ||
+        action.kind === "delete_group" ||
+        action.kind === "set_band_kg"
+      ) {
+        touchedHistory = true;
+      }
     }
+    // Pull-up gate and HSPU step are rebuilt from history after every write (SPEC 5.2).
+    if (touchedHistory) await refreshUserState(tx);
     return { status: "done", results };
   });
 }
@@ -492,7 +659,11 @@ export async function findEchoMessage(db: Q, groupId: number): Promise<number | 
 
 /** Removes a group. Returns its snapshot, or null when it was already gone. */
 export async function undoGroup(db: Db, groupId: number): Promise<GroupSnapshot | null> {
-  return db.transaction((tx) => deleteGroup(tx, groupId));
+  return db.transaction(async (tx) => {
+    const snap = await deleteGroup(tx, groupId);
+    if (snap) await refreshUserState(tx);
+    return snap;
+  });
 }
 
 export type UndoEditResult =
@@ -577,6 +748,7 @@ export async function undoEdit(
         .set(pickFields(e, fields))
         .where(and(eq(logEntries.groupId, gid), eq(logEntries.setIndex, setIndex)));
     }
+    await refreshUserState(tx);
     const snapshot = await groupSnapshot(tx, gid);
     return snapshot ? { status: "undone", snapshot } : { status: "none" };
   });
@@ -589,15 +761,83 @@ export async function setLastSetRir(
   rir: number,
   plus: boolean,
 ): Promise<GroupSnapshot | null> {
-  const [last] = await db
-    .select({ id: logEntries.id })
-    .from(logEntries)
-    .where(eq(logEntries.groupId, groupId))
-    .orderBy(desc(logEntries.setIndex))
-    .limit(1);
-  if (!last) return null;
-  await db.update(logEntries).set({ rir, rirPlus: plus }).where(eq(logEntries.id, last.id));
-  return groupSnapshot(db, groupId);
+  return db.transaction(async (tx) => {
+    const [last] = await tx
+      .select({ id: logEntries.id })
+      .from(logEntries)
+      .where(eq(logEntries.groupId, groupId))
+      .orderBy(desc(logEntries.setIndex))
+      .limit(1);
+    if (!last) return null;
+    await tx.update(logEntries).set({ rir, rirPlus: plus }).where(eq(logEntries.id, last.id));
+    // The e1RM (and so the implied-reps gate rule) depends on the logged RIR.
+    await refreshUserState(tx);
+    return groupSnapshot(tx, groupId);
+  });
+}
+
+export type UndoWriteResult =
+  | { status: "undone"; text: string }
+  /** The value changed after the write, so restoring would overwrite newer data. */
+  | { status: "stale" }
+  | { status: "none" };
+
+/**
+ * Undo for the direct writes that are not log groups: readiness note, bodyweight, Thursday class. Restores the previous
+ * value (or removes the row) and re-freezes the day's readiness while no log exists yet. Safe to repeat.
+ */
+export async function undoWrite(
+  db: Db,
+  sourceKey: string,
+  actionIndex: number,
+  now: Date,
+): Promise<UndoWriteResult> {
+  const [row] = await db
+    .select({ result: writeLedger.result })
+    .from(writeLedger)
+    .where(and(eq(writeLedger.sourceKey, sourceKey), eq(writeLedger.actionIndex, actionIndex)));
+  const r = row?.result;
+  if (!r) return { status: "none" };
+  if (r.kind === "readiness") {
+    const gone = await db
+      .delete(readinessLogs)
+      .where(eq(readinessLogs.id, r.id))
+      .returning({ id: readinessLogs.id });
+    if (gone.length === 0) return { status: "none" };
+    try {
+      await refreezeIfFrozen(db, trainingDate(now), now);
+    } catch (error) {
+      console.error(
+        `readiness: re-freeze failed (${error instanceof Error ? error.name : "error"})`,
+      );
+    }
+    return { status: "undone", text: "Readiness note removed." };
+  }
+  if (r.kind === "bodyweight") {
+    const [cur] = await db.select().from(bodyweightLogs).where(eq(bodyweightLogs.id, r.id));
+    if (!cur) return { status: "none" };
+    if (cur.kg !== r.kg) return { status: "stale" };
+    if (r.previousKg === null) {
+      await db.delete(bodyweightLogs).where(eq(bodyweightLogs.id, r.id));
+      return { status: "undone", text: "Bodyweight removed." };
+    }
+    await db.update(bodyweightLogs).set({ kg: r.previousKg }).where(eq(bodyweightLogs.id, r.id));
+    return { status: "undone", text: `Bodyweight back to ${r.previousKg} kg.` };
+  }
+  if (r.kind === "class") {
+    const [cur] = await db.select().from(classLogs).where(eq(classLogs.id, r.id));
+    if (!cur) return { status: "none" };
+    if ([...cur.heavyGroups].sort().join() !== [...r.heavyGroups].sort().join()) {
+      return { status: "stale" };
+    }
+    if (r.previousGroups === null) {
+      await db.delete(classLogs).where(eq(classLogs.id, r.id));
+      return { status: "undone", text: "Class report removed." };
+    }
+    await db.update(classLogs).set({ heavyGroups: r.previousGroups }).where(eq(classLogs.id, r.id));
+    return { status: "undone", text: "Class report restored." };
+  }
+  return { status: "none" };
 }
 
 /** The clean buttons: applies to every set of the group. */
@@ -606,10 +846,15 @@ export async function setGroupClean(
   groupId: number,
   clean: boolean,
 ): Promise<GroupSnapshot | null> {
-  const rows = await db
-    .update(logEntries)
-    .set({ clean })
-    .where(eq(logEntries.groupId, groupId))
-    .returning({ id: logEntries.id });
-  return rows.length === 0 ? null : groupSnapshot(db, groupId);
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .update(logEntries)
+      .set({ clean })
+      .where(eq(logEntries.groupId, groupId))
+      .returning({ id: logEntries.id });
+    if (rows.length === 0) return null;
+    // "Clean" opens or closes the pull-up gate (SPEC 5.2).
+    await refreshUserState(tx);
+    return groupSnapshot(tx, groupId);
+  });
 }
