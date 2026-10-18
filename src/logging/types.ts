@@ -516,6 +516,8 @@ export type LedgerResult =
       moveCount?: number;
       /** null = there was no row before. Kept for ledger rows written before `previousRow`. */
       previousGroups: string[] | null;
+      /** moves/photo/text as this write left them: Undo is stale when the row differs. Absent on older rows. */
+      written?: { parsed: unknown; photoFileId: string | null; rawText: string | null };
       /** The whole row as it was (null = no row): Undo restores all of it. */
       previousRow?: {
         heavyGroups: string[];

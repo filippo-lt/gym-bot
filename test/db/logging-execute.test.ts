@@ -455,4 +455,37 @@ describe("Thursday class with moves", () => {
     expect(u.status).toBe("undone");
     expect(await count("class_logs")).toBe(0);
   });
+
+  it("undo of an older moves write is stale after a newer one with the same heavy groups", async () => {
+    const m2 = [{ name: "Squat", sets: 3, groups: ["legs" as const] }];
+    await executeActions(db, "u:330", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
+      now: MON,
+    });
+    await executeActions(
+      db,
+      "u:331",
+      [cls({ moves: m2, heavy_groups: [] }, { photoFileId: "F2" })],
+      {
+        now: MON,
+      },
+    );
+    const u = await undoWrite(db, "u:330", 0, MON);
+    expect(u.status).toBe("stale");
+    const r = await row();
+    expect(r?.photo_file_id).toBe("F2");
+    expect(r?.parsed.moves).toHaveLength(1);
+  });
+
+  it("undo of a heavy-only write restores heavy groups and leaves moves alone", async () => {
+    await executeActions(db, "u:340", [cls({ moves, heavy_groups: [] }, { photoFileId: "F1" })], {
+      now: MON,
+    });
+    await executeActions(db, "u:341", [cls({ heavy_groups: ["legs"] })], { now: MON });
+    const u = await undoWrite(db, "u:341", 0, MON);
+    expect(u.status).toBe("undone");
+    const r = await row();
+    expect(r?.heavy_groups).toEqual([]);
+    expect(r?.photo_file_id).toBe("F1");
+    expect(r?.parsed.moves).toHaveLength(2);
+  });
 });

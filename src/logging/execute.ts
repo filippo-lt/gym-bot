@@ -445,6 +445,11 @@ async function writeAction(
         heavyGroups: heavy,
         ...(a.input.moves ? { moveCount: a.input.moves.length } : {}),
         previousGroups: prev?.heavy ?? null,
+        written: {
+          parsed: a.input.moves ? moves.parsed : (prev?.parsed ?? null),
+          photoFileId: a.input.moves ? (moves.photoFileId ?? null) : (prev?.photoFileId ?? null),
+          rawText: a.input.moves ? (moves.rawText ?? null) : (prev?.rawText ?? null),
+        },
         previousRow: prev
           ? {
               heavyGroups: prev.heavy,
@@ -865,6 +870,15 @@ export async function undoWrite(
     const [cur] = await db.select().from(classLogs).where(eq(classLogs.id, r.id));
     if (!cur) return { status: "none" };
     if ([...cur.heavyGroups].sort().join() !== [...r.heavyGroups].sort().join()) {
+      return { status: "stale" };
+    }
+    // A newer write changed moves, photo or text: restoring would overwrite it.
+    if (
+      r.written &&
+      (JSON.stringify(cur.parsed ?? null) !== JSON.stringify(r.written.parsed ?? null) ||
+        cur.photoFileId !== r.written.photoFileId ||
+        cur.rawText !== r.written.rawText)
+    ) {
       return { status: "stale" };
     }
     if (r.previousRow === undefined) {
