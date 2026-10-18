@@ -120,6 +120,27 @@ function fixture(): ResolvedPlan {
   };
 }
 
+async function weeksOf(versionId: number) {
+  return sql`select * from plan_weeks where plan_version_id = ${versionId} order by week`;
+}
+
+async function historyRows() {
+  return {
+    groups: await sql`select * from log_groups order by id`,
+    entries: await sql`select * from log_entries order by id`,
+    items: await sql`select * from session_items order by id`,
+  };
+}
+
+async function seedHistory(versionId: number, exerciseId: number) {
+  const [pi] =
+    await sql`select id from planned_items where plan_version_id = ${versionId} and item_key = 'w01-mon-00-0'`;
+  const id = pi?.id as number;
+  await sql`insert into session_items (session_date, planned_item_id, status, source) values ('2026-09-28', ${id}, 'done', 'bot')`;
+  await sql`insert into log_groups (session_date, performed_at, planned_item_id, exercise_id, source) values ('2026-09-28', now(), ${id}, ${exerciseId}, 'text')`;
+  return id;
+}
+
 async function snapshot(versionId: number) {
   return sql`
     select i.*, (select coalesce(json_agg(o order by o.option_index), '[]'::json)
@@ -148,8 +169,14 @@ describe("createVersion", () => {
     const hack = await exId("hack_squat");
     const press = await exId("leg_press");
     const v1Before = await snapshot(base.versionId);
-    const logBefore =
-      await sql`select (select count(*)::int from log_groups) a, (select count(*)::int from session_items) b`;
+    const v1Weeks = await weeksOf(base.versionId);
+    const v1OptCount = (
+      await sql`select count(*)::int n from planned_item_options o join planned_items i on i.id = o.planned_item_id where i.plan_version_id = ${base.versionId}`
+    )[0]?.n;
+    const seededItemId = await seedHistory(base.versionId, hack);
+    const historyBefore = await historyRows();
+    expect(historyBefore.groups).toHaveLength(1);
+    expect(historyBefore.items).toHaveLength(1);
     const fromDate = "2026-11-02"; // Monday of week 6
     const { content } = applySwap(base.content, {
       fromExerciseId: hack,
@@ -189,9 +216,15 @@ describe("createVersion", () => {
       change: { kind: "swap", from: hack, to: press },
     });
     expect(await snapshot(base.versionId)).toEqual(v1Before);
-    expect(
-      await sql`select (select count(*)::int from log_groups) a, (select count(*)::int from session_items) b`,
-    ).toEqual(logBefore);
+    expect(await weeksOf(base.versionId)).toEqual(v1Weeks);
+    const v2OptCount = (
+      await sql`select count(*)::int n from planned_item_options o join planned_items i on i.id = o.planned_item_id where i.plan_version_id = ${res.versionId}`
+    )[0]?.n;
+    expect(v2OptCount).toBe(v1OptCount);
+    const historyAfter = await historyRows();
+    expect(historyAfter).toEqual(historyBefore);
+    expect(historyAfter.items[0]?.planned_item_id).toBe(seededItemId);
+    expect(historyAfter.groups[0]?.planned_item_id).toBe(seededItemId);
   });
 
   it("a deload insert gives 13 weeks", async () => {

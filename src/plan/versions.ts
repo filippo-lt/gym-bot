@@ -12,6 +12,11 @@ export class StaleBaseVersionError extends Error {
   }
 }
 
+function isUniqueViolation(e: unknown): boolean {
+  const err = e as { code?: string; cause?: { code?: string } };
+  return err?.code === "23505" || err?.cause?.code === "23505";
+}
+
 function chunks<T>(rows: T[]): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < rows.length; i += BATCH) out.push(rows.slice(i, i + BATCH));
@@ -88,7 +93,12 @@ export async function createVersion(
   },
 ): Promise<{ versionId: number; version: number }> {
   const [latest] = await tx
-    .select({ id: planVersions.id, version: planVersions.version })
+    .select({
+      id: planVersions.id,
+      version: planVersions.version,
+      sourceHash: planVersions.sourceHash,
+      resolvedHash: planVersions.resolvedHash,
+    })
     .from(planVersions)
     .where(eq(planVersions.planId, args.planId))
     .orderBy(desc(planVersions.version))
@@ -97,14 +107,8 @@ export async function createVersion(
   if (!latest || latest.id !== args.baseVersionId) {
     throw new StaleBaseVersionError(args.baseVersionId);
   }
-  const [base] = await tx
-    .select({ sourceHash: planVersions.sourceHash, resolvedHash: planVersions.resolvedHash })
-    .from(planVersions)
-    .where(eq(planVersions.id, args.baseVersionId));
-  if (!base) throw new StaleBaseVersionError(args.baseVersionId);
-
   const version = latest.version + 1;
-  const [created] = await tx
+  const created = await tx
     .insert(planVersions)
     .values({
       planId: args.planId,
@@ -112,10 +116,15 @@ export async function createVersion(
       effectiveFrom: args.effectiveFrom,
       reason: args.reason,
       change: args.change,
-      sourceHash: base.sourceHash,
-      resolvedHash: base.resolvedHash,
+      sourceHash: latest.sourceHash,
+      resolvedHash: latest.resolvedHash,
     })
-    .returning({ id: planVersions.id });
+    .returning({ id: planVersions.id })
+    .then((rows) => rows[0])
+    .catch((e: unknown) => {
+      if (isUniqueViolation(e)) throw new StaleBaseVersionError(args.baseVersionId);
+      throw e;
+    });
   if (!created) throw new Error("Failed to insert plan version");
   const versionId = created.id;
 
