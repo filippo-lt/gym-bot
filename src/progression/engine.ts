@@ -8,6 +8,7 @@ import { hspuReps, hspuState, shouldProposeAdvance } from "./hspu.js";
 import { suggestMainLoad } from "./load.js";
 import { gateState, pullupPlan, pullupRirMin } from "./pullup.js";
 import { applyReadiness, type ReadinessItemChange, readinessLevel } from "./readiness.js";
+import { roundTowardEasier } from "./rounding.js";
 import { applyShort } from "./short.js";
 import type {
   AdjustedItem,
@@ -157,6 +158,21 @@ function breakChecked(s: Suggestion, ex: ExerciseInfo, bw: number | null): Sugge
   return same ? s : cut;
 }
 
+/** Friday reduction (user decision 2026-10-18): the normal needed load, unrounded, minus 15%, rounded toward easier. */
+export const FRIDAY_REDUCE_FACTOR = 0.85;
+
+function fridayReducedLoad(
+  e1rm: number,
+  plan: ItemTarget,
+  ex: ExerciseInfo,
+): { loadKg?: number; systemLoad?: number } {
+  const [lo, hi] = rirRange(plan, ex, false);
+  const reps = plan.repsMin ?? plan.repsMax ?? 1;
+  const needed = (e1rm / (1 + (reps + (lo + hi) / 2) / 30)) * FRIDAY_REDUCE_FACTOR;
+  const loadKg = roundTowardEasier({ loadKg: needed }, ex).loadKg;
+  return { loadKg, systemLoad: loadKg };
+}
+
 function suggestWeighted(
   ex: ExerciseInfo,
   eff: ItemTarget,
@@ -164,6 +180,7 @@ function suggestWeighted(
   rirMid: number,
   hold: boolean,
   noStep: boolean,
+  plan: ItemTarget,
 ): Suggestion {
   const hist = ctx.input.history[ex.id] ?? [];
   const rir = rirRange(eff, ex, false);
@@ -175,6 +192,7 @@ function suggestWeighted(
     if (!e) return askLoad(base);
     let s: Suggestion = {
       ...suggestMainLoad(e.value, eff, ex, ctx.bwKg, rirMid),
+      ...(noStep ? fridayReducedLoad(e.value, plan, ex) : {}),
       rirMin: rir[0],
       rirMax: rir[1],
       rirMid,
@@ -408,7 +426,7 @@ export function planSession(input: SessionInput, opts: PlanOptions = {}): Adjust
         if (hidden || input.isTest) continue;
         const rir = rirRange(eff, ex, false);
         const rirMid = midFor(rdy, friReduced, rir, false);
-        const s = suggestWeighted(ex, eff, ctx, rirMid, hold && !ex.isMainLift, friReduced);
+        const s = suggestWeighted(ex, eff, ctx, rirMid, hold && !ex.isMainLift, friReduced, target);
         suggestions[ex.id] = withLabels(s, itemLabels);
       } else if (ex.type === "skill_ladder") {
         const hist = input.history[ex.id] ?? [];

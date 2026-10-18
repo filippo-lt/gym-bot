@@ -75,7 +75,7 @@ The cut also applies to accessories held at a last load (easy or deload items).
 - heavy LEGS: items tagged `squat`: same. Items tagged `unilateral_leg` are only offered as skip (label `friday_offer_skip`, normal prescription)
 - Deload Friday and heavy: the matching items drop to 1 easy set or skip. Unilateral leg: skipped.
 - When the prescription changes, write the new sets / reps / RIR in your answer, and the load for those reps and that RIR.
-- Main lifts (squat): recompute the load from the e1RM for 2 x `reps_min` at RIR 3-4 (RIR mid = 3.5). Friday rules do not change which e1RM is used.
+- Main lifts (squat): prescription 2 x `reps_min` at RIR 3-4, but the LOAD is the normal needed load (current e1RM at the plan's `reps_min` and the plan's RIR mid, unrounded, as if there were no Friday rule) x 0.85, then rounded toward easier. Friday rules do not change which e1RM is used. The same x 0.85 applies to the deload item's own normal load on a deload Friday.
 - Accessories (rows, incline DB bench, Bulgarian...): NO step up and NO step down. Hold the LAST VALID load (last non-deload session) at the new reps and RIR. The same hold applies to accessories reduced on a deload Friday.
 
 **10. Pull-up gate** (weighted pull-ups are allowed only when the gate is open)

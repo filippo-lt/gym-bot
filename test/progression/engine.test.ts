@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planSession } from "../../src/progression/engine.js";
+import { FRIDAY_REDUCE_FACTOR, planSession } from "../../src/progression/engine.js";
 import type { ExerciseInfo, SessionInput } from "../../src/progression/types.js";
 import { barbell, pullup, session, set, stack, target } from "./helpers-load.js";
 
@@ -205,6 +205,9 @@ describe("planSession", () => {
     expect(r.items[0]?.friday?.kind).toBe("reduce");
     expect(s).toMatchObject({ sets: 2, repsMin: 4, rirMin: 3, rirMax: 4, rirMid: 3.5 });
     expect(s?.labels).toContain("friday_reduced");
+    // normal needed load at reps_min 4, RIR mid 1.5, x 0.85, rounded down to the 2.5 kg grid (bar 20)
+    const needed = (100 * (1 + 7 / 30)) / (1 + 5.5 / 30);
+    expect(s?.loadKg).toBe(Math.floor((needed * FRIDAY_REDUCE_FACTOR - 20) / 2.5) * 2.5 + 20);
     expect(r.items[0]?.skipOffer).toBe(true);
   });
 

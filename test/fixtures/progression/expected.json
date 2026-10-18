@@ -13,23 +13,107 @@
     "\"TODO\" = not filled yet (the test shows it as todo)."
   ],
   "2026-10-26": {
-    "w05-mon-01-0": "TODO",
-    "w05-mon-03-0": "TODO",
-    "w05-mon-04-0": "TODO"
+    "w05-mon-01-0": {
+      "sets": 4,
+      "reps": 3,
+      "rir": [1, 2],
+      "added_kg": 2.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-mon-03-0": {
+      "sets": 3,
+      "reps": 6,
+      "rir": [1, 2],
+      "load_kg": 77.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-mon-04-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 52.5,
+      "labels": ["estimate_check_first_set"]
+    }
   },
   "2026-10-30": {
-    "w05-fri-01-0:squat": "TODO",
-    "w05-fri-01-0:hack_squat": "TODO",
-    "w05-fri-02-0": "TODO",
-    "w05-fri-03-0:cable_row": "TODO",
-    "w05-fri-03-0:machine_row": "TODO",
-    "w05-fri-04-0": "TODO",
-    "w05-fri-05-0": "TODO",
-    "w05-fri-06-0": "TODO"
+    "w05-fri-01-0:squat": {
+      "sets": 2,
+      "reps": 4,
+      "rir": [3, 4],
+      "load_kg": 70,
+      "labels": ["friday_reduced", "estimate"]
+    },
+    "w05-fri-01-0:hack_squat": {
+      "sets": 2,
+      "reps": 4,
+      "rir": [3, 4],
+      "load_kg": 87.5,
+      "labels": ["friday_reduced", "estimate_check_first_set"]
+    },
+    "w05-fri-02-0": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 25,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-03-0:cable_row": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 50,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-03-0:machine_row": {
+      "sets": 3,
+      "reps": [6, 8],
+      "rir": [1, 3],
+      "load_kg": 52.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-04-0": {
+      "sets": 2,
+      "reps": 8,
+      "rir": [1, 3],
+      "load_kg": 15,
+      "labels": ["estimate_check_first_set", "friday_offer_skip"]
+    },
+    "w05-fri-05-0": {
+      "sets": 2,
+      "reps": [12, 15],
+      "rir": [1, 3],
+      "load_kg": 27.5,
+      "labels": ["estimate_check_first_set"]
+    },
+    "w05-fri-06-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 22.5,
+      "labels": ["estimate_check_first_set"]
+    }
   },
   "2026-11-23": {
-    "w09-mon-01-0": "TODO",
-    "w09-mon-03-0": "TODO",
-    "w09-mon-04-0": "TODO"
+    "w09-mon-01-0": {
+      "sets": 4,
+      "reps": 3,
+      "rir": [1, 2],
+      "added_kg": 5,
+      "labels": []
+    },
+    "w09-mon-03-0": {
+      "sets": 3,
+      "reps": [5, 6],
+      "rir": [1, 2],
+      "load_kg": 85,
+      "labels": []
+    },
+    "w09-mon-04-0": {
+      "sets": 2,
+      "reps": [8, 12],
+      "rir": [1, 3],
+      "load_kg": 57.5,
+      "labels": []
+    }
   }
 }

@@ -161,6 +161,7 @@ The plan decides **sets × reps × RIR** for every week. The bot decides only th
 - heavy PUSH → `horizontal_press` items: same
 - heavy LEGS → `squat` items: same; `unilateral_leg` items **offered** as skip (plan says "can be skipped")
 - Deload Friday + heavy anything: the matching items drop to 1 easy set or skip (plan note: "reduce further"); Bulgarian skipped on heavy legs.
+- Main-lift load on a reduced Friday = normal load − 15% (the normal needed load, unrounded, × 0.85), rounded toward easier — user decision 2026-10-18. Accessories hold their last valid load.
 - If Thursday wasn't reported yet, the Friday morning message asks first, then shows the session.
 
 **Short on time:** hide `Low` items, flag `Medium` as optional.
