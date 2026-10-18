@@ -75,7 +75,10 @@ beforeAll(async () => {
   await sql`insert into usage_logs (date, model, input_tokens, output_tokens) values ('2026-10-18', 'm', 10, 5)`;
   await sql`insert into class_logs (date, raw_text, parsed, heavy_groups, source)
     values ('2026-10-15', null, '{"moves": [{"n": "row", "w": 20.5}]}'::jsonb, '{pull,legs}', 'bot'),
-           ('2026-10-08', 'text', 'null'::jsonb, '{}', 'bot')`;
+           ('2026-10-08', 'text', null, '{}', 'bot')`;
+  // Trailing zeros must survive: rows go to Postgres without a JS round trip.
+  await sql`insert into weekly_metrics (plan_week, metric, value_num, source) values (1, 'zeros', 55.50, 'bot')`;
+  await sql`insert into write_ledger (source_key, action_index, result) values ('t:zeros', 0, '{"w": 20.50}'::jsonb)`;
   first = await buildBackup(db, NOW);
 });
 
@@ -102,6 +105,28 @@ describe("restoreBackup", () => {
     }
     expect(await count("inbox")).toBe(0);
     expect(await count("chat_lease")).toBe(0);
+  });
+
+  it("keeps numbers with trailing zeros", async () => {
+    const [m] = await sql`select value_num::text as v from weekly_metrics where metric = 'zeros'`;
+    expect(m?.v).toBe("55.50");
+    const [l] = await sql`select result::text as r from write_ledger where source_key = 't:zeros'`;
+    expect(l?.r).toBe('{"w": 20.50}');
+  });
+
+  it("sets every sequence past the restored ids", async () => {
+    let checked = 0;
+    for (const t of await readCatalog(db)) {
+      for (const s of t.sequences) {
+        const [max] = await sql.unsafe(
+          `select coalesce(max("${s.column}"), 0)::bigint as m from "${t.name}"`,
+        );
+        const [next] = await sql.unsafe(`select nextval('${s.sequence}')::bigint as n`);
+        expect(Number(next?.n), `${t.name}.${s.column}`).toBeGreaterThan(Number(max?.m));
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(5);
   });
 
   it("continues ids past every restored id", async () => {
@@ -137,6 +162,16 @@ describe("restoreBackup", () => {
 });
 
 describe("restore refusals", () => {
+  const edited = (
+    fn: (f: {
+      tables: Record<string, Record<string, unknown>[]>;
+      manifest: Record<string, unknown>;
+    }) => void,
+  ) => {
+    const f = JSON.parse(first.json);
+    fn(f);
+    return parseBackupFile(new TextEncoder().encode(JSON.stringify(f)), "b.json");
+  };
   const refusal = async (input: BackupInput) => {
     try {
       await restoreBackup(db, input, { dryRun: false, now: LATER });
@@ -161,20 +196,23 @@ describe("restore refusals", () => {
   });
 
   it("refuses an extra table or an unknown column", async () => {
-    const extra = parse(first);
-    extra.tables.ghost = [];
-    extra.meta.manifest.ghost = { rows: 0, sha256: "x" };
+    const extra = edited((f) => {
+      f.tables.ghost = [];
+      f.manifest.ghost = { rows: 0, sha256: "x" };
+    });
     expect(await refusal(extra)).toBe("schema_mismatch");
 
-    const col = parse(first);
-    (col.tables.plans as Record<string, unknown>[])[0] = { nope: 1 };
+    const col = edited((f) => {
+      (f.tables.plans as unknown[])[0] = { nope: 1 };
+    });
     expect(await refusal(col)).toBe("schema_mismatch");
   });
 
   it("refuses an edited row and leaves the target empty", async () => {
-    const input = parse(first);
-    const plans = input.tables.plans as Record<string, unknown>[];
-    plans[0] = { ...plans[0], name: `${String(plans[0]?.name)} edited` };
+    const input = edited((f) => {
+      const plan = (f.tables.plans as unknown[])[0] as Record<string, unknown>;
+      plan.name = `${String(plan.name)} edited`;
+    });
     expect(await refusal(input)).toBe("manifest_mismatch");
     for (const t of await readCatalog(db)) expect(await count(t.name), t.name).toBe(0);
   });

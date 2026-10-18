@@ -70,11 +70,13 @@ Use this when the Supabase project is lost. The restore script writes only into 
 6. In Vercel, set `DATABASE_URL` to the new URI and redeploy.
 7. Check `/api/health` (see Verify).
 
+Each remote write (migrate, restore, Vercel change, redeploy) needs your explicit OK.
+
 `RESTORE_DATABASE_URL` has no fallback, so a restore can never hit the database in `DATABASE_URL` by mistake. A host that is not local needs `--allow-remote`.
 
 Local rehearsal:
 1. `pnpm db:up`. If the local `gymbot` database is empty, migrate it: `MIGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:54329/gymbot pnpm db:migrate`.
-2. `pnpm backup` (writes a file in `backups/`).
+2. `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/gymbot pnpm backup` (writes a file in `backups/`). Set `DATABASE_URL` here because `.env.local` holds production.
 3. `RESTORE_DATABASE_URL=postgres://postgres:postgres@localhost:54329/gymbot pnpm backup:restore backups/<file>.json --dry-run`.
 
 ## Verify

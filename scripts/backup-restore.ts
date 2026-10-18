@@ -25,9 +25,21 @@ try {
     );
     process.exit(1);
   }
-  const url = new URL(restoreEnv().RESTORE_DATABASE_URL);
+  let url: URL;
+  try {
+    url = new URL(restoreEnv().RESTORE_DATABASE_URL);
+  } catch (e) {
+    if (e instanceof Error && e.name === "EnvError") throw e;
+    throw new Error("RESTORE_DATABASE_URL is not a valid URL (postgres://user:pass@host:5432/db).");
+  }
   const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
-  const input = parseBackupFile(readFileSync(path), basename(path));
+  let bytes: Uint8Array;
+  try {
+    bytes = readFileSync(path);
+  } catch {
+    throw new Error(`Cannot read ${path}.`);
+  }
+  const input = parseBackupFile(bytes, basename(path));
 
   const now = new Date();
   const age = (now.getTime() - Date.parse(input.meta.created_at)) / 3_600_000;
@@ -49,7 +61,11 @@ try {
 } catch (error) {
   // Message only: a driver error message can carry SQL and row data.
   console.error(
-    error instanceof RestoreRefusedError || (error instanceof Error && error.name === "EnvError")
+    error instanceof RestoreRefusedError ||
+      (error instanceof Error &&
+        (error.name === "EnvError" ||
+          error.message.startsWith("Cannot read ") ||
+          error.message.startsWith("RESTORE_DATABASE_URL is not")))
       ? error.message
       : error instanceof Error
         ? `Restore failed (${error.name}).`

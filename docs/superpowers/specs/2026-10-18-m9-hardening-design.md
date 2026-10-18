@@ -91,7 +91,7 @@ M0–M6 are live and the bot is now the single source of truth for training hist
 **Coverage tests (A8, required)**, db project, migrated test DB:
 1. catalog base tables in `public` == table names from the Drizzle schema exports (`getTableConfig`), so a table missing from either side fails;
 2. every catalog table is in the backup or in the exclusion list, and every excluded name exists;
-3. round trip: fixture rows covering every column type in use (enum, text[], jsonb incl. jsonb `null` vs SQL `NULL`, timestamptz, date, numeric/real, bigint, boolean, nulls) → backup → restore into a truncated DB → per-table `to_jsonb` equality, and each sequence's next value > max(id).
+3. round trip: fixture rows covering every column type in use (enum, text[], jsonb, timestamptz, date, numeric/real incl. trailing zeros, bigint, boolean, nulls) → backup → restore into a truncated DB → per-table `to_jsonb` equality, and each sequence's next value > max(id).
 
 ### 2. Restore
 
@@ -109,7 +109,8 @@ M0–M6 are live and the bot is now the single source of truth for training hist
 
 **What the transaction does (B4, B5):**
 
-1. Insert in **foreign-key order** (parents first) from the catalog (`pg_constraint`), self-references ignored, cycle → error. Original ids kept. Chunks via `insert into <t> select * from jsonb_populate_recordset(null::<t>, $1::jsonb)`; builder's call on chunk size (keep each parameter at most a few MB).
+1. Insert in **foreign-key order** (parents first) from the catalog (`pg_constraint`), self-references ignored, cycle → error. Original ids kept. **Our call (review):** the file text goes to Postgres once (a temp `jsonb` table) and each table is inserted with `insert into <t> select * from jsonb_populate_recordset(null::<t>, doc->'tables'->'<t>')`, so numbers never round-trip through JS (a value like `55.50` or a bigint above 2^53 would otherwise change form and fail the sha256 check). JS parses the file only to validate it.
+   - **Not preserved:** a jsonb column holding JSON `null` comes back as SQL `NULL` (`to_jsonb` renders both as `null`, so the export can't tell them apart). The app never writes JSON `null` into a jsonb column.
 2. `setval` every serial/bigserial sequence (`pg_get_serial_sequence`) to max(id) (`is_called = false` at 1 for an empty table), so a new `pending_actions` id can never reuse a restored `p:<id>` ledger key.
 3. Runtime state: `inbox` and `chat_lease` start empty (excluded; `acquireOrRenew` creates the lease row). `pending_actions` and `job_runs` are restored **verbatim**: open cards are past `expires_at` (30 min) by the time anyone restores, so the existing expiry logic treats them as expired, and `done` job runs stop a same-day re-send. No rewrite of runtime rows.
 4. Re-check each table's row count and sha256 in Postgres after inserting.

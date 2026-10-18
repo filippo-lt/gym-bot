@@ -24,7 +24,10 @@ export class RestoreRefusedError extends Error {
 
 export interface BackupInput {
   meta: BackupMeta;
+  /** Parsed for validation only. */
   tables: Record<string, unknown[]>;
+  /** The file text. Postgres reads the rows from this, so numbers never pass through JS. */
+  text: string;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -62,6 +65,8 @@ export function parseBackupFile(bytes: Uint8Array, fileName: string): BackupInpu
     const entry = manifest[name];
     if (!Array.isArray(rows) || !isObject(entry))
       throw new RestoreRefusedError("not_backup", `Table ${name} has no manifest entry.`);
+    if (!rows.every(isObject))
+      throw new RestoreRefusedError("not_backup", `Table ${name} has a row that is not an object.`);
     if (rows.length !== entry.rows)
       throw new RestoreRefusedError(
         "manifest_mismatch",
@@ -71,7 +76,11 @@ export function parseBackupFile(bytes: Uint8Array, fileName: string): BackupInpu
   for (const name of Object.keys(manifest))
     if (!(name in tables))
       throw new RestoreRefusedError("not_backup", `Table ${name} is in the manifest only.`);
-  return { meta: parsed as unknown as BackupMeta, tables: tables as Record<string, unknown[]> };
+  return {
+    meta: parsed as unknown as BackupMeta,
+    tables: tables as Record<string, unknown[]>,
+    text,
+  };
 }
 
 export function isLocalHost(host: string): boolean {
@@ -90,8 +99,6 @@ class DryRunRollback extends Error {
     super("dry run rollback");
   }
 }
-
-const CHUNK = 500;
 
 /**
  * Restores a backup into an empty, migrated database in one transaction. Every refusal comes
@@ -149,17 +156,18 @@ export async function restoreBackup(
           );
       }
 
+      // The file goes to Postgres once, as text. Rows are never re-serialised in JS.
+      await tx.execute(sql`create temp table _restore_doc (doc jsonb not null) on commit drop`);
+      await tx.execute(sql`insert into _restore_doc (doc) values (${input.text}::jsonb)`);
       const inserted: Record<string, number> = {};
       const ordered = restoreOrder(targets);
       for (const t of ordered) {
-        const rows = input.tables[t.name] as unknown[];
-        for (let i = 0; i < rows.length; i += CHUNK) {
-          const json = JSON.stringify(rows.slice(i, i + CHUNK));
-          await tx.execute(sql`
-            insert into ${sql.identifier(t.name)}
-            select * from jsonb_populate_recordset(null::${sql.identifier(t.name)}, ${json}::jsonb)`);
-        }
-        inserted[t.name] = rows.length;
+        await tx.execute(sql`
+          insert into ${sql.identifier(t.name)}
+          select * from jsonb_populate_recordset(
+            null::${sql.identifier(t.name)},
+            (select doc->'tables'->${t.name}::text from _restore_doc))`);
+        inserted[t.name] = (input.tables[t.name] as unknown[]).length;
       }
 
       // New ids must continue past every restored id (write_ledger keeps `p:<id>` keys).

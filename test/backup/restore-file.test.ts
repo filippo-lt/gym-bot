@@ -52,6 +52,11 @@ describe("parseBackupFile", () => {
     expect(reason(() => parseBackupFile(bytes(file({ version: 2 })), "b.json"))).toBe("not_backup");
   });
 
+  it("refuses a row that is not an object", () => {
+    const f = file({ tables: { plans: [null] } });
+    expect(reason(() => parseBackupFile(bytes(f), "b.json"))).toBe("not_backup");
+  });
+
   it("refuses a row count that differs from the manifest", () => {
     const f = file({ tables: { plans: [{ id: 1 }, { id: 2 }] } });
     expect(reason(() => parseBackupFile(bytes(f), "b.json"))).toBe("manifest_mismatch");
