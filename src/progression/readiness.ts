@@ -177,17 +177,23 @@ export function applyReadiness(
   return { perItem, restDay, classAdvice: level === "RED" && weekday === "thu" };
 }
 
+/** A weekly recovery score at or below this counts as low (SPEC 5.6c). */
+export const RECOVERY_LOW_MAX = 2;
+
+export type DeloadTrigger = "sessions" | "recovery";
+
 /**
  * Trigger of the proposal to move the next deload earlier (SPEC 5.6c; the card is `deloadProposal` in inputs-flow).
  * `levelsBySession`: frozen session levels, oldest first. `recoveryByWeek`: weekly recovery scores, oldest first
- * (null = not recorded). True when the last 2 sessions were both RED, or the last 2 weekly scores are both <= 2.
+ * (null = not recorded). "sessions" when the last 2 sessions were both RED (wins when both fire), "recovery" when the
+ * last 2 weekly scores are both <= RECOVERY_LOW_MAX, else null.
  */
 export function earlierDeloadHint(
   levelsBySession: ReadinessLevel[],
   recoveryByWeek: (number | null)[],
-): boolean {
+): DeloadTrigger | null {
   const l = levelsBySession.slice(-2);
-  if (l.length === 2 && l.every((x) => x === "RED")) return true;
+  if (l.length === 2 && l.every((x) => x === "RED")) return "sessions";
   const r = recoveryByWeek.slice(-2);
-  return r.length === 2 && r.every((x) => x !== null && x <= 2);
+  return r.length === 2 && r.every((x) => x !== null && x <= RECOVERY_LOW_MAX) ? "recovery" : null;
 }

@@ -7,7 +7,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import postgres from "postgres";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeModel } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
 import * as schema from "../../src/db/schema/index.js";
@@ -19,6 +19,18 @@ import { createVersion, loadLatestContent } from "../../src/plan/versions.js";
 import { addDays } from "../../src/plan-import/build-plan.js";
 import type { ParsedItem, ResolvedPlan } from "../../src/plan-import/types.js";
 import { testDatabaseUrl } from "./constants.js";
+
+const fail = vi.hoisted(() => ({ stale: false }));
+vi.mock("../../src/plan/versions.js", async (orig) => {
+  const real = await orig<typeof import("../../src/plan/versions.js")>();
+  return {
+    ...real,
+    createVersion: async (...args: Parameters<typeof real.createVersion>) => {
+      if (fail.stale) throw new real.StaleBaseVersionError(args[1].baseVersionId);
+      return real.createVersion(...args);
+    },
+  };
+});
 
 const sql = postgres(testDatabaseUrl(), { max: 4, prepare: false, onnotice: () => {} });
 const db = drizzle(sql, { schema });
@@ -108,6 +120,7 @@ function fixture(): ResolvedPlan {
 }
 
 beforeEach(async () => {
+  fail.stale = false;
   await sql`truncate table suggestions, readiness_logs, user_state, proposals, write_ledger, pending_actions, memory_items, conversation_messages, usage_logs, log_entries, log_groups, session_items, class_logs, weekly_metrics, bodyweight_logs, session_overrides, planned_item_options, planned_items, plan_weeks, plan_versions, plans, hspu_ladder, exercises, equipment restart identity cascade`;
   await seedPlan(db, fixture());
 });
@@ -116,12 +129,12 @@ const proposalRows = () => sql`select * from proposals order by id`;
 
 describe("ensureDeloadProposal", () => {
   it("creates nothing without the trigger", async () => {
-    expect(await ensureDeloadProposal(db, W6, false)).toBeNull();
+    expect(await ensureDeloadProposal(db, W6, null)).toBeNull();
     expect(await proposalRows()).toHaveLength(0);
   });
 
   it("creates one open proposal with the preview of what the tap will do", async () => {
-    const p = await ensureDeloadProposal(db, W6_TUE, true);
+    const p = await ensureDeloadProposal(db, W6_TUE, "sessions");
     expect(p?.messageId).toBeNull();
     expect(p?.preview).toEqual({
       insertedWeek: 7,
@@ -143,69 +156,82 @@ describe("ensureDeloadProposal", () => {
       insertAt: 7,
       mondayDate: W7,
       versionId,
+      trigger: "sessions",
     });
   });
 
   it("an open proposal is returned again (not duplicated) with its message id", async () => {
-    const first = await ensureDeloadProposal(db, W6, true);
+    const first = await ensureDeloadProposal(db, W6, "sessions");
     await sql`update proposals set message_id = 77`;
-    const again = await ensureDeloadProposal(db, W6_TUE, true);
+    const again = await ensureDeloadProposal(db, W6_TUE, "sessions");
     expect(again?.id).toBe(first?.id);
     expect(again?.messageId).toBe(77);
     expect(await proposalRows()).toHaveLength(1);
   });
 
   it("is not proposed when next week is a deload or the test week, or nothing follows it", async () => {
-    expect(await ensureDeloadProposal(db, "2026-10-14", true)).toBeNull(); // W3 -> W4 deload
-    expect(await ensureDeloadProposal(db, "2026-12-07", true)).toBeNull(); // W11 -> W12 test
-    expect(await ensureDeloadProposal(db, "2026-12-14", true)).toBeNull(); // W12: no next week
-    expect(await ensureDeloadProposal(db, "2026-09-20", true)).toBeNull(); // before the plan
+    expect(await ensureDeloadProposal(db, "2026-10-14", "sessions")).toBeNull(); // W3 -> W4 deload
+    expect(await ensureDeloadProposal(db, "2026-12-07", "sessions")).toBeNull(); // W11 -> W12 test
+    expect(await ensureDeloadProposal(db, "2026-12-14", "sessions")).toBeNull(); // W12: no next week
+    expect(await ensureDeloadProposal(db, "2026-09-20", "sessions")).toBeNull(); // before the plan
   });
 
   it("is asked once until the trigger resets: declined stays declined", async () => {
-    const first = await ensureDeloadProposal(db, W6, true);
+    const first = await ensureDeloadProposal(db, W6, "sessions");
     await sql`update proposals set status = 'declined', decided_at = now()`;
-    expect(await ensureDeloadProposal(db, W6_TUE, true)).toBeNull();
+    expect(await ensureDeloadProposal(db, W6_TUE, "sessions")).toBeNull();
     expect(first).not.toBeNull();
     expect(await proposalRows()).toHaveLength(1);
   });
 
   it("a non-RED frozen session level after the proposal re-arms it", async () => {
-    await ensureDeloadProposal(db, W6, true);
+    await ensureDeloadProposal(db, W6, "sessions");
     await sql`update proposals set status = 'declined', decided_at = now()`;
     await sql`insert into readiness_logs (date, at, kind, source, level)
       values (${W6_TUE}, now(), 'button_ok', 'derived', 'GREEN')`;
-    const again = await ensureDeloadProposal(db, "2026-11-04", true);
+    const again = await ensureDeloadProposal(db, "2026-11-04", "sessions");
     expect(again).not.toBeNull();
     expect(await proposalRows()).toHaveLength(2);
   });
 
+  it("after a GREEN session and two new REDs it is asked again", async () => {
+    await ensureDeloadProposal(db, W6, "sessions");
+    await sql`update proposals set status = 'declined', decided_at = now()`;
+    await sql`insert into readiness_logs (date, at, kind, source, level) values
+      (${W6_TUE}, now(), 'button_ok', 'derived', 'GREEN'),
+      ('2026-11-04', now(), 'button_tired', 'derived', 'RED'),
+      ('2026-11-05', now(), 'button_tired', 'derived', 'RED')`;
+    const again = await ensureDeloadProposal(db, "2026-11-05", "sessions");
+    expect(again?.id).toBe(2);
+    expect(await proposalRows()).toHaveLength(2);
+  });
+
   it("a RED level alone does not re-arm it", async () => {
-    await ensureDeloadProposal(db, W6, true);
+    await ensureDeloadProposal(db, W6, "sessions");
     await sql`update proposals set status = 'declined', decided_at = now()`;
     await sql`insert into readiness_logs (date, at, kind, source, level)
       values (${W6_TUE}, now(), 'button_tired', 'derived', 'RED')`;
-    expect(await ensureDeloadProposal(db, "2026-11-04", true)).toBeNull();
+    expect(await ensureDeloadProposal(db, "2026-11-04", "sessions")).toBeNull();
   });
 
   it("a weekly recovery score above 2 re-arms it", async () => {
-    await ensureDeloadProposal(db, W6, true);
+    await ensureDeloadProposal(db, W6, "sessions");
     await sql`update proposals set status = 'declined', decided_at = now()`;
     await sql`insert into weekly_metrics (plan_week, metric, value_num, source)
       values (6, 'recovery', 4, 'bot')`;
-    expect(await ensureDeloadProposal(db, "2026-11-04", true)).not.toBeNull();
+    expect(await ensureDeloadProposal(db, "2026-11-04", "sessions")).not.toBeNull();
   });
 
   it("an open proposal whose Monday arrived is expired", async () => {
-    await ensureDeloadProposal(db, W6, true);
-    expect(await ensureDeloadProposal(db, W7, false)).toBeNull();
+    await ensureDeloadProposal(db, W6, "sessions");
+    expect(await ensureDeloadProposal(db, W7, null)).toBeNull();
     expect((await proposalRows())[0]?.status).toBe("expired");
   });
 });
 
 describe("applyDeloadProposal", () => {
   async function propose(today = W6_TUE) {
-    const p = await ensureDeloadProposal(db, today, true);
+    const p = await ensureDeloadProposal(db, today, "sessions");
     if (!p) throw new Error("no proposal");
     return p.id;
   }
@@ -251,7 +277,8 @@ describe("applyDeloadProposal", () => {
     const id = await propose();
     expect(await apply(id, W7)).toEqual({
       ok: false,
-      reply: "This proposal expired; nothing changed.",
+      reason: "closed",
+      reply: "This offer is closed; nothing changed.",
     });
     expect(await sql`select id from plan_versions`).toHaveLength(1);
     expect((await proposalRows())[0]?.status).toBe("expired");
@@ -272,16 +299,18 @@ describe("applyDeloadProposal", () => {
     );
     expect(await apply(id, W6_TUE)).toEqual({
       ok: false,
-      reply: "The plan changed since; I'll ask again if needed.",
+      reason: "closed",
+      reply: "This offer is closed; nothing changed.",
     });
     expect(await sql`select id from plan_versions`).toHaveLength(2);
+    expect((await proposalRows())[0]?.status).toBe("expired");
   });
 
   it("a second ✅ does nothing", async () => {
     const id = await propose();
     await apply(id, W6_TUE);
     const again = await apply(id, W6_TUE);
-    expect(again.ok).toBe(false);
+    expect(again).toMatchObject({ ok: false, reason: "decided" });
     expect(await sql`select id from plan_versions`).toHaveLength(2);
   });
 
@@ -436,6 +465,33 @@ describe("/today card", () => {
     expect(t.cards()).toHaveLength(1);
   });
 
+  it("a recovery trigger uses the recovery lead-in", async () => {
+    await sql`insert into weekly_metrics (plan_week, metric, value_num, source) values
+      (4, 'recovery', 2, 'bot'), (5, 'recovery', 1, 'bot')`;
+    const [ex] = await sql`select id from exercises where slug = 'squat'`;
+    await sql`insert into log_groups (session_date, performed_at, exercise_id, source, bw_kg)
+      values ('2026-10-30', '2026-10-30T08:00:00Z', ${ex?.id}, 'text', 70)`;
+    const t = setup();
+    await t.say("/today");
+    expect(String(t.cards()[0]?.payload.text)).toMatch(
+      /^Your recovery score was 2 or lower two weeks in a row\. Move the deload earlier\?/,
+    );
+    const [row] = await proposalRows();
+    expect(row?.payload).toMatchObject({ trigger: "recovery" });
+  });
+
+  it("a lost version race closes the offer and does not promise to ask again", async () => {
+    await twoReds();
+    const t = setup();
+    await t.say("/today");
+    const ok = t.buttons(t.cards()[0])[0]?.data as string;
+    fail.stale = true;
+    await t.tap(ok);
+    expect(String(t.lastEdit()?.payload.text)).toBe("This offer is closed; nothing changed.");
+    expect((await proposalRows())[0]?.status).toBe("expired");
+    expect(await sql`select id from plan_versions`).toHaveLength(1);
+  });
+
   it("✅ after the Monday says it expired", async () => {
     await twoReds();
     const t = setup();
@@ -443,7 +499,7 @@ describe("/today card", () => {
     const ok = t.buttons(t.cards()[0])[0]?.data as string;
     clock = rome10(W7);
     await t.tap(ok);
-    expect(String(t.lastEdit()?.payload.text)).toBe("This proposal expired; nothing changed.");
+    expect(String(t.lastEdit()?.payload.text)).toBe("This offer is closed; nothing changed.");
     expect(await sql`select id from plan_versions`).toHaveLength(1);
   });
 });

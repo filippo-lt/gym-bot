@@ -134,6 +134,11 @@ describe("deload proposal text", () => {
     expect(t).toContain("The next deload stays, now W9.");
     expect(t).toContain("The plan now ends Sun 27 Dec.");
   });
+  it("recovery trigger lead-in", () => {
+    expect(deloadProposalText(w6, "recovery")).toMatch(
+      /^Your recovery score was 2 or lower two weeks in a row\. Move the deload earlier\? Next week/,
+    );
+  });
   it("a week across two months shows both", () => {
     const t = deloadProposalText({
       ...w6,

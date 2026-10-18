@@ -8,6 +8,7 @@ import type { ResolvedSwap } from "../logging/types.js";
 import type { DeloadPreview } from "../plan/deload-proposal.js";
 import { addDays } from "../plan-import/build-plan.js";
 import type { LoadBasis, Weekday } from "../plan-import/types.js";
+import { type DeloadTrigger, RECOVERY_LOW_MAX } from "../progression/readiness.js";
 import { cb } from "./callbacks.js";
 import { day, esc } from "./format.js";
 
@@ -150,9 +151,13 @@ function weekRange(from: string, to: string): string {
 }
 
 /** Card text for the "move the deload earlier" proposal; every number comes from the preview. */
-export function deloadProposalText(p: DeloadPreview): string {
+export function deloadProposalText(p: DeloadPreview, trigger: DeloadTrigger = "sessions"): string {
+  const lead =
+    trigger === "recovery"
+      ? `Your recovery score was ${RECOVERY_LOW_MAX} or lower two weeks in a row.`
+      : "You've been tired 2 sessions in a row.";
   const lines = [
-    `You've been tired 2 sessions in a row. Move the deload earlier? Next week (W${p.insertedWeek}, ${weekRange(p.mondayDate, p.sundayDate)}) becomes a deload, weeks ${p.shiftedFrom}–${p.shiftedTo} move one week later.`,
+    `${lead} Move the deload earlier? Next week (W${p.insertedWeek}, ${weekRange(p.mondayDate, p.sundayDate)}) becomes a deload, weeks ${p.shiftedFrom}–${p.shiftedTo} move one week later.`,
   ];
   if (p.droppedWeek !== null) {
     const gap = p.droppedWeek + 1 - p.insertedWeek;

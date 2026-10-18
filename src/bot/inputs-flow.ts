@@ -14,12 +14,14 @@ import type { LedgerResult } from "../logging/types.js";
 import { logBodyweightInputSchema } from "../logging/types.js";
 import {
   applyDeloadProposal,
+  CLOSED,
   type DeloadPreview,
   ensureDeloadProposal,
-  PLAN_CHANGED,
+  expireDeloadProposal,
 } from "../plan/deload-proposal.js";
 import { StaleBaseVersionError } from "../plan/versions.js";
 import { loadFrozenLevel } from "../progression/load-history.js";
+import type { DeloadTrigger } from "../progression/readiness.js";
 import type { SessionAdvice } from "../progression/session-advice.js";
 import { refreshUserState } from "../progression/store.js";
 import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
@@ -101,9 +103,13 @@ export function proposalCard(id: number, from: string, to: string): Message {
 }
 
 /** Card for the "move the deload earlier" proposal. */
-export function deloadCard(id: number, preview: DeloadPreview): Message {
+export function deloadCard(
+  id: number,
+  preview: DeloadPreview,
+  trigger: DeloadTrigger = "sessions",
+): Message {
   return {
-    text: deloadProposalText(preview),
+    text: deloadProposalText(preview, trigger),
     keyboard: [
       [
         { text: "✅ Move deload", data: cb.proposal(id, "ok") },
@@ -278,10 +284,11 @@ export function createInputs(deps: InputsDeps): Inputs {
       result = await db.transaction((tx) => applyDeloadProposal(tx, id, trainingDate(now), now));
     } catch (error) {
       if (!(error instanceof StaleBaseVersionError)) throw error;
-      result = { ok: false, reply: PLAN_CHANGED };
+      await expireDeloadProposal(db, id, now);
+      result = { ok: false, reason: "closed", reply: CLOSED };
     }
     if (!result.ok) {
-      if (result.reply === "Already decided.") {
+      if (result.reason === "decided") {
         await ctx.answerCallbackQuery({ text: result.reply });
         return;
       }
@@ -355,14 +362,14 @@ export function createInputs(deps: InputsDeps): Inputs {
         .returning();
     }
     if (!row || row.messageId !== null) return;
-    const sent = (await reply(ctx, proposalCard(row.id, adv.from.name, adv.to.name))) as
-      | { message_id?: number }
-      | undefined;
+    await sendCard(ctx, row.id, proposalCard(row.id, adv.from.name, adv.to.name));
+  }
+
+  /** Sends a proposal card and stores its message id (the dedupe key). */
+  async function sendCard(ctx: Context, id: number, card: Message): Promise<void> {
+    const sent = (await reply(ctx, card)) as { message_id?: number } | undefined;
     if (sent?.message_id !== undefined) {
-      await db
-        .update(proposals)
-        .set({ messageId: sent.message_id })
-        .where(eq(proposals.id, row.id));
+      await db.update(proposals).set({ messageId: sent.message_id }).where(eq(proposals.id, id));
     }
   }
 
@@ -371,15 +378,7 @@ export function createInputs(deps: InputsDeps): Inputs {
     if (advice?.mode !== "live") return;
     const row = await ensureDeloadProposal(db, trainingDate(deps.now()), advice.earlierDeloadHint);
     if (!row || row.messageId !== null) return;
-    const sent = (await reply(ctx, deloadCard(row.id, row.preview))) as
-      | { message_id?: number }
-      | undefined;
-    if (sent?.message_id !== undefined) {
-      await db
-        .update(proposals)
-        .set({ messageId: sent.message_id })
-        .where(eq(proposals.id, row.id));
-    }
+    await sendCard(ctx, row.id, deloadCard(row.id, row.preview, row.trigger));
   }
 
   return {

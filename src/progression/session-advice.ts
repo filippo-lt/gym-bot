@@ -12,7 +12,7 @@ import { planDayOn } from "../plan/effective.js";
 import type { HiitSpec } from "../plan-import/types.js";
 import { hspuState } from "./hspu.js";
 import { loadExerciseInfos, loadFrozenLevel, RECOVERY_METRIC } from "./load-history.js";
-import { earlierDeloadHint } from "./readiness.js";
+import { type DeloadTrigger, earlierDeloadHint } from "./readiness.js";
 import { applyShort } from "./short.js";
 import { ensureSuggestions, freezeReadiness, suggestionFromRow } from "./store.js";
 import type {
@@ -64,7 +64,7 @@ export interface SessionAdvice {
   classAdvice: boolean;
   isTest: boolean;
   /** The trigger for the "move the deload earlier" card (SPEC 5.6c); the card itself is sent by the bot. */
-  earlierDeloadHint: boolean;
+  earlierDeloadHint: DeloadTrigger | null;
   items: Map<number, AdviceItem>;
   exercises: Record<number, ExerciseInfo>;
 }
@@ -136,7 +136,11 @@ async function derivedRow(db: Db, date: string) {
 }
 
 /** Trigger of the "move the deload earlier" proposal: today's level plus the last session's, and the last two recovery scores. */
-async function deloadHint(db: Db, date: string, todayLevel: ReadinessLevel): Promise<boolean> {
+async function deloadHint(
+  db: Db,
+  date: string,
+  todayLevel: ReadinessLevel,
+): Promise<DeloadTrigger | null> {
   const [prev] = await db
     .selectDistinct({ d: logGroups.sessionDate })
     .from(logGroups)
@@ -262,7 +266,7 @@ async function storedAdvice(db: Db, date: string): Promise<SessionAdvice | null>
     bodyweightDate: null,
     classAdvice: false,
     isTest: false,
-    earlierDeloadHint: false,
+    earlierDeloadHint: null,
     items,
     exercises,
   };

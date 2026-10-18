@@ -82,7 +82,7 @@ function advice(items: AdviceItem[], over: Partial<SessionAdvice> = {}): Session
     bodyweightDate: null,
     classAdvice: false,
     isTest: false,
-    earlierDeloadHint: false,
+    earlierDeloadHint: null,
     items: new Map(items.map((i) => [i.plannedItemId, i])),
     exercises: EXERCISES,
     ...over,
@@ -317,8 +317,8 @@ describe("formatToday with advice", () => {
   });
 
   it("the earlier-deload trigger adds no text line (the card is a separate message)", () => {
-    const out = formatToday(mon, advice([], { earlierDeloadHint: true }));
-    expect(out).toBe(formatToday(mon, advice([], { earlierDeloadHint: false })));
+    const out = formatToday(mon, advice([], { earlierDeloadHint: "sessions" }));
+    expect(out).toBe(formatToday(mon, advice([], { earlierDeloadHint: null })));
   });
 
   it("without advice it is the plain session (unchanged)", () => {
