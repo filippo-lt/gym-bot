@@ -99,6 +99,65 @@ export function countUnresolvedErrors(events: IntentEvent[]): number {
   return n;
 }
 
+const isLogLike = (a: StagedAction) => a.kind === "log_sets" || a.kind === "clarify_exercise";
+
+/** Same exercise by resolved/given slug or by the user's normalized words (as in the error matching). */
+function sameExercise(a: StagedAction, b: StagedAction): boolean {
+  const x = stagedEvent(a, 0);
+  const y = stagedEvent(b, 0);
+  if (x.type !== "staged" || y.type !== "staged") return false;
+  return (x.slug !== null && x.slug === y.slug) || (x.said !== null && x.said === y.said);
+}
+
+/** Where a staged action came from, to tell a retry (replaces) from a second set (kept). */
+interface StagedMeta {
+  turn: number;
+  input: string;
+  eventIndex: number;
+}
+
+/**
+ * Adds a staged action. A log_sets/clarify_exercise from a later turn REPLACES an earlier turn's
+ * for the same exercise (the model re-called the tool with a fix), keeping its position. In the
+ * same turn an exact duplicate is dropped; different inputs both stay.
+ */
+function addStaged(
+  staged: StagedAction[],
+  metas: StagedMeta[],
+  events: IntentEvent[],
+  action: StagedAction,
+  turn: number,
+  rawInput: unknown,
+): void {
+  const input = JSON.stringify(rawInput);
+  if (isLogLike(action)) {
+    if (staged.some((_s, i) => metas[i]?.turn === turn && metas[i]?.input === input)) return;
+    const matches = staged
+      .map((_s, i) => i)
+      .filter((i) => {
+        const s = staged[i] as StagedAction;
+        return isLogLike(s) && (metas[i]?.turn ?? turn) < turn && sameExercise(s, action);
+      });
+    const at = matches[0];
+    if (at !== undefined) {
+      // Every earlier call for this exercise is superseded by the retry.
+      staged[at] = action;
+      const meta = metas[at] as StagedMeta;
+      events[meta.eventIndex] = stagedEvent(action, turn);
+      metas[at] = { ...meta, turn, input };
+      for (const i of matches.slice(1).reverse()) {
+        // The event stays in the list (a harmless extra "staged" for error matching).
+        staged.splice(i, 1);
+        metas.splice(i, 1);
+      }
+      return;
+    }
+  }
+  staged.push(action);
+  events.push(stagedEvent(action, turn));
+  metas.push({ turn, input, eventIndex: events.length - 1 });
+}
+
 export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const maxTurns = p.maxTurns ?? AI_MAX_TURNS;
   const budgetMs = p.budgetMs ?? AI_BUDGET_MS;
@@ -115,6 +174,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const messages: MessageParam[] = [{ role: "user", content: p.text }];
   const staged: StagedAction[] = [];
   const events: IntentEvent[] = [];
+  const metas: StagedMeta[] = [];
 
   try {
     let turns = 0;
@@ -179,8 +239,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
         if (controller.signal.aborted) throw controller.signal.reason;
         const exec = await executeTool(tu.name, tu.input, p.backend);
         if (exec.staged) {
-          staged.push(exec.staged);
-          events.push(stagedEvent(exec.staged, turns));
+          addStaged(staged, metas, events, exec.staged, turns, tu.input);
         } else if (exec.isError && tu.name !== "get_session") {
           events.push({ type: "error", turn: turns, tool: tu.name, ...exerciseOf(tu.input) });
         }

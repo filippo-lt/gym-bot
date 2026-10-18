@@ -1,13 +1,21 @@
+import { and, desc, eq, gte, ne, or } from "drizzle-orm";
 import { DateTime } from "luxon";
+import { setsText, viewFromSnapshot } from "../bot/log-format.js";
 import { getSession } from "../bot/session.js";
+import { logGroups } from "../db/schema/log.js";
 import { trainingDate } from "../domain/calendar.js";
 import { loadCatalog, loadLadder } from "./catalog.js";
 import { recentMessages } from "./conversation.js";
 import type { Db } from "./db.js";
-import { describeAction } from "./describe.js";
+import { dateLabel, describeAction } from "./describe.js";
+import { groupSnapshot } from "./groups.js";
 import { activeAliases } from "./memory.js";
 import { getOpenPending } from "./pending.js";
 import type { PromptContext, PromptStatic } from "./types.js";
+
+/** How many saved logs the model sees, and how far back (or the same training day). */
+export const LAST_SAVED_LIMIT = 3;
+export const LAST_SAVED_WINDOW_MS = 6 * 3600 * 1000;
 
 /** About 1,500 tokens (SPEC 5.6e). */
 export const ALIAS_CHAR_CAP = 6000;
@@ -63,6 +71,28 @@ export async function buildPromptContext(
     aliases.push({ said: a.alias, slug: a.slug, name: a.name });
   }
 
+  const since = new Date(now.getTime() - LAST_SAVED_WINDOW_MS);
+  const recentGroups = await db
+    .select({ id: logGroups.id })
+    .from(logGroups)
+    .where(
+      and(
+        ne(logGroups.source, "import"),
+        or(gte(logGroups.performedAt, since), eq(logGroups.sessionDate, today)),
+      ),
+    )
+    .orderBy(desc(logGroups.performedAt), desc(logGroups.id))
+    .limit(LAST_SAVED_LIMIT);
+  const lastSaved: PromptContext["lastSaved"] = [];
+  for (const g of recentGroups) {
+    const snap = await groupSnapshot(db, g.id);
+    if (!snap) continue;
+    lastSaved.push({
+      summary: `${snap.exercise.name} ${setsText(viewFromSnapshot(snap))}`,
+      sessionDate: dateLabel(snap.sessionDate),
+    });
+  }
+
   const open = await getOpenPending(db, chatId, now);
   return {
     todayLabel,
@@ -71,6 +101,7 @@ export async function buildPromptContext(
     pending: open
       ? { summary: open.actions.map(describeAction).join("; "), awaitingEdit: open.awaitingEdit }
       : null,
+    lastSaved,
     recent: await recentMessages(db, chatId, now),
   };
 }

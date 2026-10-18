@@ -156,9 +156,18 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
   return { date, weekday, week: ref.week, phase: weekRow?.phase ?? null, items };
 }
 
-/** Several matches: first without a group that day, else the last. */
+/** An item already marked done or skipped (e.g. by the history import). */
+export const isSettled = (status: string): boolean => status === "done" || status === "skipped";
+
+/** Several matches: first open one (no group, not done/skipped), then one without a group, else the last. */
 export function pickItem(items: DayItem[], exerciseId: number): DayItem | null {
   const matches = items.filter((i) => i.options.some((o) => o.id === exerciseId));
   if (matches.length === 0) return null;
-  return matches.find((i) => !i.hasGroup) ?? (matches[matches.length - 1] as DayItem);
+  // Falling back to a settled item is intended for the target day: logging today after an
+  // earlier skip marks it done, and undo restores it. Make-ups skip settled items elsewhere.
+  return (
+    matches.find((i) => !i.hasGroup && !isSettled(i.status)) ??
+    matches.find((i) => !i.hasGroup) ??
+    (matches[matches.length - 1] as DayItem)
+  );
 }

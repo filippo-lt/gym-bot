@@ -4,7 +4,8 @@
  */
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
-import { describeAction } from "../logging/describe.js";
+import { trainingDate } from "../domain/calendar.js";
+import { dateLabel, describeAction } from "../logging/describe.js";
 import type { MemoryItem } from "../logging/memory.js";
 import type { Pending } from "../logging/pending.js";
 import { farOffLoad, farOffReps } from "../logging/policy.js";
@@ -47,7 +48,7 @@ export const HELP_TEXT = [
 ].join("\n");
 
 export const TEXT_ONLY = "I can read text only for now.";
-export const UNKNOWN_COMMAND = "Unknown command. Try /help.";
+export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";
 export const DIDNT_GET_IT = "Sorry, I didn't get that. Try /help.";
@@ -413,7 +414,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         break; // "delete" needs no explanation
     }
   }
-  return out;
+  return unique(out);
 }
 
 function actionLine(a: StagedAction): string {
@@ -432,6 +433,29 @@ function actionLine(a: StagedAction): string {
 /** One-line summary of a request, used in the "Replaces: …" line. */
 export function summarize(actions: StagedAction[]): string {
   return actions.map(describeAction).join("; ");
+}
+
+/** The card's new text after ❌: what was dropped, so the chat still shows it. */
+export function cancelledText(actions: StagedAction[]): string {
+  const dropped = actions.filter((a) => a.kind !== "clarify_exercise");
+  return dropped.length
+    ? `Cancelled, nothing saved: ${esc(summarize(dropped))}`
+    : "Cancelled, nothing saved.";
+}
+
+/** The old card's text once a newer request replaced it. */
+export function replacedText(actions: StagedAction[]): string {
+  const dropped = actions.filter((a) => a.kind !== "clarify_exercise");
+  return dropped.length ? `${REPLACED.replace(/\.$/, "")}: ${esc(summarize(dropped))}` : REPLACED;
+}
+
+/** Telegram shows Markdown literally: drop the markers the model may still use. */
+export function stripMarkdown(text: string): string {
+  return text
+    .replaceAll("**", "")
+    .replaceAll("__", "")
+    .replaceAll("`", "")
+    .replace(/^[ \t]*#{1,6}[ \t]*/gm, "");
 }
 
 export function confirmCard(args: {
@@ -485,9 +509,14 @@ export function clarifyCard(args: {
 export function deleteQuestion(s: GroupSnapshot, id: number, now: Date): Message {
   const at = DateTime.fromISO(s.performedAt, { zone: APP_TIMEZONE }).setLocale("en");
   const today = DateTime.fromJSDate(now, { zone: APP_TIMEZONE });
-  const when = at.hasSame(today, "day")
+  const logged = at.hasSame(today, "day")
     ? `today ${at.toFormat("HH:mm")}`
     : at.toFormat("ccc d LLL HH:mm");
+  // A make-up belongs to an earlier session than the day it was logged on.
+  const when =
+    trainingDate(new Date(s.performedAt)) === s.sessionDate
+      ? logged
+      : `${dateLabel(s.sessionDate)}, logged ${logged}`;
   return {
     text: `Remove ${plainLineText(viewFromSnapshot(s))} (${when})?`,
     keyboard: [

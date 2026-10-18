@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cancelledText,
   clarifyCard,
   confirmCard,
   deleteQuestion,
@@ -9,10 +10,12 @@ import {
   memoryList,
   reasonPhrases,
   removedText,
+  replacedText,
+  stripMarkdown,
 } from "../../src/bot/log-format.js";
 import { decidePolicy } from "../../src/logging/policy.js";
 import type { ResolvedEntry, StagedAction } from "../../src/logging/types.js";
-import { editInput, entry, logAction, snapshot } from "../logging/helpers.js";
+import { editInput, entry, logAction, logInput, snapshot } from "../logging/helpers.js";
 
 const sets = (...over: Partial<ResolvedEntry>[]) =>
   over.map((o, i) => entry({ setIndex: i + 1, ...o }));
@@ -217,7 +220,62 @@ describe("edit and delete", () => {
   });
 });
 
+describe("delete question for a make-up", () => {
+  it("shows the session date when it differs from the day it was logged", () => {
+    const s = snapshot({ sessionDate: "2026-10-16", performedAt: "2026-10-18T09:09:00Z" });
+    const m = deleteQuestion(s, 9, new Date("2026-10-18T10:00:00Z"));
+    expect(m.text).toBe("Remove Squat 2 × 8 · 60 kg (Fri 16 Oct, logged today 11:09)?");
+  });
+});
+
+describe("cancelled and replaced cards", () => {
+  it("keep the summary; a clarify-only request keeps the plain text", () => {
+    const del: StagedAction = { kind: "delete_group", snapshot: snapshot() };
+    expect(cancelledText([del])).toBe("Cancelled, nothing saved: remove Squat 2 × 8 · 60 kg");
+    expect(replacedText([del])).toBe("Replaced by a newer request: remove Squat 2 × 8 · 60 kg");
+    const clarify: StagedAction = {
+      kind: "clarify_exercise",
+      input: logInput(),
+      said: "x",
+      candidates: [],
+    };
+    expect(cancelledText([clarify])).toBe("Cancelled, nothing saved.");
+    expect(replacedText([clarify])).toBe("Replaced by a newer request.");
+  });
+});
+
+describe("stripMarkdown", () => {
+  it("drops bold, underline, headings and backticks", () => {
+    expect(stripMarkdown("**Log sets:**\n## Plan\n  # x\n`a` and __b__")).toBe(
+      "Log sets:\nPlan\nx\na and b",
+    );
+  });
+});
+
 describe("cards", () => {
+  it("reasons are not repeated for several make-ups of one day", () => {
+    const item = {
+      id: 1,
+      subItem: 0,
+      week: 5,
+      weekday: "fri" as const,
+      planName: "Squat",
+      priority: "High" as const,
+      setsMin: 3,
+      setsMax: 3,
+      repsMin: 6,
+      repsMax: 8,
+      rirMin: null,
+      rirMax: null,
+      isDeload: false,
+    };
+    const mk = () => logAction({ match: "makeup", plannedItem: item, sessionDate: "2026-10-16" });
+    expect(reasonPhrases([mk(), mk(), mk()], ["multiple_writes", "makeup"])).toEqual([
+      "more than one change",
+      "Friday's session (16 Oct)",
+    ]);
+  });
+
   it("confirm card with every reason", () => {
     const a = logAction({
       match: "makeup",

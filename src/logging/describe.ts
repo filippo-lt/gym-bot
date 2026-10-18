@@ -1,6 +1,6 @@
 /** Short plain-English descriptions, used for model previews and the prompt context. */
 import { DateTime } from "luxon";
-import type { ResolvedEntry, StagedAction } from "./types.js";
+import type { GroupSnapshot, ResolvedEntry, StagedAction } from "./types.js";
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
@@ -52,4 +52,9 @@ export function describeAction(a: StagedAction): string {
     case "clarify_exercise":
       return `unclear exercise "${a.said}"`;
   }
+}
+
+/** A saved group in one plain line, e.g. "Squat 3 × 8 · 60 kg". */
+export function describeSnapshot(s: GroupSnapshot): string {
+  return `${s.exercise.name} ${describeEntries(s.entries)}`;
 }

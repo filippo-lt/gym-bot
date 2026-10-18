@@ -62,7 +62,7 @@ describe("runIntent", () => {
 
   it("stops at the turn cap and returns what was staged", async () => {
     const model = createFakeModel(
-      Array.from({ length: 5 }, () => [toolUse("log_sets", logSets("x"))]),
+      Array.from({ length: 5 }, (_, i) => [toolUse("log_sets", logSets(`ex${i}`))]),
     );
     const res = await runIntent({
       ...base,
@@ -74,6 +74,68 @@ describe("runIntent", () => {
     expect(res).toMatchObject({ kind: "ok", replyText: null, turns: 3 });
     if (res.kind === "ok") expect(res.staged).toHaveLength(3);
     expect(model.requests).toHaveLength(3);
+  });
+
+  describe("a retried log_sets", () => {
+    const run = async (turns: Parameters<typeof createFakeModel>[0]) => {
+      const res = await runIntent({
+        ...base,
+        model: createFakeModel(turns),
+        backend: fakeBackend(),
+        usage: fakeUsage(),
+      });
+      if (res.kind !== "ok") throw new Error("expected ok");
+      return res;
+    };
+    const saidOf = (a: { kind: string; said?: string }) => a.said;
+
+    it("replaces the earlier turn's staged log of the same exercise, in place", async () => {
+      const res = await run([
+        [toolUse("log_sets", logSets("lateral"))],
+        [toolUse("log_sets", logSets("split squat"))],
+        [toolUse("log_sets", { ...logSets("split squat"), day: "today" })],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(2);
+      expect(res.staged.map((a) => saidOf(a as never))).toEqual(["lateral", "split squat"]);
+      const second = res.staged[1];
+      expect(second?.kind === "clarify_exercise" && second.input.day).toBe("today");
+    });
+
+    it("drops an exact duplicate in the same turn and keeps different inputs", async () => {
+      const res = await run([
+        [
+          toolUse("log_sets", logSets("bench")),
+          toolUse("log_sets", logSets("bench")),
+          toolUse("log_sets", { ...logSets("bench"), rir: 2 }),
+        ],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(2);
+    });
+
+    it("replaces every earlier-turn call for the exercise with the one retry", async () => {
+      const res = await run([
+        [
+          toolUse("log_sets", logSets("bench")),
+          toolUse("log_sets", { ...logSets("bench"), rir: 2 }),
+        ],
+        [toolUse("log_sets", { ...logSets("bench"), day: "today" })],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(1);
+    });
+
+    it("counts a fixed tool error from the replacing turn", async () => {
+      const res = await run([
+        [toolUse("log_sets", { exercise: { said: "squat" }, sets: [] })],
+        [toolUse("log_sets", logSets("squat"))],
+        [toolUse("log_sets", { ...logSets("squat"), day: "today" })],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(1);
+      expect(res.toolErrors).toBe(0);
+    });
   });
 
   it("throws when the budget aborts a slow call", async () => {
