@@ -7,7 +7,8 @@ import { eq } from "drizzle-orm";
 import { type Context, InlineKeyboard } from "grammy";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
-import { plannedItems } from "../db/schema/plan.js";
+import { logGroups } from "../db/schema/log.js";
+import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { appendMessage } from "../logging/conversation.js";
@@ -36,7 +37,7 @@ import {
 import { decidePolicy } from "../logging/policy.js";
 import { buildPromptContext, buildPromptStatic } from "../logging/prompt-context.js";
 import { createLoggingBackend, resolveClarified } from "../logging/resolve.js";
-import type { LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
+import type { GroupSnapshot, LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
 import { esc } from "./format.js";
@@ -57,6 +58,7 @@ import {
   NO_AI_KEY,
   type Place,
   removedText,
+  STALE,
   summarize,
   viewFromSnapshot,
 } from "./log-format.js";
@@ -180,6 +182,54 @@ export function createFlow(deps: FlowDeps): Flow {
     };
   }
 
+  /**
+   * An edit echo from the ledger (a retried update has no staged action): the values the edit
+   * replaced, the group as it is now, and which sets differ.
+   */
+  async function rebuildEditAction(
+    r: Extract<LedgerResult, { kind: "edit" }>,
+  ): Promise<Extract<StagedAction, { kind: "edit_group" }> | null> {
+    const snap = await groupSnapshot(db, r.groupId);
+    if (!snap) return null;
+    const bg = r.beforeGroup;
+    let exercise: GroupSnapshot["exercise"] = snap.exercise;
+    if (bg && bg.exerciseId !== snap.exercise.id) {
+      const [ex] = await db.select().from(exercises).where(eq(exercises.id, bg.exerciseId));
+      if (ex) exercise = { ...snap.exercise, id: ex.id, slug: ex.slug, name: ex.name };
+    }
+    let hspuStep = snap.hspuStep;
+    if (bg && bg.hspuStepId !== null) {
+      const [step] = await db.select().from(hspuLadder).where(eq(hspuLadder.id, bg.hspuStepId));
+      hspuStep = step ? { slug: step.slug, name: step.name } : null;
+    } else if (bg) {
+      hspuStep = null;
+    }
+    const before: GroupSnapshot = { ...snap, exercise, hspuStep, entries: r.before };
+    const differing = snap.entries
+      .filter(
+        (e) =>
+          JSON.stringify(e) !== JSON.stringify(r.before.find((b) => b.setIndex === e.setIndex)),
+      )
+      .map((e) => e.setIndex);
+    const [g] = await db
+      .select({ note: logGroups.note })
+      .from(logGroups)
+      .where(eq(logGroups.id, r.groupId));
+    const noteChanged = bg !== undefined && (bg.note ?? null) !== (g?.note ?? null);
+    return {
+      kind: "edit_group",
+      input: {
+        changes: noteChanged ? { note: g?.note ?? "" } : {},
+        guessed_fields: [],
+        needs_confirmation: false,
+      },
+      before,
+      after: snap,
+      setIndexes: differing.length > 0 ? differing : snap.entries.map((e) => e.setIndex),
+      lastSession: null,
+    };
+  }
+
   /** One message per saved group (or edit, or delete). */
   async function echoes(
     sourceKey: string,
@@ -193,10 +243,9 @@ export function createFlow(deps: FlowDeps): Flow {
         const view = await loadEchoView(r.groupId);
         if (view) out.push(echoMessage(view));
       } else if (r.kind === "edit") {
+        const action = a?.kind === "edit_group" ? a : await rebuildEditAction(r);
         out.push(
-          a?.kind === "edit_group"
-            ? editEchoMessage(a, sourceKey, i)
-            : { text: "Changed ✓", keyboard: [] },
+          action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] },
         );
       } else {
         out.push({ text: removedText(r.snapshot), keyboard: [] });
@@ -253,7 +302,11 @@ export function createFlow(deps: FlowDeps): Flow {
     return pending;
   }
 
-  /** A direct log answers the user's correction too: an open ✏️ request is dropped silently. */
+  /**
+   * A clear log_sets that restates a request being corrected (✏️) replaces it. Edits and undo
+   * can't be staged while a request is open (the backend refuses), so this never hides a card
+   * behind a change to an older, saved log.
+   */
   async function dropAwaitingEdit(chatId: number): Promise<void> {
     const open = await getOpenPending(db, chatId, deps.now());
     if (open?.awaitingEdit) await cancelPending(db, open.id);
@@ -301,7 +354,7 @@ export function createFlow(deps: FlowDeps): Flow {
       result = await runIntent({
         text: body,
         model: ai.model,
-        backend: createLoggingBackend(db, now),
+        backend: createLoggingBackend(db, now, { openPending: context.pending }),
         usage: createUsageStore(db),
         promptStatic: staticBlock,
         promptContext: context,
@@ -337,8 +390,10 @@ export function createFlow(deps: FlowDeps): Flow {
       const r = await executeActions(db, key, staged, { now });
       if (r.status === "done") {
         for (const m of await echoes(key, staged, r.results)) await send(ctx, m);
+        await appendMessage(db, chatId, "assistant", `Saved: ${plainSummary(staged)}`);
+      } else {
+        await send(ctx, r.status === "stale" ? STALE : EXPIRED);
       }
-      await appendMessage(db, chatId, "assistant", `Saved: ${plainSummary(staged)}`);
     } else if (decision.mode === "clarify") {
       await presentPending(ctx, {
         kind: "clarify_exercise",
@@ -463,12 +518,16 @@ export function createFlow(deps: FlowDeps): Flow {
         return;
       }
       case "ue": {
-        const snap = await undoEdit(db, a.key, a.index);
-        if (!snap) {
+        const undone = await undoEdit(db, a.key, a.index);
+        if (undone.status === "stale") {
+          await answer("Can't undo: this log changed since.");
+          return;
+        }
+        if (undone.status === "none") {
           await answer("Nothing to undo.");
           return;
         }
-        await edit(ctx, `Change undone: ${removedText(snap).replace(/^Removed: /, "")}`);
+        await edit(ctx, `Change undone: ${removedText(undone.snapshot).replace(/^Removed: /, "")}`);
         await answer("Change undone.");
         return;
       }
@@ -512,7 +571,7 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     if (act === "ed") {
-      if (pending.kind !== "clarify_exercise" && (await markAwaitingEdit(db, id))) {
+      if (pending.kind !== "clarify_exercise" && (await markAwaitingEdit(db, id, now))) {
         await answer();
         await send(ctx, "OK, tell me what to change.");
       } else {
@@ -534,6 +593,11 @@ export function createFlow(deps: FlowDeps): Flow {
     }
     const key = `p:${id}`;
     const r = await executeActions(db, key, pending.actions, { pendingId: id, now });
+    if (r.status === "stale") {
+      await edit(ctx, STALE);
+      await answer(STALE);
+      return;
+    }
     if (r.status === "expired") {
       await answer(EXPIRED);
       await send(ctx, EXPIRED);
@@ -552,6 +616,16 @@ export function createFlow(deps: FlowDeps): Flow {
     now: Date,
   ): Promise<void> {
     const pending = await getPending(db, pendingId);
+    if (pending?.status === "executed" && (await ledgerResults(db, `p:${pendingId}`)).length > 0) {
+      // A retried tap: the choice was already saved. Nothing to write, nothing to repeat.
+      const done = pending.actions.find((x) => x.kind === "log_sets");
+      await edit(
+        ctx,
+        done?.kind === "log_sets" ? `Exercise: ${esc(done.resolved.exercise.name)}` : "Saved ✓",
+      );
+      await answer("Already saved.");
+      return;
+    }
     const usable =
       pending?.status === "open" &&
       pending.kind === "clarify_exercise" &&
@@ -572,26 +646,33 @@ export function createFlow(deps: FlowDeps): Flow {
     const exercise = resolved.resolved.exercise;
 
     // Save "said" = exercise, unless it is already the exercise's name/slug or an OR item name.
-    let aliasMessage: Message | null = null;
-    const norm = normalizeAlias(said);
-    if (
-      norm &&
-      !said.includes("/") &&
-      norm !== normalizeAlias(exercise.name) &&
-      norm !== normalizeAlias(exercise.slug)
-    ) {
+    // Only called once the choice has been accepted (never for an expired request).
+    const saveChosenAlias = async (): Promise<Message | null> => {
+      const norm = normalizeAlias(said);
+      if (
+        !norm ||
+        said.includes("/") ||
+        norm === normalizeAlias(exercise.name) ||
+        norm === normalizeAlias(exercise.slug)
+      ) {
+        return null;
+      }
       const saved = await saveAlias(db, said, exercise.id);
-      if (saved) aliasMessage = aliasSaved(said.trim(), exercise.name, saved.item.id);
-    }
+      return saved ? aliasSaved(said.trim(), exercise.name, saved.item.id) : null;
+    };
 
     const actions = pending.actions.map((x, i) => (i === d.index ? resolved : x));
     const next = decidePolicy(actions);
     if (next.mode === "clarify") {
-      await replacePendingActions(db, pendingId, actions);
+      if (!(await replacePendingActions(db, pendingId, actions))) {
+        await answer(EXPIRED);
+        return;
+      }
       const q = actions[next.index];
       if (q?.kind === "clarify_exercise") {
         await edit(ctx, clarifyCard({ id: pendingId, said: q.said, candidates: q.candidates }));
       }
+      const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);
       await answer();
       return;
@@ -604,22 +685,31 @@ export function createFlow(deps: FlowDeps): Flow {
         kind,
         reasons: next.reasons,
       });
-      if (row)
-        await edit(ctx, confirmCard({ id: pendingId, kind, actions, reasons: next.reasons }));
+      if (!row) {
+        await answer(EXPIRED);
+        return;
+      }
+      await edit(ctx, confirmCard({ id: pendingId, kind, actions, reasons: next.reasons }));
+      const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);
       await answer();
       return;
     }
     // direct
-    await replacePendingActions(db, pendingId, actions);
+    if (!(await replacePendingActions(db, pendingId, actions))) {
+      await answer(EXPIRED);
+      return;
+    }
     const key = `p:${pendingId}`;
     const r = await executeActions(db, key, actions, { pendingId, now });
-    if (r.status === "expired") {
-      await answer(EXPIRED);
-      await send(ctx, EXPIRED);
+    if (r.status !== "done") {
+      const msg = r.status === "stale" ? STALE : EXPIRED;
+      await answer(msg);
+      await send(ctx, msg);
       return;
     }
     await edit(ctx, `Exercise: ${esc(exercise.name)}`);
+    const aliasMessage = await saveChosenAlias();
     if (aliasMessage) await send(ctx, aliasMessage);
     await answer();
     for (const m of await echoes(key, actions, r.results)) await send(ctx, m);

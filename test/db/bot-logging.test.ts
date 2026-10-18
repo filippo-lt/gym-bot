@@ -9,7 +9,7 @@ import {
   turn,
 } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
-import { BUDGET_REACHED, EXPIRED } from "../../src/bot/log-format.js";
+import { BUDGET_REACHED, EXPIRED, STALE } from "../../src/bot/log-format.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -87,11 +87,11 @@ function setup(script: ScriptedTurn[] = [], caps = { daily: 1_000_000, monthly: 
           : undefined,
       },
     });
-  const tap = (data: string, messageId = 1) =>
+  const tap = (data: string, messageId = 1, updateId = ++uid) =>
     bot.handleUpdate({
-      update_id: ++uid,
+      update_id: updateId,
       callback_query: {
-        id: `cb${uid}`,
+        id: `cb${updateId}`,
         chat_instance: "x",
         from: FROM,
         message: { message_id: messageId, date: 0, chat: CHAT_OBJ },
@@ -436,5 +436,175 @@ describe("AI budget", () => {
     expect(t.texts()).toEqual([BUDGET_REACHED]);
     expect(t.model.requests).toHaveLength(0);
     expect(await count("log_groups")).toBe(0);
+  });
+});
+
+const editCall = (changes: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+  tool("edit_last_entry", { changes, guessed_fields: [], needs_confirmation: false, ...extra });
+const facePull = (load: number) => log("face_pull", { count: 1, reps: 15, load_kg: load });
+const sawToolError = (t: ReturnType<typeof setup>, fragment: string) =>
+  t.model.messageSnapshots
+    .flat()
+    .some(
+      (m) =>
+        Array.isArray(m.content) &&
+        m.content.some(
+          (b) =>
+            b.type === "tool_result" && b.is_error === true && JSON.stringify(b).includes(fragment),
+        ),
+    );
+
+describe("corrections while a request is open (B1)", () => {
+  it("never edits a saved log; restating replaces the card silently", async () => {
+    const t = setup([
+      tool("log_sets", squatLog()),
+      ok,
+      tool("log_sets", facePull(20)),
+      ok,
+      editCall({ load_kg: 22.5 }),
+      turn(text("Please restate it.")),
+      editCall({ load_kg: 22.5 }),
+      turn(text("Please restate it.")),
+      tool("log_sets", facePull(22.5)),
+      ok,
+    ]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("15 face pulls 20 kg");
+    expect(t.texts().at(-1)).toContain("Save this?");
+
+    // No ✏️ yet: the edit is refused and the card stays.
+    await t.say("22.5");
+    expect(sawToolError(t, "unsaved request")).toBe(true);
+    expect(sawToolError(t, "Restate the full corrected request with log_sets")).toBe(true);
+    const squatLoads = async () =>
+      (
+        await sql`select load_kg::float8 as l from log_entries e join log_groups g on g.id = e.group_id join exercises x on x.id = g.exercise_id where x.slug = 'squat'`
+      ).map((r) => r.l);
+    expect(await squatLoads()).toEqual([60, 60, 60]);
+    expect((await sql`select status, awaiting_edit from pending_actions`)[0]).toMatchObject({
+      status: "open",
+      awaiting_edit: false,
+    });
+
+    // With ✏️ it is the same: refused, card still open.
+    const card = t.sent().find((c) => String(c.payload.text).includes("Save this?"));
+    await t.tap(t.buttons(card)[1]?.data as string, 1001);
+    await t.say("22.5");
+    expect(await squatLoads()).toEqual([60, 60, 60]);
+    expect((await sql`select status, awaiting_edit from pending_actions`)[0]).toMatchObject({
+      status: "open",
+      awaiting_edit: true,
+    });
+    expect(await count("log_groups")).toBe(1);
+
+    // Restating with log_sets replaces the card, and says nothing about it.
+    await t.say("face pulls 22.5");
+    expect(t.texts().at(-1)).toContain("Save this?");
+    expect(t.texts().at(-1)).not.toContain("Previous request cancelled");
+    expect(
+      (await sql`select status from pending_actions order by id`).map((r) => r.status),
+    ).toEqual(["replaced", "open"]);
+    expect(await squatLoads()).toEqual([60, 60, 60]);
+  });
+
+  it("announces the cancelled request when a non-✏️ card is replaced", async () => {
+    const t = setup([tool("log_sets", facePull(20)), ok, tool("log_sets", facePull(25)), ok]);
+    await t.say("face pulls 20");
+    await t.say("face pulls 25");
+    expect(t.texts().at(-1)).toContain("Previous request cancelled: ");
+  });
+});
+
+describe("retries and stale buttons", () => {
+  const said = {
+    exercise: { said: "sq" },
+    sets: { count: 3, reps: 8, load_kg: 60 },
+    rir: 2,
+    guessed_fields: [],
+    needs_confirmation: false,
+  };
+
+  it("the same exercise tap handled twice writes once and never says expired (M1)", async () => {
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("sq 3x8 60 rir 2");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001, 8000);
+    await t.tap(squat?.data as string, 1001, 8000);
+    expect(await count("log_groups")).toBe(1);
+    expect(t.answers().some((a) => a.payload.text === EXPIRED)).toBe(false);
+    expect(t.texts().includes(EXPIRED)).toBe(false);
+    expect(t.answers().at(-1)?.payload.text).toBe("Already saved.");
+    expect((await sql`select 1 from memory_items where active`).length).toBe(1);
+  });
+
+  it("an expired clarify saves no alias (m10)", async () => {
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("sq 3x8 60 rir 2");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t.tap(squat?.data as string, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("memory_items")).toBe(0);
+    expect(await count("log_groups")).toBe(0);
+  });
+
+  it("✏️ on an expired card says expired and marks nothing (m6)", async () => {
+    const t = setup([tool("log_sets", facePull(20)), ok]);
+    await t.say("face pulls 20");
+    const card = t.lastSent();
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t.tap(t.buttons(card)[1]?.data as string, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect((await sql`select awaiting_edit from pending_actions`)[0]?.awaiting_edit).toBe(false);
+  });
+
+  it("a retried edit keeps its Undo button, rebuilt from the ledger (m8)", async () => {
+    const t = setup([tool("log_sets", benchLog()), ok, editCall({ load_kg: 57.5 }), ok]);
+    await t.say("bench 2x6 55");
+    await t.say("no it was 57.5", 6000);
+    const first = t.lastSent();
+    await t.say("no it was 57.5", 6000);
+    const again = t.lastSent();
+    expect(again).not.toBe(first);
+    expect(String(again?.payload.text)).toBe(String(first?.payload.text));
+    expect(t.buttons(again).map((b) => b.data)).toEqual(["ue:u:6000:0"]);
+    expect(t.model.requests).toHaveLength(4);
+  });
+
+  it("✅ on an edit whose log is gone: clear message, nothing written, no retry (m5)", async () => {
+    const t = setup([
+      tool("log_sets", benchLog()),
+      ok,
+      editCall({ load_kg: 57.5 }, { needs_confirmation: true }),
+      ok,
+    ]);
+    await t.say("bench 2x6 55");
+    await t.say("it was 57.5");
+    expect(t.texts().at(-1)).toContain("Save this?");
+    const okBtn = t.buttons(t.lastSent())[0]?.data as string;
+    await sql`delete from log_groups`;
+    await t.tap(okBtn, 1002);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe(STALE);
+    expect((await sql`select status from pending_actions`)[0]?.status).toBe("cancelled");
+    expect(await count("write_ledger")).toBe(1);
+  });
+
+  it("Undo of an edit is refused once the log changed again (m3)", async () => {
+    const t = setup([
+      tool("log_sets", benchLog()),
+      ok,
+      editCall({ load_kg: 57.5 }),
+      ok,
+      editCall({ load_kg: 60 }),
+      ok,
+    ]);
+    await t.say("bench 2x6 55");
+    await t.say("57.5", 6100);
+    const firstUndo = t.buttons(t.lastSent())[0]?.data as string;
+    await t.say("60", 6200);
+    await t.tap(firstUndo, 1003);
+    expect(t.answers().at(-1)?.payload.text).toBe("Can't undo: this log changed since.");
+    const loads = await sql`select load_kg::float8 as l from log_entries order by set_index`;
+    expect(loads.map((r) => r.l)).toEqual([60, 60]);
   });
 });

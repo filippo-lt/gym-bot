@@ -1,4 +1,4 @@
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { pendingActions } from "../db/schema/agent.js";
 import type { Db, Q } from "./db.js";
 import type { StagedAction } from "./types.js";
@@ -95,11 +95,17 @@ export async function setPendingMessageId(db: Q, id: number, messageId: number):
   await db.update(pendingActions).set({ messageId }).where(eq(pendingActions.id, id));
 }
 
-export async function markAwaitingEdit(db: Q, id: number): Promise<boolean> {
+export async function markAwaitingEdit(db: Q, id: number, now: Date): Promise<boolean> {
   const rows = await db
     .update(pendingActions)
     .set({ awaitingEdit: true })
-    .where(and(eq(pendingActions.id, id), eq(pendingActions.status, "open")))
+    .where(
+      and(
+        eq(pendingActions.id, id),
+        eq(pendingActions.status, "open"),
+        gt(pendingActions.expiresAt, now),
+      ),
+    )
     .returning({ id: pendingActions.id });
   return rows.length > 0;
 }

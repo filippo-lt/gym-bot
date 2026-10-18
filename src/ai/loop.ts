@@ -31,10 +31,11 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const maxTurns = p.maxTurns ?? AI_MAX_TURNS;
   const budgetMs = p.budgetMs ?? AI_BUDGET_MS;
 
-  const totals = await p.usage.totals(p.now);
-  if (totals.day >= p.dailyTokenCap || totals.month >= p.monthlyTokenCap) {
-    return { kind: "budget_reached" };
-  }
+  /** Checked before every model call: a long loop can reach the cap mid-way. */
+  const overBudget = async () => {
+    const totals = await p.usage.totals(p.now);
+    return totals.day >= p.dailyTokenCap || totals.month >= p.monthlyTokenCap;
+  };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("AI budget exceeded")), budgetMs);
@@ -45,6 +46,8 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   try {
     let turns = 0;
     while (turns < maxTurns) {
+      // Nothing staged so far is written when the cap is hit: the bot only reports it.
+      if (await overBudget()) return { kind: "budget_reached" };
       turns++;
       const res = await p.model.create({
         system,

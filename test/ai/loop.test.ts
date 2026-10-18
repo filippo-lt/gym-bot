@@ -91,6 +91,29 @@ describe("runIntent", () => {
     await assertion;
   });
 
+  it("stops with budget_reached when the cap is hit mid-loop, even with actions staged (m7)", async () => {
+    const model = createFakeModel([
+      { content: [toolUse("log_sets", logSets("bench"))], inputTokens: 600, outputTokens: 500 },
+      [toolUse("log_sets", logSets("lateral"))],
+      [text("done")],
+    ]);
+    const recorded: number[] = [];
+    const usage = {
+      async totals() {
+        const total = recorded.reduce((a, b) => a + b, 0);
+        return { day: total, month: total };
+      },
+      async record(u: { inputTokens: number; outputTokens: number }) {
+        recorded.push(u.inputTokens + u.outputTokens);
+      },
+    };
+    const backend = fakeBackend();
+    const res = await runIntent({ ...base, model, backend, usage });
+    expect(res).toEqual({ kind: "budget_reached" });
+    expect(model.requests).toHaveLength(1);
+    expect(backend.calls).toEqual(["log_sets:bench"]);
+  });
+
   it.each([
     ["day", { day: 1000, month: 0 }],
     ["month", { day: 0, month: 10000 }],

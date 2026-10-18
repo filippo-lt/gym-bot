@@ -53,7 +53,8 @@ export function farOffReps(a: StagedAction): number | null {
   if (a.kind === "edit_group") {
     const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
     const reps = maxReps(changed);
-    return isRepsFarOff(reps, a.lastSession?.bestReps ?? null) ? reps : null;
+    const ref = a.lastSession?.bestReps ?? a.plannedRepsMax ?? null;
+    return isRepsFarOff(reps, ref) ? reps : null;
   }
   return null;
 }

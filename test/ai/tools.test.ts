@@ -67,5 +67,8 @@ describe("buildSystem", () => {
     expect(a[1]?.text).not.toBe(b[1]?.text);
     expect(b[1]?.text).toContain("restate the full corrected set");
     expect(a[0]?.text).toContain("squat · Squat");
+    expect(a[0]?.text).toContain(
+      "When an unsaved request is pending, corrections restate it with log_sets; edit_last_entry and undo_last_entry act only on saved logs.",
+    );
   });
 });

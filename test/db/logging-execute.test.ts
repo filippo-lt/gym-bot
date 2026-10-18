@@ -12,7 +12,7 @@ import {
   replacePendingActions,
 } from "../../src/logging/pending.js";
 import { buildPromptContext, buildPromptStatic } from "../../src/logging/prompt-context.js";
-import { stageLogSets } from "../../src/logging/resolve.js";
+import { stageEdit, stageLogSets, stageUndoLast } from "../../src/logging/resolve.js";
 import type { LogSetsInput, StagedAction } from "../../src/logging/types.js";
 import { createUsageStore } from "../../src/logging/usage.js";
 import { connect, exId, MON, resetAndSeed } from "./logging-fixture.js";
@@ -210,11 +210,89 @@ describe("pending actions", () => {
 
   it("tracks awaiting_edit and swaps actions after a clarify", async () => {
     const { pending } = await make();
-    expect(await markAwaitingEdit(db, pending.id)).toBe(true);
+    expect(await markAwaitingEdit(db, pending.id, new Date())).toBe(true);
     expect((await getOpenPending(db, CHAT, new Date()))?.awaitingEdit).toBe(true);
     const updated = await replacePendingActions(db, pending.id, [await stage("lateral_raise")]);
     expect(updated?.awaitingEdit).toBe(false);
     expect(updated?.actions).toHaveLength(1);
+  });
+});
+
+describe("pending edge cases", () => {
+  const newPending = (actions: StagedAction[], now = new Date()) =>
+    createPending(db, {
+      chatId: CHAT,
+      kind: "confirm",
+      actions,
+      reasons: ["guessed"],
+      sourceUpdateId: null,
+      now,
+    });
+
+  it("markAwaitingEdit refuses an expired or closed pending (m6)", async () => {
+    const stale = await newPending(
+      [await stage("bench_press")],
+      new Date(Date.now() - 31 * 60_000),
+    );
+    expect(await markAwaitingEdit(db, stale.pending.id, new Date())).toBe(false);
+    const fresh = await newPending([await stage("bench_press")]);
+    await cancelPending(db, fresh.pending.id);
+    expect(await markAwaitingEdit(db, fresh.pending.id, new Date())).toBe(false);
+    expect((await getPending(db, stale.pending.id))?.awaitingEdit).toBe(false);
+  });
+
+  it("✅ on an edit whose group is gone: rolled back, pending cancelled, stale (m5)", async () => {
+    const r = await executeActions(db, "u:300", [await stage("bench_press")], { now: MON });
+    if (r.status !== "done" || r.results[0]?.kind !== "log") throw new Error("expected log");
+    const e = await stageEdit(
+      db,
+      { changes: { load_kg: 60 }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    if (!e.ok) throw new Error(e.error);
+    const { pending } = await newPending([e.action]);
+    await sql`delete from log_groups`;
+    const out = await executeActions(db, `p:${pending.id}`, pending.actions, {
+      pendingId: pending.id,
+      now: MON,
+    });
+    expect(out).toEqual({ status: "stale" });
+    expect((await getPending(db, pending.id))?.status).toBe("cancelled");
+    expect(await count("write_ledger")).toBe(1); // only the original log
+  });
+
+  it("✅ on a delete whose group is gone is stale too (m5)", async () => {
+    await executeActions(db, "u:301", [await stage("bench_press")], { now: MON });
+    const d = await stageUndoLast(db, MON);
+    if (!d.ok) throw new Error(d.error);
+    const { pending } = await newPending([d.action]);
+    await sql`delete from log_groups`;
+    const out = await executeActions(db, `p:${pending.id}`, pending.actions, {
+      pendingId: pending.id,
+      now: MON,
+    });
+    expect(out).toEqual({ status: "stale" });
+    expect((await getPending(db, pending.id))?.status).toBe("cancelled");
+  });
+
+  it("✅ applies only the fields the edit changed (m5)", async () => {
+    const r = await executeActions(db, "u:302", [await stage("bench_press")], { now: MON });
+    if (r.status !== "done" || r.results[0]?.kind !== "log") throw new Error("expected log");
+    const e = await stageEdit(
+      db,
+      { changes: { load_kg: 60 }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    if (!e.ok) throw new Error(e.error);
+    // A RIR button is tapped between the card and ✅.
+    await setLastSetRir(db, r.results[0].groupId, 2, false);
+    await executeActions(db, "u:303", [e.action], { now: MON });
+    const rows =
+      await sql`select load_kg::float8 as l, rir::float8 as r from log_entries order by set_index`;
+    expect(rows.map((x) => [x.l, x.r])).toEqual([
+      [60, null],
+      [60, 2],
+    ]);
   });
 });
 

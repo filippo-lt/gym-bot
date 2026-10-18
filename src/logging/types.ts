@@ -209,6 +209,8 @@ export type StagedAction =
       setIndexes: number[];
       /** Same far-off reference as logging, against the edited values. */
       lastSession: LastSessionRef | null;
+      /** The planned item's reps_max: the far-off reps fallback when there is no last session. */
+      plannedRepsMax?: number | null;
     }
   | { kind: "delete_group"; snapshot: GroupSnapshot };
 
@@ -258,7 +260,15 @@ export interface BeforeGroup {
 
 export type LedgerResult =
   | { kind: "log"; groupId: number }
-  | { kind: "edit"; groupId: number; before: ResolvedEntry[]; beforeGroup?: BeforeGroup }
+  | {
+      kind: "edit";
+      groupId: number;
+      before: ResolvedEntry[];
+      beforeGroup?: BeforeGroup;
+      /** Values written by the edit: Undo only restores while these are still current. */
+      after?: ResolvedEntry[];
+      afterGroup?: BeforeGroup;
+    }
   | { kind: "delete"; snapshot: GroupSnapshot };
 
 // ---------------------------------------------------------------------------

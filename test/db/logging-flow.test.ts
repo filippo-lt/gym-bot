@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { executeActions, undoEdit, undoGroup } from "../../src/logging/execute.js";
+import { executeActions, setLastSetRir, undoEdit, undoGroup } from "../../src/logging/execute.js";
 import { deactivateMemory, saveAlias } from "../../src/logging/memory.js";
 import { decidePolicy } from "../../src/logging/policy.js";
 import {
@@ -74,6 +74,26 @@ describe("resolve", () => {
 
   it("asks which option when the user says the OR item's name", async () => {
     const r = await resolveLog(db, input({ exercise: { said: "squat / hack squat" } }), MON);
+    expect(r.kind).toBe("clarify");
+    if (r.kind === "clarify")
+      expect(r.candidates.map((c) => c.slug)).toEqual(["squat", "hack_squat"]);
+  });
+
+  it("trusts the user's exact words over a wrong slug (M2)", async () => {
+    const a = await stage(input({ exercise: { slug: "squat", said: "hack squat" } }));
+    if (a.kind !== "log_sets") throw new Error("expected log");
+    expect(a.resolved.exercise.slug).toBe("hack_squat");
+    // the slug alone, or a slug that agrees with the words, still resolves directly
+    const same = await stage(input({ exercise: { slug: "squat", said: "squat" } }));
+    expect(same.kind === "log_sets" && same.resolved.exercise.slug).toBe("squat");
+  });
+
+  it("asks with both candidates when slug and words conflict without an exact match (M2)", async () => {
+    const r = await resolveLog(
+      db,
+      input({ exercise: { slug: "squat", said: "hack squats" } }),
+      MON,
+    );
     expect(r.kind).toBe("clarify");
     if (r.kind === "clarify")
       expect(r.candidates.map((c) => c.slug)).toEqual(["squat", "hack_squat"]);
@@ -392,6 +412,161 @@ describe("edit and undo", () => {
     await executeActions(db, "u:25", [d.action], { now: MON });
     expect(await count("log_groups")).toBe(0);
     expect(await count("session_items")).toBe(0);
+  });
+});
+
+describe("edit validation", () => {
+  const edit = (changes: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    stageEdit(
+      db,
+      { changes, guessed_fields: [], needs_confirmation: false, ...extra } as never,
+      MON,
+    );
+  const log = async (
+    slug: string,
+    sets: LogSetsInput["sets"] = { count: 2, reps: 6, load_kg: 55 },
+  ) =>
+    executeActions(
+      db,
+      `u:${slug}`,
+      [await stage(input({ exercise: { slug, said: slug }, sets }))],
+      { now: MON },
+    );
+
+  it("names the right field when plates or a pair don't fit the equipment (m1)", async () => {
+    await log("bench_press");
+    const pair = await edit({ pair_total_kg: 40 });
+    expect(pair.ok).toBe(false);
+    expect(!pair.ok && pair.error).toContain("pair_total_kg");
+    await sql`truncate log_entries, log_groups, session_items cascade`;
+    await log("hack_squat");
+    const plates = await edit({ plates_per_side_kg: 20 });
+    expect(plates.ok).toBe(false);
+    expect(!plates.ok && plates.error).toContain("plates_per_side_kg");
+    expect(await count("log_entries")).toBe(2);
+    expect(
+      (await sql`select load_kg::float8 as l from log_entries order by set_index`).map((x) => x.l),
+    ).toEqual([55, 55]);
+  });
+
+  it("rejects keys the exercise type can't take instead of dropping them (m2)", async () => {
+    await log("bench_press");
+    for (const [changes, field] of [
+      [{ added_kg: 10 }, "added_kg"],
+      [{ assist_kg: 10 }, "assist_kg"],
+      [{ clean: true }, "clean"],
+    ] as const) {
+      const r = await edit(changes);
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.error).toContain(field);
+    }
+    await sql`truncate log_entries, log_groups, session_items cascade`;
+    await log("pull_up", { count: 3, reps: 5 });
+    const plates = await edit({ plates_per_side_kg: 20 });
+    expect(!plates.ok && plates.error).toContain("plates_per_side_kg");
+    expect((await edit({ added_kg: 10 })).ok).toBe(true);
+    await sql`truncate log_entries, log_groups, session_items cascade`;
+    await log("ring_row", { count: 3, reps: 6 });
+    const load = await edit({ load_kg: 20 });
+    expect(!load.ok && load.error).toContain("load_kg");
+  });
+
+  it("applies clean only to the named sets (m2)", async () => {
+    await log("pull_up", { count: 3, reps: 5 });
+    const e = await edit({ clean: true }, { set_indexes: [2] });
+    if (!e.ok) throw new Error(e.error);
+    await executeActions(db, "u:clean", [e.action], { now: MON });
+    expect(
+      (await sql`select clean from log_entries order by set_index`).map((x) => x.clean),
+    ).toEqual([null, true, null]);
+  });
+
+  it("uses the planned reps_max as the far-off reps reference for edits (m9)", async () => {
+    await log("bench_press");
+    const e = await edit({ reps: 20 });
+    if (!e.ok) throw new Error(e.error);
+    expect(e.action.kind === "edit_group" && e.action.plannedRepsMax).toBe(8);
+    expect(decidePolicy([e.action])).toEqual({ mode: "confirm", reasons: ["reps_far_off"] });
+  });
+});
+
+describe("undo of an edit", () => {
+  const loadsOf = async () =>
+    (await sql`select load_kg::float8 as l from log_entries order by set_index`).map((x) => x.l);
+  const editLoad = async (key: string, load: number) => {
+    const e = await stageEdit(
+      db,
+      { changes: { load_kg: load }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    if (!e.ok) throw new Error(e.error);
+    await executeActions(db, key, [e.action], { now: MON });
+  };
+
+  it("restores only what the edit changed; a RIR set later doesn't block (m3)", async () => {
+    const r = await executeActions(db, "u:40", [await stage(input())], { now: MON });
+    if (r.status !== "done" || r.results[0]?.kind !== "log") throw new Error("expected log");
+    await editLoad("u:41", 57.5);
+    await setLastSetRir(db, r.results[0].groupId, 2, false);
+    expect((await undoEdit(db, "u:41", 0)).status).toBe("undone");
+    expect(await loadsOf()).toEqual([55, 55]);
+    const [last] = await sql`select rir::float8 as r from log_entries where set_index = 2`;
+    expect(last?.r).toBe(2);
+  });
+
+  it("refuses when the log changed since, and writes nothing (m3)", async () => {
+    await executeActions(db, "u:42", [await stage(input())], { now: MON });
+    await editLoad("u:43", 57.5);
+    await editLoad("u:44", 60);
+    expect((await undoEdit(db, "u:43", 0)).status).toBe("stale");
+    expect(await loadsOf()).toEqual([60, 60]);
+    expect((await undoEdit(db, "u:44", 0)).status).toBe("undone");
+    expect(await loadsOf()).toEqual([57.5, 57.5]);
+  });
+
+  it("puts the chosen exercise back on an OR item (m4)", async () => {
+    await executeActions(
+      db,
+      "u:45",
+      [await stage(input({ exercise: { slug: "squat", said: "squat" } }))],
+      {
+        now: MON,
+      },
+    );
+    const e = await stageEdit(
+      db,
+      { changes: { exercise_slug: "hack_squat" }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    if (!e.ok) throw new Error(e.error);
+    await executeActions(db, "u:46", [e.action], { now: MON });
+    const chosen = async () =>
+      (await sql`select chosen_exercise_id from session_items`)[0]?.chosen_exercise_id;
+    expect(await chosen()).toBe(await exId(sql, "hack_squat"));
+    expect((await undoEdit(db, "u:46", 0)).status).toBe("undone");
+    expect(await chosen()).toBe(await exId(sql, "squat"));
+  });
+});
+
+describe("backend with an open request (B1)", () => {
+  it("refuses edit and undo while something is unsaved, and still stages log_sets", async () => {
+    await executeActions(db, "u:50", [await stage(input())], { now: MON });
+    const backend = createLoggingBackend(db, MON, { openPending: { summary: "Face pull 1 × 15" } });
+    const e = await backend.stageEdit({
+      changes: { load_kg: 22.5 },
+      guessed_fields: [],
+      needs_confirmation: false,
+    });
+    expect(e).toEqual({
+      ok: false,
+      error:
+        "There is an unsaved request (Face pull 1 × 15). Restate the full corrected request with log_sets instead.",
+    });
+    const u = await backend.stageUndoLast({});
+    expect(u.ok).toBe(false);
+    expect((await backend.stageLogSets(input())).ok).toBe(true);
+    const free = createLoggingBackend(db, MON, { openPending: null });
+    expect((await free.stageUndoLast({})).ok).toBe(true);
   });
 });
 

@@ -6,6 +6,7 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { getSession } from "../bot/session.js";
 import { logGroups } from "../db/schema/log.js";
+import { plannedItems } from "../db/schema/plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { type CatalogExercise, type LadderStep, loadCatalog, loadLadder } from "./catalog.js";
 import type { Db, Q } from "./db.js";
@@ -44,6 +45,8 @@ import { buildEntries, convertLoad, missingFields } from "./units.js";
 export const MAX_CANDIDATES = 6;
 /** Slots kept for fuzzy matches when today's session already fills the list. */
 const RESERVED_FUZZY = 3;
+/** A different exercise must score at least this much (and twice the slug's) to contradict a slug. */
+const RIVAL_MIN_SCORE = 5;
 
 // ---------------------------------------------------------------------------
 // Fuzzy candidates (pure)
@@ -144,21 +147,46 @@ async function pickExercise(
     }
   }
 
-  // 1. exact catalog slug
+  const aliases = await activeAliases(db);
+  const aliasRow = aliases.find((a) => a.alias === said);
+  const nameMatches = (c: CatalogExercise) =>
+    normalizeAlias(c.name) === said || c.aliases.some((a) => normalizeAlias(a) === said);
+  const saidSlugged = said.replaceAll(" ", "_");
+
+  // 1. exact catalog slug. The user's own words win when they name another exercise exactly
+  // ("hack squat" with slug squat); when they only look like one, ask.
   const bySlug = ex.slug ? catalog.find((c) => c.slug === ex.slug) : undefined;
-  if (bySlug) return ok(bySlug);
-  const saidSlug = catalog.find((c) => c.slug === said.replaceAll(" ", "_"));
+  if (bySlug) {
+    const exact = catalog.filter(
+      (c) => c.slug === saidSlugged || c.id === aliasRow?.exerciseId || nameMatches(c),
+    );
+    if (exact.length === 0) {
+      const own = fuzzyScore(ex.said, bySlug);
+      const rival = catalog
+        .filter((c) => c.id !== bySlug.id)
+        .map((c) => ({ c, score: fuzzyScore(ex.said, c) }))
+        .sort((a, b) => b.score - a.score)[0];
+      if (rival && rival.score >= RIVAL_MIN_SCORE && own * 2 < rival.score) {
+        return {
+          kind: "clarify",
+          candidates: [bySlug, rival.c].map((c) => ({ slug: c.slug, name: c.name })),
+        };
+      }
+      return ok(bySlug);
+    }
+    if (exact.some((c) => c.id === bySlug.id)) return ok(bySlug);
+    if (exact.length === 1) return ok(exact[0] as CatalogExercise);
+    return { kind: "clarify", candidates: exact.map((c) => ({ slug: c.slug, name: c.name })) };
+  }
+  const saidSlug = catalog.find((c) => c.slug === saidSlugged);
   if (saidSlug) return ok(saidSlug);
 
   // 2. active alias
-  const alias = (await activeAliases(db)).find((a) => a.alias === said);
-  const byAlias = alias ? catalog.find((c) => c.id === alias.exerciseId) : undefined;
+  const byAlias = aliasRow ? catalog.find((c) => c.id === aliasRow.exerciseId) : undefined;
   if (byAlias) return ok(byAlias);
 
   // 3. catalog name / aliases
-  const byName = catalog.filter(
-    (c) => normalizeAlias(c.name) === said || c.aliases.some((a) => normalizeAlias(a) === said),
-  );
+  const byName = catalog.filter(nameMatches);
   if (byName.length === 1) return ok(byName[0] as CatalogExercise);
   if (byName.length > 1) {
     return { kind: "clarify", candidates: byName.map((c) => ({ slug: c.slug, name: c.name })) };
@@ -413,13 +441,65 @@ function applyChanges(
     c.plates_per_side_kg !== undefined ||
     c.pair_total_kg !== undefined
   ) {
-    out.loadKg = convertLoad(exercise, c);
+    out.loadKg = convertLoad(exercise, c) ?? e.loadKg;
   }
   if (c.duration_s !== undefined) out.durationS = c.duration_s;
   if (c.distance_m !== undefined) out.distanceM = c.distance_m;
   if (c.pad_height !== undefined) out.padHeight = c.pad_height;
   if (c.band !== undefined) out.note = `band: ${c.band}`;
   return out;
+}
+
+type ChangeKey = keyof EditLastInput["changes"];
+
+const NO_LOAD_TYPES = new Set<ResolvedExercise["type"]>([
+  "bodyweight_reps",
+  "skill_ladder",
+  "skill_practice",
+  "hiit",
+  "mobility",
+  "warmup",
+  "class",
+  "recovery",
+]);
+
+/** Edit keys the exercise type cannot take. Returns a tool error that names the right field. */
+function checkChanges(exercise: ResolvedExercise, c: EditLastInput["changes"]): string | null {
+  const has = (k: ChangeKey) => c[k] !== undefined;
+  const n = exercise.name;
+  const t = exercise.type;
+  if (t === "bodyweight_plus") {
+    if (has("plates_per_side_kg") || has("pair_total_kg")) {
+      return `${has("plates_per_side_kg") ? "plates_per_side_kg" : "pair_total_kg"} does not apply to ${n}. Use added_kg or assist_kg.`;
+    }
+  } else if (NO_LOAD_TYPES.has(t)) {
+    const k = (
+      ["load_kg", "plates_per_side_kg", "pair_total_kg", "added_kg", "assist_kg"] as const
+    ).find(has);
+    if (k) return `${k} does not apply to ${n}: it has no load.`;
+  } else {
+    if (has("added_kg") || has("assist_kg")) {
+      return `${has("added_kg") ? "added_kg" : "assist_kg"} does not apply to ${n}. Use load_kg.`;
+    }
+    if (has("plates_per_side_kg") && exercise.loadBasis !== "barbell_total") {
+      return `plates_per_side_kg only applies to barbell exercises; ${n} does not use a barbell. Use load_kg.`;
+    }
+    if (has("pair_total_kg") && exercise.loadBasis !== "per_hand") {
+      return `pair_total_kg only applies to dumbbell exercises; ${n} does not use dumbbells. Use load_kg.`;
+    }
+    if (
+      has("plates_per_side_kg") &&
+      !has("load_kg") &&
+      convertLoad(exercise, { plates_per_side_kg: c.plates_per_side_kg }) === null
+    ) {
+      return `The bar weight for ${n} is unknown, so plates_per_side_kg cannot be used. Use load_kg.`;
+    }
+  }
+  if ((t === "weighted" || t === "bodyweight_plus") && (has("duration_s") || has("distance_m"))) {
+    return `${has("duration_s") ? "duration_s" : "distance_m"} does not apply to ${n}.`;
+  }
+  if (has("clean") && !exercise.needsClean) return `clean does not apply to ${n}.`;
+  return null;
 }
 
 export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise<StageResult> {
@@ -440,6 +520,9 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
   const step = c.hspu_step ? ladder.find((s) => s.slug === c.hspu_step) : undefined;
   if (c.hspu_step && !step) return fail(`Unknown HSPU step "${c.hspu_step}".`);
 
+  const invalid = checkChanges(exercise, c);
+  if (invalid) return fail(invalid);
+
   const count = before.entries.length;
   const setIndexes = input.set_indexes
     ? [...new Set(input.set_indexes)].sort((a, b) => a - b)
@@ -455,7 +538,7 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
   const lastChanged = Math.max(...setIndexes);
   const entries = before.entries.map((e) => {
     let out = setIndexes.includes(e.setIndex) ? applyChanges(e, c, exercise) : { ...e };
-    if (c.clean !== undefined) out.clean = c.clean;
+    if (c.clean !== undefined && setIndexes.includes(e.setIndex)) out.clean = c.clean;
     if (c.rir !== undefined && e.setIndex === lastChanged) {
       out = { ...out, rir: c.rir === "4+" ? 4 : c.rir, rirPlus: c.rir === "4+" };
     }
@@ -468,6 +551,14 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
     const ctx = await loadPlanContext(db, before.sessionDate);
     const plan = await loadDayPlan(db, ctx, before.sessionDate);
     plannedItemId = pickItem(plan.items, exercise.id)?.info.id ?? null;
+  }
+  let plannedRepsMax: number | null = null;
+  if (plannedItemId !== null) {
+    const [p] = await db
+      .select({ repsMax: plannedItems.repsMax })
+      .from(plannedItems)
+      .where(eq(plannedItems.id, plannedItemId));
+    plannedRepsMax = p?.repsMax ?? null;
   }
   const hspuStep = step ? { slug: step.slug, name: step.name } : before.hspuStep;
   const groupChanged = exerciseChanged || step !== undefined || c.note !== undefined;
@@ -496,7 +587,15 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
       : `set${setIndexes.length > 1 ? "s" : ""} ${setIndexes.join(", ")}`;
   return {
     ok: true,
-    action: { kind: "edit_group", input, before, after, setIndexes, lastSession },
+    action: {
+      kind: "edit_group",
+      input,
+      before,
+      after,
+      setIndexes,
+      lastSession,
+      plannedRepsMax,
+    },
     preview: `Staged edit of ${before.exercise.name} (${dateLabel(before.sessionDate)}, ${sets}): now ${exercise.name} ${describeEntries(entries)}. ${TAIL}`,
   };
 }
@@ -517,8 +616,23 @@ export async function stageUndoLast(db: Q, _now: Date): Promise<StageResult> {
 const range = (min: number | null, max: number | null): string | null =>
   min === null ? null : max === null || max === min ? String(min) : `${min}-${max}`;
 
-export function createLoggingBackend(db: Db, now: Date | (() => Date)): LoggingBackend {
+export interface BackendOptions {
+  /** The chat's unsaved request, if any: edits and undo then act on nothing but saved logs. */
+  openPending?: { summary: string } | null;
+}
+
+export function createLoggingBackend(
+  db: Db,
+  now: Date | (() => Date),
+  options: BackendOptions = {},
+): LoggingBackend {
   const clock = () => (typeof now === "function" ? now() : now);
+  const blocked = (): StageResult | null =>
+    options.openPending
+      ? fail(
+          `There is an unsaved request (${options.openPending.summary}). Restate the full corrected request with log_sets instead.`,
+        )
+      : null;
   return {
     async getSession(input: GetSessionInput) {
       const t = clock();
@@ -551,7 +665,7 @@ export function createLoggingBackend(db: Db, now: Date | (() => Date)): LoggingB
       };
     },
     stageLogSets: (input) => stageLogSets(db, input, clock()),
-    stageEdit: (input) => stageEdit(db, input, clock()),
-    stageUndoLast: (_input: UndoLastInput) => stageUndoLast(db, clock()),
+    stageEdit: async (input) => blocked() ?? stageEdit(db, input, clock()),
+    stageUndoLast: async (_input: UndoLastInput) => blocked() ?? stageUndoLast(db, clock()),
   };
 }
