@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../../src/db/client.js";
 import { requireCronAuth } from "../../src/http/auth.js";
+import { JOBS } from "../../src/jobs/index.js";
+import { runDueJobs } from "../../src/jobs/runner.js";
 import { STOP_TAKING_AT_S } from "../../src/runtime/constants.js";
 import { chatsWithOpenRows } from "../../src/runtime/inbox.js";
 import { type ProcessSummary, processChat } from "../../src/runtime/process-chat.js";
-import { botHandlers } from "../../src/runtime/telegram-runtime.js";
+import { botHandlers, sendToOwner } from "../../src/runtime/telegram-runtime.js";
 
 function errorCode(error: unknown): string {
   const code = (error as { code?: unknown } | null)?.code;
@@ -25,6 +27,14 @@ export async function GET(request: Request): Promise<Response> {
     const db = getDb();
     await db.execute(sql`select 1`);
 
+    // Scheduled jobs must never block the sweeper.
+    let jobs: Awaited<ReturnType<typeof runDueJobs>> = [];
+    try {
+      jobs = await runDueJobs({ db, now: new Date(), send: sendToOwner }, JOBS);
+    } catch (error) {
+      console.error("tick: jobs failed", error instanceof Error ? error.name : "");
+    }
+
     const swept: ProcessSummary[] = [];
     const chats = await chatsWithOpenRows(db);
     if (chats.length > 0) {
@@ -40,7 +50,7 @@ export async function GET(request: Request): Promise<Response> {
         );
       }
     }
-    return Response.json({ ok: true, swept });
+    return Response.json({ ok: true, swept, jobs });
   } catch (error) {
     console.error(
       "tick: failed, code:",

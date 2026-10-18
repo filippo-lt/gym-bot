@@ -1,6 +1,7 @@
-import type { Bot } from "grammy";
+import { type Bot, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import { createAnthropicModel } from "../ai/model.js";
+import type { Message } from "../bot/log-format.js";
 import type { AiConfig, MediaSource } from "../bot/logging-flow.js";
 import { aiEnv, telegramEnv } from "../config/env.js";
 import { getDb } from "../db/client.js";
@@ -88,4 +89,19 @@ export async function botHandlers(): Promise<
       await bot.api.sendMessage(chatId, FAILED_MESSAGE);
     },
   };
+}
+
+/** Send a message (with its inline keyboard) to the bot's single owner chat. */
+export async function sendToOwner(m: Message): Promise<void> {
+  const bot = await getBot();
+  const opts: { parse_mode: "HTML"; reply_markup?: InlineKeyboard } = { parse_mode: "HTML" };
+  if (m.keyboard.length) {
+    const k = new InlineKeyboard();
+    m.keyboard.forEach((row, i) => {
+      for (const b of row) k.text(b.text, b.data);
+      if (i < m.keyboard.length - 1) k.row();
+    });
+    opts.reply_markup = k;
+  }
+  await bot.api.sendMessage(telegramEnv().ALLOWED_TELEGRAM_USER_ID, m.text, opts);
 }
