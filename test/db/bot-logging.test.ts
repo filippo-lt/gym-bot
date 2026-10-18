@@ -849,6 +849,29 @@ describe("round 4", () => {
     }
   });
 
+  it("the late re-edit names the action the clarify was about (MINOR-1)", async () => {
+    const t = setup([
+      turn(
+        toolUse("log_sets", benchLog()),
+        toolUse("log_sets", {
+          exercise: { said: "sq" },
+          sets: { count: 3, reps: 8, load_kg: 60 },
+          guessed_fields: [],
+          needs_confirmation: false,
+        }),
+      ),
+      nothing,
+    ]);
+    await t.say("bench 2x6 55 and sq 3x8 60");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001);
+    // two writes: the clarify turned into a confirm card, then ✅
+    await t.tap(t.buttons(t.edits().at(-1))[0]?.data as string, 1001);
+    expect(await count("log_groups")).toBe(2);
+    await t.tap(squat?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
+  });
+
   it("a late tap on an executed pending re-edits the card to its final text (MINOR-3)", async () => {
     const t = setup([
       tool("log_sets", {

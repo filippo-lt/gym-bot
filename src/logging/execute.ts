@@ -253,7 +253,12 @@ export async function executeActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number; now?: Date; replaceActions?: StagedAction[] } = {},
+  opts: {
+    pendingId?: number;
+    now?: Date;
+    replaceActions?: StagedAction[];
+    replaceReasons?: string[];
+  } = {},
 ): Promise<ExecuteResult> {
   const now = opts.now ?? new Date();
   try {
@@ -275,19 +280,11 @@ function runActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number; replaceActions?: StagedAction[] },
+  opts: { pendingId?: number; replaceActions?: StagedAction[]; replaceReasons?: string[] },
   now: Date,
 ): Promise<ExecuteResult> {
   return db.transaction(async (tx): Promise<ExecuteResult> => {
     if (opts.pendingId !== undefined) {
-      // Stored in the same transaction as the writes: a failure leaves the pending untouched,
-      // so a retried tap starts from the original clarify card.
-      if (opts.replaceActions) {
-        await tx
-          .update(pendingActions)
-          .set({ actions: opts.replaceActions, awaitingEdit: false })
-          .where(and(eq(pendingActions.id, opts.pendingId), eq(pendingActions.status, "open")));
-      }
       const claimed = await tx
         .update(pendingActions)
         .set({ status: "executed" })
@@ -299,6 +296,18 @@ function runActions(
           ),
         )
         .returning({ id: pendingActions.id });
+      if (claimed.length > 0 && opts.replaceActions) {
+        // Same transaction as the claim and the writes: a failure leaves the pending untouched,
+        // and a pending that can't be claimed (expired, replaced) is never modified.
+        await tx
+          .update(pendingActions)
+          .set({
+            actions: opts.replaceActions,
+            awaitingEdit: false,
+            ...(opts.replaceReasons ? { reasons: opts.replaceReasons } : {}),
+          })
+          .where(eq(pendingActions.id, opts.pendingId));
+      }
       if (claimed.length === 0) {
         // A retry after ✅ (the handler ran twice): the writes are in the ledger, report them.
         const [p] = await tx

@@ -241,6 +241,22 @@ describe("pending edge cases", () => {
     expect((await getPending(db, stale.pending.id))?.awaitingEdit).toBe(false);
   });
 
+  it("replaceActions on an expired pending leaves its actions unchanged (MINOR-2)", async () => {
+    const original = [await stage("bench_press")];
+    const { pending } = await newPending(original, new Date(Date.now() - 31 * 60_000));
+    const r = await executeActions(db, `p:${pending.id}`, [await stage("lateral_raise")], {
+      pendingId: pending.id,
+      now: new Date(),
+      replaceActions: [await stage("lateral_raise")],
+      replaceReasons: ["x"],
+    });
+    expect(r).toEqual({ status: "expired" });
+    const after = await getPending(db, pending.id);
+    expect(after?.actions).toEqual(JSON.parse(JSON.stringify(original)));
+    expect(after?.reasons).toEqual(["guessed"]);
+    expect(await count("log_groups")).toBe(0);
+  });
+
   it("✅ on an edit whose group is gone: rolled back, pending cancelled, stale (m5)", async () => {
     const r = await executeActions(db, "u:300", [await stage("bench_press")], { now: MON });
     if (r.status !== "done" || r.results[0]?.kind !== "log") throw new Error("expected log");

@@ -91,6 +91,8 @@ export interface Flow {
 }
 
 const PARTLY = "partly_understood";
+/** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
+const CLARIFIED = "clarified:";
 const HTML = { parse_mode: "HTML" as const };
 
 function markup(kb: Keyboard): InlineKeyboard {
@@ -649,7 +651,9 @@ export function createFlow(deps: FlowDeps): Flow {
     if (pending?.status === "executed" && (await ledgerResults(db, `p:${pendingId}`)).length > 0) {
       // A retried tap: the choice was already saved. Nothing to write, nothing to repeat.
       // Best effort: a card still showing buttons (its first edit failed) gets its final text.
-      const done = pending.actions.find((x) => x.kind === "log_sets");
+      const mark = [...pending.reasons].reverse().find((r) => r.startsWith(CLARIFIED));
+      const at = mark ? Number(mark.slice(CLARIFIED.length)) : Number.NaN;
+      const done = pending.actions[at];
       try {
         await edit(
           ctx,
@@ -752,7 +756,7 @@ export function createFlow(deps: FlowDeps): Flow {
         : "confirm";
       const row = await replacePendingActions(db, pendingId, actions, {
         kind,
-        reasons: next.reasons,
+        reasons: [...next.reasons, `${CLARIFIED}${d.index}`],
       });
       if (!row) {
         await answer(EXPIRED);
@@ -770,6 +774,7 @@ export function createFlow(deps: FlowDeps): Flow {
       pendingId,
       now,
       replaceActions: actions,
+      replaceReasons: [...pending.reasons, `${CLARIFIED}${d.index}`],
     });
     if (r.status !== "done") {
       const msg = r.status === "stale" ? STALE : EXPIRED;

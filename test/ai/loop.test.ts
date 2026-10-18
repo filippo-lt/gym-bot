@@ -132,38 +132,90 @@ describe("runIntent", () => {
 
 describe("unresolved tool errors", () => {
   const err = (
+    turn: number,
     tool: string,
     said: string | null = null,
     slug: string | null = null,
-  ): IntentEvent => ({
-    type: "error",
-    tool,
-    said,
-    slug,
-  });
-  const staged = (said: string | null, slug: string | null, isLog = true): IntentEvent => ({
-    type: "staged",
-    said,
-    slug,
-    isLog,
+  ): IntentEvent => ({ type: "error", turn, tool, said, slug });
+  const staged = (
+    turn: number,
+    kind: Extract<IntentEvent, { type: "staged" }>["kind"],
+    said: string | null = null,
+    slug: string | null = null,
+  ): IntentEvent => ({ type: "staged", turn, kind, said, slug });
+
+  it("counts an error nobody fixed, not one retried in a later turn", () => {
+    expect(
+      countUnresolvedErrors([
+        err(1, "log_sets", "bench"),
+        staged(2, "log_sets", "bench", "bench_press"),
+      ]),
+    ).toBe(0);
+    expect(countUnresolvedErrors([err(1, "log_sets", "bench")])).toBe(1);
+    expect(
+      countUnresolvedErrors([
+        err(1, "log_sets", "x", "squat"),
+        staged(2, "log_sets", "squat", "squat"),
+      ]),
+    ).toBe(0);
+    expect(
+      countUnresolvedErrors([
+        err(1, "log_sets", "lunges"),
+        staged(2, "log_sets", "squats", "squat"),
+      ]),
+    ).toBe(1);
+    expect(
+      countUnresolvedErrors([err(1, "log_sets", "sq"), staged(2, "clarify_exercise", "sq")]),
+    ).toBe(0);
   });
 
-  it("counts an error nobody fixed, not one the model retried", () => {
-    expect(countUnresolvedErrors([err("log_sets", "bench"), staged("bench", "bench_press")])).toBe(
-      0,
-    );
-    expect(countUnresolvedErrors([err("log_sets", "bench")])).toBe(1);
-    expect(countUnresolvedErrors([err("log_sets", "x", "squat"), staged("squat", "squat")])).toBe(
-      0,
-    );
-    expect(countUnresolvedErrors([err("log_sets", "lunges"), staged("squats", "squat")])).toBe(1);
+  it("a second group staged in the same turn never fixes the error", () => {
+    expect(
+      countUnresolvedErrors([
+        err(1, "log_sets", "bench"),
+        staged(1, "log_sets", "bench", "bench_press"),
+      ]),
+    ).toBe(1);
   });
 
-  it("an edit or undo error is fixed by any later staged action", () => {
-    expect(countUnresolvedErrors([err("edit_last_entry"), staged("face pulls", "face_pull")])).toBe(
-      0,
-    );
-    expect(countUnresolvedErrors([staged("a", "a"), err("undo_last_entry")])).toBe(1);
+  it("an edit or undo error is fixed only by a later edit or delete, never by a log", () => {
+    expect(
+      countUnresolvedErrors([err(1, "edit_last_entry"), staged(1, "log_sets", "squats", "squat")]),
+    ).toBe(1);
+    expect(
+      countUnresolvedErrors([err(1, "edit_last_entry"), staged(2, "log_sets", "squats", "squat")]),
+    ).toBe(1);
+    expect(countUnresolvedErrors([err(1, "edit_last_entry"), staged(2, "edit_group")])).toBe(0);
+    expect(countUnresolvedErrors([err(1, "undo_last_entry"), staged(2, "delete_group")])).toBe(0);
+    expect(countUnresolvedErrors([err(1, "undo_last_entry"), staged(1, "delete_group")])).toBe(1);
+  });
+
+  it("the loop: two bench groups in one turn, the first errors, nothing retried", async () => {
+    const model = createFakeModel([
+      [
+        toolUse("log_sets", { exercise: { said: "bench" }, sets: [] }),
+        toolUse("log_sets", logSets("bench")),
+      ],
+      [text("done")],
+    ]);
+    const res = await runIntent({ ...base, model, backend: fakeBackend(), usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", toolErrors: 1 });
+  });
+
+  it("the loop: a failed edit next to a new log is unresolved", async () => {
+    const model = createFakeModel([
+      [
+        toolUse("edit_last_entry", {
+          changes: { reps: 8 },
+          guessed_fields: [],
+          needs_confirmation: false,
+        }),
+        toolUse("log_sets", logSets("squats")),
+      ],
+      [text("done")],
+    ]);
+    const res = await runIntent({ ...base, model, backend: fakeBackend(), usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", toolErrors: 1 });
   });
 
   it("the loop reports unresolved errors and a retried one as zero", async () => {
