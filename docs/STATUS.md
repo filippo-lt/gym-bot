@@ -15,7 +15,7 @@ _Last updated: 18 Oct 2026 (end of M6 build)._
 | 3 | Text logging (Claude intent, cards, RIR/clean, edit/undo, aliases, write_ledger) | live | #3–#7 |
 | 4 | Queries (`/next`, `/session`, `/history`, `/plan`, history/alternatives in chat, memory, number guard) | live | #8 |
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
-| 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | built, not deployed | |
+| 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | built, not deployed | #12 |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
 | 8 | Morning message + charts | todo | |
 | 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | todo | |
