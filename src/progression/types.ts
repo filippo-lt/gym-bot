@@ -225,7 +225,7 @@ export interface ReadinessResult {
 /** Replayed in date order to derive the gate. */
 export type GateEvent =
   /** A logged set: opens at clean BW >= 6. */
-  | { kind: "clean_bw_set"; date: string; reps: number }
+  | { kind: "clean_bw_set"; date: string; reps: number; rir?: number | null }
   /** Check-in / test max (bodyweight): opens at >= 6, closes below 6. */
   | { kind: "test_max"; date: string; reps: number }
   /** A session's own e1RM implies this many BW reps (30 * (e1RM/bw - 1) - 1.5); < 5 twice in a row closes. */

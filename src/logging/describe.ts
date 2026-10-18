@@ -33,7 +33,9 @@ export function describeEntries(entries: ResolvedEntry[]): string {
   const added = entries.map((e) => e.addedKg ?? 0);
   const assist = entries.map((e) => e.assistKg ?? 0);
   if (Math.max(...added) > 0) parts.push(`+${fmt(Math.max(...added))} kg`);
-  if (Math.max(...assist) > 0) parts.push(`assist ${fmt(Math.max(...assist))} kg`);
+  const bands = [...new Set(entries.map((e) => e.band).filter((b): b is string => !!b))];
+  if (bands.length > 0) parts.push(`${bands.join("/")} band`);
+  else if (Math.max(...assist) > 0) parts.push(`assist ${fmt(Math.max(...assist))} kg`);
   const durations = entries.map((e) => e.durationS).filter((x): x is number => x !== null);
   if (durations.length > 0) parts.push(`${fmt(Math.max(...durations))} s`);
   const dist = entries.map((e) => e.distanceM).filter((x): x is number => x !== null);
@@ -53,6 +55,16 @@ export function describeAction(a: StagedAction): string {
       return `unclear exercise "${a.said}"`;
     case "save_memory":
       return `remember (${a.input.kind}): ${a.input.content}`;
+    case "set_band_kg":
+      return `${a.input.colour} band = ${fmt(a.input.kg)} kg`;
+    case "log_readiness":
+      return `readiness: ${a.input.signal.replace("_", " ")}`;
+    case "log_bodyweight":
+      return `bodyweight ${fmt(a.input.kg)} kg`;
+    case "log_class":
+      return a.input.heavy_groups.length
+        ? `Thursday class: heavy ${a.input.heavy_groups.join(", ")}`
+        : "Thursday class: not heavy";
   }
 }
 

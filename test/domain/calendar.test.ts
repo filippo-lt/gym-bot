@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { planWeekFor, romeLocalToUtc, trainingDate, weekdayOf } from "../../src/domain/calendar.js";
+import {
+  planWeekFor,
+  romeLocalToUtc,
+  thursdayOnOrBefore,
+  trainingDate,
+  weekdayOf,
+} from "../../src/domain/calendar.js";
 
 const START = "2026-09-28";
 
@@ -45,5 +51,18 @@ describe("romeLocalToUtc", () => {
   });
   it("06:00 on 2026-10-23 (summer time) is 04:00Z", () => {
     expect(romeLocalToUtc("2026-10-23", "06:00").toISOString()).toBe("2026-10-23T04:00:00.000Z");
+  });
+});
+
+describe("thursdayOnOrBefore", () => {
+  it.each([
+    ["2026-10-01", "2026-10-01"], // Thursday itself
+    ["2026-10-02", "2026-10-01"], // Friday
+    ["2026-10-04", "2026-10-01"], // Sunday
+    ["2026-10-05", "2026-10-01"], // Monday
+    ["2026-10-07", "2026-10-01"], // Wednesday
+    ["2026-10-08", "2026-10-08"],
+  ])("%s -> %s", (date, expected) => {
+    expect(thursdayOnOrBefore(date)).toBe(expected);
   });
 });

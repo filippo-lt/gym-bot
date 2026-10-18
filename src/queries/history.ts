@@ -1,11 +1,12 @@
 /** Read-only: the last sessions of one exercise, any source. */
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { logEntries, logGroups } from "../db/schema/log.js";
-import { exercises, hspuLadder, planWeeks } from "../db/schema/plan.js";
+import { equipment, exercises, hspuLadder, planWeeks } from "../db/schema/plan.js";
 import { planWeekFor } from "../domain/calendar.js";
 import { type DayName, dayName } from "../domain/day-ref.js";
 import type { Db } from "../logging/db.js";
 import { loadPlanContext } from "../logging/plan-context.js";
+import { bandAssist } from "../logging/units.js";
 import type { ExerciseType, LoadBasis } from "../plan-import/types.js";
 
 export const DEFAULT_HISTORY_LIMIT = 5;
@@ -25,6 +26,8 @@ export interface HistorySet {
   /** RIR was "4+" (rir = 4). */
   rirPlus: boolean;
   clean: boolean | null;
+  /** Band colour (pull-up assistance), when used. */
+  band?: string | null;
 }
 
 export interface HistorySession {
@@ -112,6 +115,14 @@ export async function getExerciseHistory(
   };
   if (dates.length === 0) return result;
 
+  // A band decides the assistance through the equipment's colour map, as the engine reads it.
+  const [eqRow] = await db
+    .select({ bands: equipment.bands })
+    .from(exercises)
+    .leftJoin(equipment, eq(equipment.id, exercises.equipmentId))
+    .where(eq(exercises.id, exerciseId));
+  const bands = eqRow?.bands ?? {};
+
   const rows = await db
     .select({ g: logGroups, e: logEntries, step: hspuLadder.name })
     .from(logGroups)
@@ -157,13 +168,14 @@ export async function getExerciseHistory(
       reps: e.reps,
       loadKg: e.loadKg,
       addedKg: e.addedKg,
-      assistKg: e.assistKg,
+      assistKg: bandAssist(e.band, e.assistKg, bands),
       durationS: e.durationS,
       distanceM: e.distanceM,
       padHeight: e.padHeight,
       rir: e.rir,
       rirPlus: e.rirPlus,
       clean: e.clean,
+      band: e.band,
     });
   }
   result.sessions = dates.map((d) => byDate.get(d) as HistorySession);

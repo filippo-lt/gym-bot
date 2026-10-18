@@ -33,6 +33,13 @@ export function planWeekFor(date: string, startDate: string, weeksCount: number)
   return { status: "active", week };
 }
 
+/** Thursday on or before `date` (today if it is a Thursday): the class day a report belongs to. */
+export function thursdayOnOrBefore(date: string): string {
+  const dt = isoDay(date);
+  const back = (dt.weekday - 4 + 7) % 7;
+  return dt.minus({ days: back }).toISODate() as string;
+}
+
 export function weekdayOf(date: string): Weekday | null {
   return WEEKDAYS[isoDay(date).weekday] ?? null;
 }

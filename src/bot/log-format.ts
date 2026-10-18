@@ -13,6 +13,7 @@ import type {
   Candidate,
   EditLastInput,
   GroupSnapshot,
+  LedgerResult,
   ResolvedEntry,
   ResolvedLog,
   StagedAction,
@@ -38,6 +39,10 @@ export const HELP_TEXT = [
   "/next — the next exercise to do",
   "/session — a specific day, e.g. /session mon or /session 26/10",
   "/week — this week",
+  "/short — today's session when you are short on time",
+  "/readiness — how you feel today",
+  "/bw — log your bodyweight, e.g. /bw 78.5",
+  "/class — log Thursday's class",
   "/plan — week, phases and next deload",
   "/history — last sessions of an exercise, e.g. /history squat",
   "/undo — remove your last log",
@@ -53,6 +58,11 @@ export const HELP_TEXT = [
   "Or ask me, for example:",
   "• what did I squat last week?",
   "• alternative to dips?",
+  "• slept badly",
+  "• I'm 78.5 kg today",
+  "• class was heavy on legs",
+  "• red band is 15 kg",
+  "• what should I squat today?",
   "• show me Monday's session",
 ].join("\n");
 
@@ -167,9 +177,11 @@ function bodyweightTokens(entries: ResolvedEntry[]): string {
   const tokens = entries.map((e) =>
     (e.addedKg ?? 0) > 0
       ? `+${fmt(e.addedKg as number)} kg`
-      : (e.assistKg ?? 0) > 0
-        ? `${fmt(e.assistKg as number)} kg assist`
-        : "bodyweight",
+      : e.band
+        ? `${e.band} band`
+        : (e.assistKg ?? 0) > 0
+          ? `${fmt(e.assistKg as number)} kg assist`
+          : "bodyweight",
   );
   return same(tokens) ? (tokens[0] as string) : tokens.join(" / ");
 }
@@ -202,7 +214,7 @@ export function setsText(v: LineView): string {
     same(es.map((e) => e.durationS)) &&
     same(es.map((e) => e.distanceM)) &&
     same(es.map((e) => e.loadKg)) &&
-    same(es.map((e) => `${e.addedKg}|${e.assistKg}`));
+    same(es.map((e) => `${e.addedKg}|${e.assistKg}|${e.band}`));
 
   const out: string[] = [];
   if (uniform) {
@@ -326,6 +338,10 @@ export function editLine(a: EditAction): string {
     (b, n) => `assist ${b} → ${n} kg`,
   );
   field(
+    (e) => e.band,
+    (b, n) => `band ${b} → ${n}`,
+  );
+  field(
     (e) => num(e.durationS),
     (b, n) => `${b} → ${n} s`,
   );
@@ -412,8 +428,13 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
       case "load_far_off":
         for (const a of actions) {
           const far = farOffLoadRef(a);
-          if (far)
-            out.push(`far from last time: ${fmt(far.load)} kg vs ${fmt(far.ref)} kg last time`);
+          if (far) {
+            out.push(
+              far.source === "suggested"
+                ? `far from the suggestion: ${fmt(far.load)} kg vs ${fmt(far.ref)} kg suggested`
+                : `far from last time: ${fmt(far.load)} kg vs ${fmt(far.ref)} kg last time`,
+            );
+          }
         }
         break;
       case "reps_far_off":
@@ -424,6 +445,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         break;
       case "memory":
         out.push("new memory item");
+        break;
+      case "equipment":
+        out.push("this changes your equipment");
         break;
       default:
         break; // "delete" needs no explanation
@@ -445,6 +469,14 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
       return `Unclear exercise "${esc(a.said)}"`;
     case "save_memory":
       return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
+    case "set_band_kg":
+      return `Set the ${esc(a.input.colour)} band to ${fmt(a.input.kg)} kg of assistance${
+        a.previousKg !== null ? ` (was ${fmt(a.previousKg)} kg)` : ""
+      }`;
+    case "log_readiness":
+    case "log_bodyweight":
+    case "log_class":
+      return esc(describeAction(a));
   }
 }
 
@@ -573,6 +605,56 @@ export function memorySaved(content: string, memoryId: number): Message {
     text: `Saved: ${esc(content)}`,
     keyboard: [[{ text: "Undo", data: cb.memory(memoryId) }]],
   };
+}
+
+/** Asked once, the first time a band colour with no kg mapping shows up in a saved log. */
+export function bandQuestion(colour: string): Message {
+  const c = esc(colour);
+  return {
+    text: `How many kg is the ${c} band? Send e.g. "${c} band 15 kg".`,
+    keyboard: [],
+  };
+}
+
+const READINESS_WORDS = {
+  bad_sleep: "bad sleep",
+  sore: "sore muscles",
+  exhausted: "exhausted",
+  good: "feeling great",
+  tired: "tired",
+  ok: "feeling ok",
+  strong: "feeling strong",
+} as const;
+
+/** Echo of a direct readiness / bodyweight / class write, with an Undo that reverts it. */
+export function directWriteSaved(
+  result: Extract<LedgerResult, { kind: "readiness" | "bodyweight" | "class" }>,
+  sourceKey: string,
+  index: number,
+): Message {
+  const undo = [[{ text: "Undo", data: cb.undoWrite(sourceKey, index) }]];
+  switch (result.kind) {
+    case "readiness":
+      return {
+        text: `Noted: ${READINESS_WORDS[result.signal]}. I'll go easier if it adds up.`,
+        keyboard: undo,
+      };
+    case "bodyweight":
+      return { text: `✓ Bodyweight ${fmt(result.kg)} kg`, keyboard: undo };
+    case "class":
+      return {
+        text: `✓ Thursday class: ${
+          result.heavyGroups.length
+            ? `heavy ${result.heavyGroups.map((g) => g.toUpperCase()).join(", ")}`
+            : "not heavy"
+        }`,
+        keyboard: undo,
+      };
+  }
+}
+
+export function bandSaved(colour: string, kg: number): Message {
+  return { text: `Saved: ${esc(colour)} band = ${fmt(kg)} kg`, keyboard: [] };
 }
 
 export function aliasSaved(said: string, exerciseName: string, memoryId: number): Message {

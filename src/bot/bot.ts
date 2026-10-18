@@ -3,11 +3,13 @@ import type { UserFromGetMe } from "grammy/types";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { parseDayArg } from "../domain/day-ref.js";
+import { loadSessionAdvice, type SessionAdvice } from "../progression/session-advice.js";
 import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.js";
 import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
 import { parseHistoryCallback } from "./callbacks.js";
-import { formatSession, formatWeek } from "./format.js";
+import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
+import { createInputs } from "./inputs-flow.js";
 import { HELP_TEXT, type Message, TEXT_ONLY, UNKNOWN_COMMAND } from "./log-format.js";
 import { type AiSource, createFlow, type Flow } from "./logging-flow.js";
 import {
@@ -34,6 +36,16 @@ export interface BotDeps {
     getSession: (db: Db, date: string) => Promise<Session>;
     getWeek: (db: Db, date: string) => Promise<WeekOverview>;
   };
+  /**
+   * Test seam: the progression layer (suggested loads, readiness). By default it is real, except when `sessions` is
+   * replaced: then there is no advice, so session tests need no progression tables.
+   */
+  advice?: (
+    db: Db,
+    date: string,
+    now: Date,
+    opts: { short?: boolean },
+  ) => Promise<SessionAdvice | null>;
   /** Test seam: replace the read-only query DB calls (/history, /plan). */
   reads?: {
     lookupExercise: (db: Db, said: string) => Promise<ExerciseLookup>;
@@ -58,6 +70,32 @@ export function createBot(deps: BotDeps): Bot {
   };
   const html = { parse_mode: "HTML" as const };
   const today = () => trainingDate(deps.now());
+  const adviceFor = deps.advice ?? (deps.sessions ? async () => null : loadSessionAdvice);
+
+  /** The engine failing must never take the plain session away. */
+  async function advise(date: string, short = false): Promise<SessionAdvice | null> {
+    try {
+      return await adviceFor(deps.db, date, deps.now(), { short });
+    } catch (error) {
+      console.error(
+        `progression: advice failed (${error instanceof Error ? error.name : "error"})`,
+      );
+      return null;
+    }
+  }
+
+  /** /today, /short, /session: the plan, then the adjusted loads; an HSPU advance card follows when due. */
+  async function sendSession(ctx: Context, date: string, short = false): Promise<void> {
+    const session = await queries.getSession(deps.db, date);
+    const advice = session.kind === "session" ? await advise(date, short) : null;
+    await ctx.reply(formatSession(session, advice, { short }), html);
+    await inputs.hspuProposal(ctx, advice);
+  }
+  const inputs = createInputs({
+    db: deps.db,
+    now: deps.now,
+    sendToday: (ctx) => sendSession(ctx, today()),
+  });
   const withKeyboard = (m: Message) => {
     const kb = new InlineKeyboard();
     m.keyboard.forEach((row, i) => {
@@ -69,10 +107,11 @@ export function createBot(deps: BotDeps): Bot {
 
   bot.command(["start", "help"], (ctx) => ctx.reply(HELP_TEXT, html));
 
-  bot.command("today", async (ctx) => {
-    const session = await queries.getSession(deps.db, trainingDate(deps.now()));
-    await ctx.reply(formatSession(session), html);
-  });
+  bot.command("today", (ctx) => sendSession(ctx, today()));
+  bot.command("short", (ctx) => sendSession(ctx, today(), true));
+  bot.command("readiness", (ctx) => inputs.readinessCommand(ctx));
+  bot.command("bw", (ctx) => inputs.bodyweightCommand(ctx));
+  bot.command("class", (ctx) => inputs.classCommand(ctx));
 
   bot.command("week", async (ctx) => {
     const week = await queries.getWeek(deps.db, trainingDate(deps.now()));
@@ -81,7 +120,12 @@ export function createBot(deps: BotDeps): Bot {
 
   bot.command("next", async (ctx) => {
     const session = await queries.getSession(deps.db, today());
-    await ctx.reply(formatNext(nextItem(session)), html);
+    const advice = session.kind === "session" ? await advise(today()) : null;
+    const heavy =
+      session.kind === "session" && session.thursday && session.thursday !== "not_reported"
+        ? session.thursday.heavy
+        : [];
+    await ctx.reply(formatNext(nextItem(session, hiddenItemIds(advice)), advice, heavy), html);
   });
 
   bot.command("session", async (ctx) => {
@@ -89,7 +133,7 @@ export function createBot(deps: BotDeps): Bot {
     if (!arg) return void (await ctx.reply(SESSION_USAGE, html));
     const day = parseDayArg(arg, today());
     if (!day.ok) return void (await ctx.reply(`${day.error}\n${SESSION_USAGE}`, html));
-    await ctx.reply(formatSession(await queries.getSession(deps.db, day.date)), html);
+    await sendSession(ctx, day.date);
   });
 
   bot.command("history", async (ctx) => {
@@ -124,6 +168,8 @@ export function createBot(deps: BotDeps): Bot {
     if (parsed) await sendHistory(ctx, parsed.exerciseId);
   });
 
+  // /readiness, /class and the HSPU card: their own handlers, not the logging flow's.
+  bot.callbackQuery(/^(rd|cg|pr):/, (ctx) => inputs.callback(ctx));
   bot.on("callback_query:data", (ctx) => flow.callback(ctx));
   bot.on("callback_query", (ctx) => ctx.answerCallbackQuery());
 

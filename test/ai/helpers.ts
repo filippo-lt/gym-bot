@@ -51,6 +51,18 @@ export function fakeBackend(): LoggingBackend & { calls: string[] } {
       calls.push("edit");
       return { ok: false, error: "nothing to edit" };
     },
+    async stageReadiness() {
+      return { ok: false, error: "not in this test" };
+    },
+    async stageBodyweight() {
+      return { ok: false, error: "not in this test" };
+    },
+    async stageClass() {
+      return { ok: false, error: "not in this test" };
+    },
+    async stageBandKg() {
+      return { ok: false, error: "not in this test" };
+    },
     async stageUndoLast(_i: UndoLastInput) {
       calls.push("undo");
       return { ok: false, error: "nothing to undo" };

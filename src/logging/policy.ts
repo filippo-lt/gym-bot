@@ -25,26 +25,43 @@ export function isRepsFarOff(newReps: number | null, refReps: number | null): bo
   return newReps >= FAR_OFF_REPS_FACTOR * refReps;
 }
 
-/** The load (kg) that made the action "far from last time" and the reference it was compared to. */
-export function farOffLoadRef(a: StagedAction): { load: number; ref: number } | null {
+export interface FarOffRef {
+  load: number;
+  ref: number;
+  /** What the load was compared to: the stored suggestion first, else the last logged session (SPEC 5.6d). */
+  source: "suggested" | "last";
+}
+
+/** The reference load: the stored suggestion's system load, else the last session's; null = no check. */
+function loadReference(
+  suggested: number | null | undefined,
+  last: number | null | undefined,
+): { ref: number; source: FarOffRef["source"] } | null {
+  if (suggested != null) return { ref: suggested, source: "suggested" };
+  if (last != null) return { ref: last, source: "last" };
+  return null;
+}
+
+/** The load (kg) that made the action far off and the reference it was compared to. */
+export function farOffLoadRef(a: StagedAction): FarOffRef | null {
   if (a.kind === "log_sets") {
     const r = a.resolved;
     const load = maxSystemLoad(r.entries, r.exercise, r.bwKg);
-    const ref = r.lastSession?.maxSystemLoad ?? null;
+    const ref = loadReference(r.suggestedSystemLoad, r.lastSession?.maxSystemLoad);
     return load !== null &&
       ref !== null &&
-      isLoadFarOff(load, ref, r.exercise.equipment?.stepKg ?? null)
-      ? { load, ref }
+      isLoadFarOff(load, ref.ref, r.exercise.equipment?.stepKg ?? null)
+      ? { load, ...ref }
       : null;
   }
   if (a.kind === "edit_group") {
     const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
     const load = maxSystemLoad(changed, a.after.exercise, a.after.bwKg);
-    const ref = a.lastSession?.maxSystemLoad ?? null;
+    const ref = loadReference(a.suggestedSystemLoad, a.lastSession?.maxSystemLoad);
     return load !== null &&
       ref !== null &&
-      isLoadFarOff(load, ref, a.after.exercise.equipment?.stepKg ?? null)
-      ? { load, ref }
+      isLoadFarOff(load, ref.ref, a.after.exercise.equipment?.stepKg ?? null)
+      ? { load, ...ref }
       : null;
   }
   return null;
@@ -94,7 +111,13 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "save_memory":
       out.push("memory");
       break;
+    case "set_band_kg":
+      out.push("equipment");
+      break;
     case "clarify_exercise":
+    case "log_readiness":
+    case "log_bodyweight":
+    case "log_class":
       break;
   }
   if (farOffLoad(a) !== null) out.push("load_far_off");

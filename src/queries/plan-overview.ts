@@ -96,12 +96,13 @@ export type NextItem =
   | { kind: "all_done" | "rest" | "before_start" | "finished" };
 
 /** First open main item of the day (class exposure never counts), with its "+" extras. */
-export function nextItem(session: Session): NextItem {
+export function nextItem(session: Session, hidden: ReadonlySet<number> = new Set()): NextItem {
   if (session.kind === "rest") return { kind: "rest" };
   if (session.kind === "before_start" || session.kind === "finished") {
     return { kind: session.kind };
   }
-  const mains = session.items.filter((i) => i.subItem === 0);
+  // Items today's readiness level or /short took out of the list are not "next".
+  const mains = session.items.filter((i) => i.subItem === 0 && !hidden.has(i.plannedItemId));
   const item = mains.find(
     (i) => i.status === "planned" && !i.options.some((o) => o.slug === "class_exposure"),
   );

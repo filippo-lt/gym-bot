@@ -5,11 +5,15 @@ import {
   getExerciseHistoryInputSchema,
   getSessionInputSchema,
   type LoggingBackend,
+  logBodyweightInputSchema,
+  logClassInputSchema,
+  logReadinessInputSchema,
   logSetsInputSchema,
   type ReadResult,
   type StagedAction,
   type StageResult,
   saveMemoryInputSchema,
+  setBandKgInputSchema,
   undoLastInputSchema,
 } from "../logging/types.js";
 import type { ToolDef } from "./model.js";
@@ -21,7 +25,11 @@ export type ToolName =
   | "log_sets"
   | "edit_last_entry"
   | "undo_last_entry"
-  | "save_memory";
+  | "save_memory"
+  | "log_readiness"
+  | "log_bodyweight"
+  | "log_class"
+  | "set_band_kg";
 
 /** Read-only tools: their errors never make a confirm card "partly understood". */
 export const READ_TOOLS: readonly string[] = [
@@ -45,13 +53,13 @@ export const TOOLS: ToolDef[] = [
   {
     name: "get_session",
     description:
-      "Read-only. Returns the planned session for a day with each item's prescription and what is already logged, plus the next open item. With no day and no date it is today. Pass day or date only when the user named one (day: today, yesterday, tomorrow, mon..sun; date: YYYY-MM-DD). Never both.",
+      "Read-only. Returns the planned session for a day with each item's prescription, the suggested load (a ready-made 'suggestion' text in code-formatted units, with its labels) and what is already logged, plus the next open item and today's readiness level. With no day and no date it is today. Pass day or date only when the user named one (day: today, yesterday, tomorrow, mon..sun; date: YYYY-MM-DD). Never both.",
     input_schema: inputSchema(getSessionInputSchema),
   },
   {
     name: "get_exercise_history",
     description:
-      "Read-only. Returns the user's logged sessions of ONE exercise, newest first, each with a ready-made 'line' in code-formatted text. Use it for 'what did I do', 'when did I last', 'my history of X'. Give exercise.said (the user's words) and slug only when sure. last_n is how many sessions (default 5, max 10). period (this_week or last_week) or plan_week (1-12) narrows the dates: code turns them into dates, never you. Never both period and plan_week. If the result says found:false, tell the user briefly (ambiguous: name the candidates).",
+      "Read-only. Returns the user's logged sessions of ONE exercise, newest first, each with a ready-made 'line' in code-formatted text, plus the current e1RM estimate when there is one. Use it for 'what did I do', 'when did I last', 'my history of X'. Give exercise.said (the user's words) and slug only when sure. last_n is how many sessions (default 5, max 10). period (this_week or last_week) or plan_week (1-12) narrows the dates: code turns them into dates, never you. Never both period and plan_week. If the result says found:false, tell the user briefly (ambiguous: name the candidates).",
     input_schema: inputSchema(getExerciseHistoryInputSchema),
   },
   {
@@ -81,6 +89,30 @@ export const TOOLS: ToolDef[] = [
     description:
       "Stage remembering a LASTING limitation (injury, sore joint, exercise to avoid) or preference (equipment, exercise variant) the user states about themselves. Nothing is saved until the user confirms. Write content as a short neutral fact (e.g. 'left shoulder sensitive on dips'). Never use it for a one-off feeling or today's condition ('slept badly', 'tired today'): just reply.",
     input_schema: inputSchema(saveMemoryInputSchema),
+  },
+  {
+    name: "log_readiness",
+    description:
+      "Save how the user feels TODAY when they say it: slept badly (bad_sleep), sore muscles or heavy legs (sore), exhausted/wiped out (exhausted). Use good ONLY when the user explicitly says they feel great or strong today. It saves directly with an Undo button. Not for lasting limitations (use save_memory) and not for a normal mood. Never state what it will change: just stage it.",
+    input_schema: inputSchema(logReadinessInputSchema),
+  },
+  {
+    name: "log_bodyweight",
+    description:
+      "Save the user's bodyweight in kg when they state it ('I'm 78.5 kg today', 'weighed 79'). Pass exactly the number said. It saves directly with an Undo button.",
+    input_schema: inputSchema(logBodyweightInputSchema),
+  },
+  {
+    name: "log_class",
+    description:
+      "Save how Thursday's calisthenics class went: heavy_groups lists the muscle groups it loaded heavily (pull, push, legs). 'Class was easy' or 'not heavy' is an empty list. Use it for 'class was heavy on legs', not for training logged as sets. It saves directly with an Undo button.",
+    input_schema: inputSchema(logClassInputSchema),
+  },
+  {
+    name: "set_band_kg",
+    description:
+      "Stage how many kg of assistance a pull-up band colour gives ('red band is 15 kg'). The colour is the colour word only. Nothing is saved until the user confirms.",
+    input_schema: inputSchema(setBandKgInputSchema),
   },
 ];
 
@@ -140,6 +172,26 @@ export async function executeTool(
       const p = saveMemoryInputSchema.safeParse(rawInput);
       if (!p.success) return invalid(p.error);
       return fromStage(await backend.stageSaveMemory(p.data));
+    }
+    case "log_readiness": {
+      const p = logReadinessInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageReadiness(p.data));
+    }
+    case "log_bodyweight": {
+      const p = logBodyweightInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageBodyweight(p.data));
+    }
+    case "log_class": {
+      const p = logClassInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageClass(p.data));
+    }
+    case "set_band_kg": {
+      const p = setBandKgInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageBandKg(p.data));
     }
     case "log_sets": {
       const p = logSetsInputSchema.safeParse(rawInput);

@@ -15,6 +15,29 @@ export interface GroupDefaults {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** "Red band" / " RED " -> "red": the key used in equipment.bands. Letters, digits, space, dash only. */
+export function normalizeBand(colour: string): string {
+  return colour
+    .toLowerCase()
+    .replace(/[^a-z0-9 _-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+band$/, "")
+    .trim();
+}
+
+/**
+ * Assistance kg of a stored set. A band decides it through the equipment's colour map at read time (the engine reads it
+ * the same way, so a remap changes both); an unmapped colour has none. Without a band the stored value stands.
+ */
+export function bandAssist(
+  band: string | null,
+  stored: number | null,
+  bands: Record<string, number> | undefined,
+): number | null {
+  return band == null ? stored : (bands?.[band] ?? null);
+}
+
 /** Uniform block {count, ...} becomes `count` copies. */
 export function expandSets(sets: LogSetsInput["sets"]): SetInput[] {
   if (Array.isArray(sets)) return sets;
@@ -48,9 +71,13 @@ export function toEntry(
   let loadKg: number | null = null;
   let addedKg: number | null = null;
   let assistKg: number | null = null;
+  let band: string | null = null;
   if (isBw) {
+    band = set.band ? normalizeBand(set.band) || null : null;
     addedKg = set.added_kg ?? set.load_kg ?? 0;
-    assistKg = set.assist_kg ?? 0;
+    // A band decides the assistance through equipment.bands; unmapped = null (no load math, SPEC 5.2).
+    const mapped = band ? exercise.equipment?.bands?.[band] : undefined;
+    assistKg = set.assist_kg ?? (band ? (mapped ?? null) : 0);
   } else {
     loadKg = convertLoad(exercise, set);
   }
@@ -66,7 +93,8 @@ export function toEntry(
     rir: set.rir ?? null,
     rirPlus: set.rir !== undefined ? (set.rir_plus ?? false) : false,
     clean: group.clean ?? null,
-    note: set.band ? `band: ${set.band}` : null,
+    note: null,
+    band,
   };
 }
 
@@ -92,20 +120,22 @@ export function buildEntries(
 
 /** Load used for progression and the far-off check; null when it can't be computed. */
 export function systemLoad(
-  entry: Pick<ResolvedEntry, "loadKg" | "addedKg" | "assistKg">,
+  entry: Pick<ResolvedEntry, "loadKg" | "addedKg" | "assistKg"> & { band?: string | null },
   exercise: Pick<UnitExercise, "type">,
   bwKg: number | null,
 ): number | null {
   if (exercise.type === "weighted") return entry.loadKg;
   if (exercise.type === "bodyweight_plus") {
     if (bwKg === null) return null;
+    // A band set whose colour has no kg mapping has no load math.
+    if (entry.band != null && entry.assistKg == null) return null;
     return round2(bwKg + (entry.addedKg ?? 0) - (entry.assistKg ?? 0));
   }
   return null;
 }
 
 export function maxSystemLoad(
-  entries: Pick<ResolvedEntry, "loadKg" | "addedKg" | "assistKg">[],
+  entries: (Pick<ResolvedEntry, "loadKg" | "addedKg" | "assistKg"> & { band?: string | null })[],
   exercise: Pick<UnitExercise, "type">,
   bwKg: number | null,
 ): number | null {

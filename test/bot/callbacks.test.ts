@@ -17,6 +17,11 @@ describe("callback data", () => {
     cb.undoEdit(`u:${UPDATE}`, 19),
     cb.undoEdit(`p:${ID}`, 19),
     cb.memory(ID),
+    cb.undoWrite(`u:${UPDATE}`, 19),
+    cb.readiness("t"),
+    cb.classMask(7, "2026-10-01"),
+    cb.classSave(7, "2026-10-01"),
+    cb.proposal(ID, "ok"),
   ];
 
   it("is at most 64 bytes", () => {
@@ -53,6 +58,43 @@ describe("callback data", () => {
       "cl:1:2",
       "ue:x:1",
       "ug:1:2",
+    ]) {
+      expect(parseCallback(bad), bad).toBeNull();
+    }
+  });
+});
+
+describe("M5 callbacks", () => {
+  it("round-trips", () => {
+    expect(parseCallback(cb.readiness("s"))).toEqual({ t: "rd", level: "s" });
+    expect(parseCallback(cb.classMask(5, "2026-10-01"))).toEqual({
+      t: "cg",
+      mask: 5,
+      date: "2026-10-01",
+      save: false,
+    });
+    expect(parseCallback(cb.classSave(5, "2026-10-01"))).toEqual({
+      t: "cg",
+      mask: 5,
+      date: "2026-10-01",
+      save: true,
+    });
+    expect(parseCallback(cb.proposal(12, "no"))).toEqual({ t: "pr", id: 12, act: "no" });
+    expect(parseCallback(cb.undoWrite("u:123", 0))).toEqual({ t: "uw", key: "u:123", index: 0 });
+    expect(parseCallback(cb.undoWrite("p:9", 2))).toEqual({ t: "uw", key: "p:9", index: 2 });
+  });
+
+  it("rejects malformed data", () => {
+    for (const bad of [
+      "rd:x",
+      "rd",
+      "cg:8",
+      "cg:3:no",
+      "cg:a",
+      "pr:1",
+      "pr:1:ed",
+      "uw:x:1",
+      "uw:u:1",
     ]) {
       expect(parseCallback(bad), bad).toBeNull();
     }

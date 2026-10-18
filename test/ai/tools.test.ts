@@ -4,7 +4,7 @@ import { executeTool, TOOLS } from "../../src/ai/tools.js";
 import { fakeBackend, promptContext, promptStatic } from "./helpers.js";
 
 describe("tool schemas", () => {
-  it("has seven tools, each a top-level object schema without $schema", () => {
+  it("has eleven tools, each a top-level object schema without $schema", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       "get_session",
       "get_exercise_history",
@@ -13,6 +13,10 @@ describe("tool schemas", () => {
       "edit_last_entry",
       "undo_last_entry",
       "save_memory",
+      "log_readiness",
+      "log_bodyweight",
+      "log_class",
+      "set_band_kg",
     ]);
     for (const t of TOOLS) {
       expect(t.input_schema.type).toBe("object");
@@ -137,7 +141,13 @@ describe("prompt rules", () => {
     expect(rules).toContain("only when the user names a day");
     expect(rules).toContain("get_exercise_history");
     expect(rules).toContain("Never convert units");
-    expect(rules).toContain("not available yet");
+    expect(rules).toContain("Suggested loads come ONLY from the get_session result");
+    expect(rules).toContain("Never compute, convert, round or adjust a load yourself");
+    expect(rules).not.toContain("not available yet");
+    expect(rules).toContain("log_readiness");
+    expect(rules).toContain("log_bodyweight");
+    expect(rules).toContain("log_class");
+    expect(rules).toContain("set_band_kg");
     expect(rules).toContain("get_alternatives");
     expect(rules).toContain("NO sets, reps, loads");
     expect(rules).toContain("save_memory only when the user states a lasting");

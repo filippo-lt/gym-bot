@@ -293,4 +293,112 @@ describe("planSession", () => {
     expect(r.items[0]?.suggestions[1]?.loadKg).toBe(100);
     expect(r.items[0]?.suggestions[2]?.ask).toBe("load");
   });
+
+  it("Friday reduce never steps an accessory up; the break cut still applies", () => {
+    const hist = [
+      session(3, {
+        date: "2026-10-19",
+        sets: [6, 7, 7].map((reps) => set({ reps, loadKg: 20, rir: 3 })),
+      }),
+      session(3, {
+        date: "2026-10-12",
+        sets: [6, 7, 7].map((reps) => set({ reps, loadKg: 20, rir: 3 })),
+      }),
+    ];
+    const t = target({
+      exerciseIds: [3],
+      tags: ["row"],
+      setsMin: 3,
+      setsMax: 3,
+      repsMin: 6,
+      repsMax: 8,
+      rirMin: 1,
+      rirMax: 3,
+    });
+    const mon = planSession(input({ items: [t], history: { 3: hist } }));
+    const fri = planSession(
+      input({ weekday: "fri", heavyGroups: ["pull"], items: [t], history: { 3: hist } }),
+    );
+    expect(mon.items[0]?.suggestion?.loadKg).toBe(20);
+    expect(fri.items[0]?.suggestion?.loadKg).toBe(20);
+    const brk = planSession(
+      input({
+        weekday: "fri",
+        heavyGroups: ["pull"],
+        items: [t],
+        history: { 3: hist },
+        occurrences: [
+          {
+            plannedItemId: 1,
+            occurrences: [
+              { date: "2026-10-12", logged: false },
+              { date: "2026-10-19", logged: false },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(brk.items[0]?.suggestion?.loadKg as number).toBeLessThan(20);
+  });
+
+  it("break on an easy accessory still cuts", () => {
+    const hist = [session(3, { sets: [set({ reps: 10, loadKg: 40, rir: 2 })] })];
+    const t = target({ exerciseIds: [3], modifiers: ["easy"], repsMin: 8, repsMax: 12 });
+    const r = planSession(
+      input({
+        items: [t],
+        history: { 3: hist },
+        occurrences: [
+          {
+            plannedItemId: 1,
+            occurrences: [
+              { date: "a", logged: false },
+              { date: "b", logged: false },
+            ],
+          },
+        ].map((o) => ({
+          ...o,
+          occurrences: [
+            { date: "2026-10-12", logged: false },
+            { date: "2026-10-19", logged: false },
+          ],
+        })),
+      }),
+    );
+    expect(r.items[0]?.suggestion?.labels).toContain("back_after_break");
+    expect(r.items[0]?.suggestion?.loadKg as number).toBeLessThan(40);
+  });
+
+  it("break on a bar-only load keeps the bar and gets no break label", () => {
+    const hist = [session(1, { sets: [set({ reps: 5, loadKg: 20, rir: 2 })] })];
+    const r = planSession(
+      input({
+        items: [target()],
+        history: { 1: hist },
+        occurrences: [
+          {
+            plannedItemId: 1,
+            occurrences: [
+              { date: "2026-10-12", logged: false },
+              { date: "2026-10-19", logged: false },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(r.items[0]?.suggestion?.loadKg).toBe(20);
+    expect(r.items[0]?.suggestion?.labels).not.toContain("back_after_break");
+  });
+
+  it("YELLOW main lift shows RIR 2-3", () => {
+    const r = planSession(
+      input({
+        items: [target({ tags: ["squat"], priority: "PRIMARY" })],
+        history: { 1: squatSessions },
+        frozenLevel: "YELLOW",
+      }),
+    );
+    expect(r.items[0]?.suggestion).toMatchObject({ rirMin: 2, rirMax: 3, rirMid: 2.5 });
+    expect(r.items[0]?.prescription).toMatchObject({ rirMin: 2, rirMax: 3 });
+  });
 });

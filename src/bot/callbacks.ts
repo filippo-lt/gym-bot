@@ -10,7 +10,15 @@ export type CallbackAction =
   | { t: "cl"; groupId: number; clean: boolean }
   | { t: "ug"; groupId: number }
   | { t: "ue"; key: string; index: number }
-  | { t: "md"; id: number };
+  | { t: "md"; id: number }
+  /** Undo of a direct readiness / bodyweight / class write: the ledger row it belongs to. */
+  | { t: "uw"; key: string; index: number }
+  /** /readiness: t = tired, o = ok, s = strong. */
+  | { t: "rd"; level: "t" | "o" | "s" }
+  /** /class toggles: `mask` is the selection after the tap (pull 1, push 2, legs 4); `save` = Save tapped. */
+  | { t: "cg"; mask: number; date: string; save: boolean }
+  /** HSPU advance proposal. */
+  | { t: "pr"; id: number; act: "ok" | "no" };
 
 export const CALLBACK_MAX_BYTES = 64;
 
@@ -26,6 +34,12 @@ export const cb = {
   /** `key` is the write_ledger source key, e.g. "u:123456" or "p:42". */
   undoEdit: (key: string, index: number) => `ue:${key}:${index}`,
   memory: (id: number) => `md:${id}`,
+  undoWrite: (key: string, index: number) => `uw:${key}:${index}`,
+  readiness: (level: "t" | "o" | "s") => `rd:${level}`,
+  /** The class Thursday (ISO date) rides along as YYYYMMDD, so a late Save lands on the card's own day. */
+  classMask: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}`,
+  classSave: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}:ok`,
+  proposal: (id: number, act: "ok" | "no") => `pr:${id}:${act}`,
   /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
   history: (exerciseId: number) => `hx:${exerciseId}`,
 };
@@ -73,6 +87,28 @@ export function parseCallback(data: string): CallbackAction | null {
       // ue:<key>:<idx>, and the key itself contains a colon ("u:123").
       const m = /^ue:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
       return m ? { t: "ue", key: m[1] as string, index: Number(m[2]) } : null;
+    }
+    case "rd":
+      return (a === "t" || a === "o" || a === "s") && parts.length === 2
+        ? { t: "rd", level: a }
+        : null;
+    case "cg": {
+      const mask = int(a);
+      const d = /^(\d{4})(\d{2})(\d{2})$/.exec(b ?? "");
+      if (mask === null || mask > 7 || !d) return null;
+      const date = `${d[1]}-${d[2]}-${d[3]}`;
+      if (parts.length === 3) return { t: "cg", mask, date, save: false };
+      return parts.length === 4 && parts[3] === "ok" ? { t: "cg", mask, date, save: true } : null;
+    }
+    case "pr": {
+      const id = int(a);
+      return id === null || parts.length !== 3 || (b !== "ok" && b !== "no")
+        ? null
+        : { t: "pr", id, act: b };
+    }
+    case "uw": {
+      const m = /^uw:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
+      return m ? { t: "uw", key: m[1] as string, index: Number(m[2]) } : null;
     }
     case "md": {
       const id = int(a);

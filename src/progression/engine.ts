@@ -74,6 +74,10 @@ function effectiveTarget(
       rirMax: target.rirMax ?? 4,
     };
   }
+  if (ready?.rirMid !== undefined) {
+    // YELLOW main lift: the displayed target moves with the load (RIR 2-3, mid 2.5).
+    return { ...target, rirMin: ready.rirMid - 0.5, rirMax: ready.rirMid + 0.5 };
+  }
   if (ready?.easy) {
     return {
       ...target,
@@ -141,12 +145,25 @@ function planBase(eff: ItemTarget, rir: [number, number], rirMid: number) {
   };
 }
 
+/** Break cut that only counts when the rounded load really went down (a bar-only load stays and gets no label). */
+function breakChecked(s: Suggestion, ex: ExerciseInfo, bw: number | null): Suggestion {
+  const cut = applyBreak(s, ex, bw);
+  const same =
+    (s.loadKg !== undefined && cut.loadKg !== undefined && cut.loadKg >= s.loadKg) ||
+    (s.loadKg === undefined &&
+      s.addedKg !== undefined &&
+      cut.addedKg !== undefined &&
+      cut.addedKg >= s.addedKg);
+  return same ? s : cut;
+}
+
 function suggestWeighted(
   ex: ExerciseInfo,
   eff: ItemTarget,
   ctx: Ctx,
   rirMid: number,
   hold: boolean,
+  noStep: boolean,
 ): Suggestion {
   const hist = ctx.input.history[ex.id] ?? [];
   const rir = rirRange(eff, ex, false);
@@ -163,7 +180,7 @@ function suggestWeighted(
       rirMid,
       labels: estimateLabel(e),
     };
-    if (brk) s = applyBreak(s, ex, ctx.bwKg);
+    if (brk) s = breakChecked(s, ex, ctx.bwKg);
     return s;
   }
 
@@ -171,7 +188,7 @@ function suggestWeighted(
   const latest = valid[0];
   const last = latest ? lastLoadOf(latest) : null;
   if (!latest || last == null) return askLoad(base);
-  const step = hold ? 0 : accessoryStep(valid, eff);
+  const step = hold || noStep ? 0 : accessoryStep(valid, eff);
   const loadKg = applyStep(last, step, ex);
   const bot = valid.some((s) => s.source === "bot");
   let s: Suggestion = {
@@ -180,7 +197,7 @@ function suggestWeighted(
     systemLoad: loadKg,
     labels: bot ? [] : ["estimate_check_first_set"],
   };
-  if (brk && !hold) s = applyBreak(s, ex, ctx.bwKg);
+  if (brk) s = breakChecked(s, ex, ctx.bwKg);
   return s;
 }
 
@@ -218,7 +235,7 @@ function suggestPullup(
       rirMid,
     };
     s.labels = [...estimateLabel(e), ...staleLabel];
-    if (brk && s.ask == null) s = applyBreak(s, ex, bw);
+    if (brk && s.ask == null) s = breakChecked(s, ex, bw);
     return s;
   }
 
@@ -292,6 +309,7 @@ export function planSession(input: SessionInput, opts: PlanOptions = {}): Adjust
     !item.isTest &&
     !item.modifiers.some((m) => HOLD_MODIFIERS.has(m) || m === "test") &&
     item.exerciseIds.some((id) => input.exercises[id]?.isMainLift === true);
+  // SPEC 5.6c: YELLOW drops Low items, but skill work (pull-up, HSPU, handstand) is cut last and never hidden here.
   const ready = applyReadiness(input.items, level, input.weekday, isMain);
   const shortMap = input.short
     ? applyShort(input.items)
@@ -390,7 +408,7 @@ export function planSession(input: SessionInput, opts: PlanOptions = {}): Adjust
         if (hidden || input.isTest) continue;
         const rir = rirRange(eff, ex, false);
         const rirMid = midFor(rdy, friReduced, rir, false);
-        const s = suggestWeighted(ex, eff, ctx, rirMid, hold && !ex.isMainLift);
+        const s = suggestWeighted(ex, eff, ctx, rirMid, hold && !ex.isMainLift, friReduced);
         suggestions[ex.id] = withLabels(s, itemLabels);
       } else if (ex.type === "skill_ladder") {
         const hist = input.history[ex.id] ?? [];

@@ -24,8 +24,9 @@ import {
   setLastSetRir,
   undoEdit,
   undoGroup,
+  undoWrite,
 } from "../logging/execute.js";
-import { groupSnapshot, lastBotGroup } from "../logging/groups.js";
+import { bandSeenElsewhere, groupSnapshot, lastBotGroup } from "../logging/groups.js";
 import { deactivateMemory, listMemory, normalizeAlias, saveAlias } from "../logging/memory.js";
 import {
   cancelPending,
@@ -55,11 +56,14 @@ import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
   BUDGET_REACHED,
+  bandQuestion,
+  bandSaved,
   cancelledText,
   clarifyCard,
   confirmCard,
   DIDNT_GET_IT,
   deleteQuestion,
+  directWriteSaved,
   type EchoView,
   EXPIRED,
   echoMessage,
@@ -293,6 +297,10 @@ export function createFlow(deps: FlowDeps): Flow {
         add(action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] });
       } else if (r.kind === "memory") {
         add(memorySaved(r.content, r.memoryId));
+      } else if (r.kind === "band") {
+        add(bandSaved(r.colour, r.kg));
+      } else if (r.kind === "readiness" || r.kind === "bodyweight" || r.kind === "class") {
+        add(directWriteSaved(r, sourceKey, i));
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -334,6 +342,34 @@ export function createFlow(deps: FlowDeps): Flow {
   }
 
   /**
+   * A band set whose colour has no kg yet: ask once per colour (the first saved log with it). Best effort; the answer
+   * ("red band 15 kg") is an ordinary chat message that stages set_band_kg.
+   */
+  async function askBandKg(ctx: Context, groupId: number, only?: Set<string>): Promise<void> {
+    try {
+      const snap = await groupSnapshot(db, groupId);
+      if (!snap) return;
+      const colours = [
+        ...new Set(
+          snap.entries
+            .filter(
+              (e) =>
+                e.band !== null && e.assistKg === null && (only === undefined || only.has(e.band)),
+            )
+            .map((e) => e.band as string),
+        ),
+      ];
+      for (const colour of colours) {
+        if (await bandSeenElsewhere(db, colour, groupId)) continue;
+        await send(ctx, bandQuestion(colour));
+        await remember(chatOf(ctx), `Asked how many kg the ${colour} band is.`);
+      }
+    } catch (error) {
+      console.error(`band question failed (${error instanceof Error ? error.name : "error"})`);
+    }
+  }
+
+  /**
    * Sends the echoes of a write and remembers each saved group's echo message id (best effort),
    * so a later edit can refresh it; an edit refreshes the echo of the group it changed.
    */
@@ -351,6 +387,20 @@ export function createFlow(deps: FlowDeps): Flow {
         } catch (error) {
           // A DB hiccup must not make the inbox retry and send the echoes again.
           console.error(`echo id not stored (${error instanceof Error ? error.name : "error"})`);
+        }
+      }
+      if (e.result.kind === "log") await askBandKg(ctx, e.result.groupId);
+      else if (e.result.kind === "edit") {
+        // An edit asks only for a colour it introduced (the log itself asked for the old one).
+        const a = actions[e.index];
+        if (a?.kind === "edit_group") {
+          const old = new Set(a.before.entries.map((x) => x.band));
+          const added = new Set(
+            a.after.entries
+              .map((x) => x.band)
+              .filter((b): b is string => b !== null && !old.has(b)),
+          );
+          if (added.size > 0) await askBandKg(ctx, e.result.groupId, added);
         }
       }
     }
@@ -759,6 +809,23 @@ export function createFlow(deps: FlowDeps): Flow {
           chatOf(ctx),
           `Edit undone, log is back to: ${describeSnapshot(undone.snapshot)}`,
         );
+        return;
+      }
+      case "uw": {
+        const undone = await undoWrite(db, a.key, a.index, now);
+        if (undone.status === "stale") {
+          await answer("Can't undo: it changed since.");
+          await remember(chatOf(ctx), "Undo refused: the value changed since; nothing changed.");
+          return;
+        }
+        if (undone.status === "none") {
+          await answer("Nothing to undo.");
+          await remember(chatOf(ctx), "Undo found nothing to undo.");
+          return;
+        }
+        await edit(ctx, esc(undone.text));
+        await answer("Undone.");
+        await remember(chatOf(ctx), undone.text);
         return;
       }
       case "md": {

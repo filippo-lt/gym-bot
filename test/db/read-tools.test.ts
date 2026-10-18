@@ -82,15 +82,17 @@ describe("backend.getExerciseHistory", () => {
       ...input,
     });
 
-  it("all time: newest first with a code-formatted line, no hack squat, and no suggestion yet", async () => {
+  it("all time: newest first with a code-formatted line, no hack squat, and the current e1RM", async () => {
     const r = await history({});
     const f = await facts(Promise.resolve(r));
     expect(f).toMatchObject({
       found: true,
       range_label: "all time",
       total_sessions: 2,
-      suggestion: "not available yet",
     });
+    expect(f).not.toHaveProperty("suggestion");
+    // The fixture sets have no RIR logged, so there is no valid set and no e1RM yet.
+    expect(f).toHaveProperty("current_e1rm", null);
     expect(f.sessions.map((s) => s.date)).toEqual(["2026-10-12", "2026-10-05"]);
     expect(f.sessions[0]?.line).toContain("1 × 5 · 55 kg");
     expect(r.fallbackHtml).toContain("<b>squat</b>");

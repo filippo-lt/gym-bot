@@ -66,6 +66,8 @@ They do NOT use e1RM. Look at the last non-deload session only (its sets and the
 It fires when the planned item was scheduled and NOT logged 2 or more times in a row (see the item's schedule list),
 or when no training at all was logged for 10 or more days (class days count as training).
 For pull-ups the 10% is taken from the total system load but removed from the added weight only, never below 0.
+After rounding (toward easier), if the load did NOT go down (for example it is already the bar only), there is no change and no `back_after_break` label.
+The cut also applies to accessories held at a last load (easy or deload items).
 
 **9. Friday rules** (by the item's tags and the heavy groups of Thursday's class):
 - heavy PULL: items tagged `row` are reduced to 2 sets x `reps_min` at RIR 3-4, or can be skipped (label `friday_reduced`)
@@ -73,17 +75,19 @@ For pull-ups the 10% is taken from the total system load but removed from the ad
 - heavy LEGS: items tagged `squat`: same. Items tagged `unilateral_leg` are only offered as skip (label `friday_offer_skip`, normal prescription)
 - Deload Friday and heavy: the matching items drop to 1 easy set or skip. Unilateral leg: skipped.
 - When the prescription changes, write the new sets / reps / RIR in your answer, and the load for those reps and that RIR.
-- Friday rules do not change which e1RM is used.
+- Main lifts (squat): recompute the load from the e1RM for 2 x `reps_min` at RIR 3-4 (RIR mid = 3.5). Friday rules do not change which e1RM is used.
+- Accessories (rows, incline DB bench, Bulgarian...): NO step up and NO step down. Hold the LAST VALID load (last non-deload session) at the new reps and RIR. The same hold applies to accessories reduced on a deload Friday.
 
 **10. Pull-up gate** (weighted pull-ups are allowed only when the gate is open)
 - Opens on a clean bodyweight set of 6 or more reps, or a check-in / test max of 6 or more.
 - Stays open. Closes only if a later bodyweight max test is below 6, or the e1RM implies less than 5 bodyweight reps in 2 sessions in a row.
-- Gate closed: use the plan's fallback shown on the item: bodyweight if the last bodyweight max is at least the stated number, otherwise assisted.
-  Labels `fallback_bw` / `fallback_assisted`. If the gate is closed and there is no max on record: start with one max-clean test set (`max_test_first`).
-- Bodyweight entries older than 14 days: label `bw_stale` and the bot also asks for today's weight (`ask: bodyweight`).
+- Gate closed: use the plan's fallback shown on the item: bodyweight 4 x 4-6 if the last bodyweight max is at least the stated number, otherwise assisted 4 x 6. Labels `fallback_bw` / `fallback_assisted`.
+- **Last bodyweight max**: a clean bodyweight set counts as a max only if it was logged at RIR 0 or 1 (near max) OR has 6 or more reps. Check-in / test maxes always count. Take the LATEST day that has such a max and use the highest value of that day.
+- No max on record at all: the session starts with one max-clean test set (`max_test_first`), then the fallback above.
 
 **11. Readiness**: a session is GREEN with no active signals. Signals expire: button and chat after 24 h, recovery score after 3 days.
 Heavy Thursday is NOT a readiness signal. If the level is GREEN the plan is used as written.
+If a level were YELLOW: main lifts show RIR 2-3 and the load is computed at RIR 2.5. (Not expected on these dates.)
 
 ## B. Equipment and bands
 
@@ -111,6 +115,7 @@ Heavy Thursday is NOT a readiness signal. If the level is GREEN the plan is used
 - Readiness signals on record (they expire, see A.11): none.
 - Latest bodyweight: **77.8 kg** on Fri 16 Oct (10 days before this session; stale means more than 14).
 - Last day with any training logged before this date (class days count): Fri 23 Oct (3 day(s) before).
+- Sets that count as a bodyweight max (clean, RIR 0-1 or 6+ reps; plus check-in maxes): Mon 12 Oct set 1: 6 reps, RIR not logged; Mon 12 Oct set 2: 6 reps, RIR not logged; Mon 12 Oct set 3: 6 reps, RIR not logged; Mon 12 Oct set 4: 6 reps, RIR not logged; Mon 12 Oct set 5: 6 reps, RIR 1; Mon 5 Oct set 4: 5 reps, RIR 1; Fri 9 Oct check-in max: 5 reps; Fri 16 Oct check-in max: 7 reps.
 - Pull-up gate events on record (oldest first, reps): clean bodyweight sets on Mon 28 Sep: 4, 4, 4, 4; clean bodyweight sets on Mon 5 Oct: 5, 5, 5, 5; check-in max on Fri 9 Oct: 5; clean bodyweight sets on Mon 12 Oct: 6, 6, 6, 6, 6; check-in max on Fri 16 Oct: 7; clean bodyweight sets on Mon 19 Oct: 3, 3.
 
 No load math, nothing to fill: Pull warm-up; Chest-supported row; Hanging leg raise / knee raise.
@@ -430,6 +435,7 @@ Your answer (also write it in expected.json):
 - Readiness signals on record (they expire, see A.11): button_tired at 2026-11-13T06:10:00+01:00; recovery_low at 2026-11-13T20:00:00+01:00.
 - Latest bodyweight: **79 kg** on Fri 13 Nov (10 days before this session; stale means more than 14).
 - Last day with any training logged before this date (class days count): Fri 20 Nov (3 day(s) before).
+- Sets that count as a bodyweight max (clean, RIR 0-1 or 6+ reps; plus check-in maxes): Mon 12 Oct set 1: 6 reps, RIR not logged; Mon 12 Oct set 2: 6 reps, RIR not logged; Mon 12 Oct set 3: 6 reps, RIR not logged; Mon 12 Oct set 4: 6 reps, RIR not logged; Mon 12 Oct set 5: 6 reps, RIR 1; Mon 5 Oct set 4: 5 reps, RIR 1; Fri 9 Oct check-in max: 5 reps; Fri 16 Oct check-in max: 7 reps.
 - Pull-up gate events on record (oldest first, reps): clean bodyweight sets on Mon 28 Sep: 4, 4, 4, 4; clean bodyweight sets on Mon 5 Oct: 5, 5, 5, 5; check-in max on Fri 9 Oct: 5; clean bodyweight sets on Mon 12 Oct: 6, 6, 6, 6, 6; check-in max on Fri 16 Oct: 7; clean bodyweight sets on Mon 19 Oct: 3, 3.
 
 No load math, nothing to fill: Pull warm-up; Chest-supported row; Hanging leg raise / knee raise.

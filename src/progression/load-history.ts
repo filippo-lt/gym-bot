@@ -2,7 +2,7 @@
  * DB -> engine input (M5). Every read is sequential on purpose: the session pooler hangs on pipelined queries.
  * Nothing here writes. Dates are Rome ISO days; history is strictly before the session date.
  */
-import { and, asc, desc, eq, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { APP_TIMEZONE } from "../config/constants.js";
 import {
@@ -22,8 +22,8 @@ import {
   planVersions,
   planWeeks,
 } from "../db/schema/plan.js";
-import { readinessLogs, suggestions } from "../db/schema/progression.js";
-import { weekdayOf } from "../domain/calendar.js";
+import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
+import { trainingDate, weekdayOf } from "../domain/calendar.js";
 import type { Q } from "../logging/db.js";
 import type { Modifier, Priority, Tag, Weekday } from "../plan-import/types.js";
 import { gateEventsFrom } from "./pullup.js";
@@ -217,6 +217,30 @@ export async function loadHspuLadder(q: Q): Promise<HspuLadderStep[]> {
 // ---------------------------------------------------------------------------
 
 /**
+ * The step of the newest accepted "advance HSPU" proposal, as long as the exercise has no log after it (SPEC 5.2: the
+ * step is user state taken from the last log; an accepted proposal stands in until a newer log exists).
+ */
+export async function acceptedHspuStep(
+  q: Q,
+  exerciseId: number,
+): Promise<{ stepOrder: number; decidedAt: Date } | null> {
+  const [p] = await q
+    .select()
+    .from(proposals)
+    .where(and(eq(proposals.kind, "hspu_advance"), eq(proposals.status, "accepted")))
+    .orderBy(desc(proposals.decidedAt), desc(proposals.id))
+    .limit(1);
+  const to = (p?.payload as { toStepOrder?: unknown } | undefined)?.toStepOrder;
+  if (!p?.decidedAt || typeof to !== "number") return null;
+  const [newer] = await q
+    .select({ id: logGroups.id })
+    .from(logGroups)
+    .where(and(eq(logGroups.exerciseId, exerciseId), gt(logGroups.performedAt, p.decidedAt)))
+    .limit(1);
+  return newer ? null : { stepOrder: to, decidedAt: p.decidedAt };
+}
+
+/**
  * Session records per exercise, newest first, log groups of one day merged in set order.
  * `beforeDate` is exclusive (null = all history). Band sets take their kg from equipment.bands (unmapped -> null).
  */
@@ -324,6 +348,33 @@ export async function loadSessionRecs(
   }
   for (const list of out.values())
     list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  // An accepted HSPU advance stands in as a set-less session at the new step until a newer log exists.
+  for (const id of exerciseIds) {
+    if (infos[id]?.type !== "skill_ladder") continue;
+    const accepted = await acceptedHspuStep(q, id);
+    if (!accepted) continue;
+    const date = trainingDate(accepted.decidedAt);
+    if (beforeDate && date > beforeDate) continue;
+    const list = out.get(id) ?? [];
+    list.unshift({
+      date,
+      exerciseId: id,
+      plannedItemIds: [],
+      source: "bot",
+      bwKg: null,
+      week: weekFor(env, date)?.week ?? null,
+      isDeload: false,
+      isTest: false,
+      readiness: null,
+      perSetUnknown: false,
+      hspuStepOrder: accepted.stepOrder,
+      padHeight: null,
+      suggestion: null,
+      sets: [],
+    });
+    out.set(id, list);
+  }
   return out;
 }
 

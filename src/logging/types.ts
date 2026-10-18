@@ -24,7 +24,7 @@ export const setInputSchema = z.strictObject({
   added_kg: kg.optional(),
   /** Pull-up type: assistance in kg. */
   assist_kg: kg.optional(),
-  /** Band colour as said; no kg mapping exists yet, so it is kept as a note. */
+  /** Band colour as said ("red"). Code maps it to kg through equipment.bands; unmapped = no load math. */
   band: z.string().min(1).max(30).optional(),
   duration_s: z.number().int().min(0).max(36_000).optional(),
   distance_m: z.number().min(0).max(100_000).optional(),
@@ -86,6 +86,32 @@ export type EditLastInput = z.infer<typeof editLastInputSchema>;
 
 export const undoLastInputSchema = z.strictObject({});
 export type UndoLastInput = z.infer<typeof undoLastInputSchema>;
+
+export const READINESS_SIGNALS = ["bad_sleep", "sore", "exhausted", "good"] as const;
+export const logReadinessInputSchema = z.strictObject({
+  /** What the user said about today. "good" only when they explicitly say they feel great (it cancels the day's chat signals). */
+  signal: z.enum(READINESS_SIGNALS),
+});
+export type LogReadinessInput = z.infer<typeof logReadinessInputSchema>;
+
+export const logBodyweightInputSchema = z.strictObject({
+  kg: z.number().min(20).max(400),
+});
+export type LogBodyweightInput = z.infer<typeof logBodyweightInputSchema>;
+
+export const HEAVY_GROUP_VALUES = ["pull", "push", "legs"] as const;
+export const logClassInputSchema = z.strictObject({
+  /** Groups the Thursday class loaded heavily; empty = not heavy. */
+  heavy_groups: z.array(z.enum(HEAVY_GROUP_VALUES)).max(3),
+});
+export type LogClassInput = z.infer<typeof logClassInputSchema>;
+
+export const setBandKgInputSchema = z.strictObject({
+  /** Band colour as said ("red"). */
+  colour: z.string().trim().min(1).max(30),
+  kg: z.number().min(0).max(200),
+});
+export type SetBandKgInput = z.infer<typeof setBandKgInputSchema>;
 
 /** Read-only day names: also yesterday/tomorrow, which log_sets does not accept. */
 export const READ_DAY_VALUES = [
@@ -166,6 +192,8 @@ export interface EquipmentInfo {
   baseKg: number | null;
   stepKg: number | null;
   discreteValues: number[] | null;
+  /** Band colour -> kg of assistance (pull-up equipment). */
+  bands?: Record<string, number>;
 }
 
 export interface ResolvedExercise {
@@ -194,6 +222,8 @@ export interface ResolvedEntry {
   rirPlus: boolean;
   clean: boolean | null;
   note: string | null;
+  /** Band colour; assistKg is null while the colour has no kg mapping. */
+  band: string | null;
 }
 
 export interface PlannedItemInfo {
@@ -239,6 +269,8 @@ export interface ResolvedLog {
   guessedFields: string[];
   needsConfirmation: boolean;
   lastSession: LastSessionRef | null;
+  /** System load of the stored suggestion for this item/option (SPEC 5.6d far-off reference); null = none. */
+  suggestedSystemLoad?: number | null;
 }
 
 export interface Candidate {
@@ -280,10 +312,29 @@ export type StagedAction =
       lastSession: LastSessionRef | null;
       /** The planned item's reps_max: the far-off reps fallback when there is no last session. */
       plannedRepsMax?: number | null;
+      /** System load of the suggestion the group was logged against, if any. */
+      suggestedSystemLoad?: number | null;
     }
   | { kind: "delete_group"; snapshot: GroupSnapshot }
   /** A lasting limitation/preference. Always goes through a confirm card (SPEC 5.6e). */
-  | { kind: "save_memory"; input: SaveMemoryInput };
+  | { kind: "save_memory"; input: SaveMemoryInput }
+  /** Band colour -> kg: it changes equipment, so it always goes through a confirm card. */
+  | {
+      kind: "set_band_kg";
+      input: SetBandKgInput;
+      /** Equipment the mapping is written to (the pull-up equipment). */
+      equipmentSlug: string;
+      previousKg: number | null;
+    }
+  | {
+      kind: "log_readiness";
+      input: LogReadinessInput;
+      date: string;
+      /** /readiness tap (t tired, o ok, s strong): `input.signal` is then only the nearest chat word. */
+      button?: "t" | "o" | "s";
+    }
+  | { kind: "log_bodyweight"; input: LogBodyweightInput; date: string }
+  | { kind: "log_class"; input: LogClassInput; date: string };
 
 /** What a staging call returns to the AI loop. `preview` is shown to the model as the tool result. */
 export type StageResult =
@@ -307,6 +358,10 @@ export interface LoggingBackend {
   getExerciseHistory(input: GetExerciseHistoryInput): Promise<ReadResult>;
   getAlternatives(input: GetAlternativesInput): Promise<ReadResult>;
   stageSaveMemory(input: SaveMemoryInput): Promise<StageResult>;
+  stageReadiness(input: LogReadinessInput): Promise<StageResult>;
+  stageBodyweight(input: LogBodyweightInput): Promise<StageResult>;
+  stageClass(input: LogClassInput): Promise<StageResult>;
+  stageBandKg(input: SetBandKgInput): Promise<StageResult>;
   stageLogSets(input: LogSetsInput): Promise<StageResult>;
   stageEdit(input: EditLastInput): Promise<StageResult>;
   stageUndoLast(input: UndoLastInput): Promise<StageResult>;
@@ -327,6 +382,8 @@ export type ConfirmReason =
   | "delete"
   /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
   | "memory"
+  /** Band kg changes the equipment table: always a tap. */
+  | "equipment"
   /** An unsaved request is open: new actions replace it through a card, never a direct write. */
   | "replaces_pending"
   /** A tool call failed while others were staged: part of the message was not understood. */
@@ -379,7 +436,24 @@ export type LedgerResult =
       afterGroup?: BeforeGroup;
     }
   | { kind: "delete"; snapshot: GroupSnapshot }
-  | { kind: "memory"; memoryId: number; memoryKind: "limitation" | "preference"; content: string };
+  | { kind: "memory"; memoryId: number; memoryKind: "limitation" | "preference"; content: string }
+  | { kind: "band"; colour: string; kg: number; previousKg: number | null; equipmentSlug: string }
+  | {
+      kind: "readiness";
+      id: number;
+      date: string;
+      /** A chat word, or the /readiness button that was tapped. */
+      signal: LogReadinessInput["signal"] | "tired" | "ok" | "strong";
+    }
+  | { kind: "bodyweight"; id: number; date: string; kg: number; previousKg: number | null }
+  | {
+      kind: "class";
+      id: number;
+      date: string;
+      heavyGroups: string[];
+      /** null = there was no row before. */
+      previousGroups: string[] | null;
+    };
 
 // ---------------------------------------------------------------------------
 // AI layer

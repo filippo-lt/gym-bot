@@ -145,6 +145,10 @@ p("or when no training at all was logged for 10 or more days (class days count a
 p(
   "For pull-ups the 10% is taken from the total system load but removed from the added weight only, never below 0.",
 );
+p(
+  "After rounding (toward easier), if the load did NOT go down (for example it is already the bar only), there is no change and no `back_after_break` label.",
+);
+p("The cut also applies to accessories held at a last load (easy or deload items).");
 p();
 p("**9. Friday rules** (by the item's tags and the heavy groups of Thursday's class):");
 p(
@@ -160,7 +164,12 @@ p(
 p(
   "- When the prescription changes, write the new sets / reps / RIR in your answer, and the load for those reps and that RIR.",
 );
-p("- Friday rules do not change which e1RM is used.");
+p(
+  "- Main lifts (squat): recompute the load from the e1RM for 2 x `reps_min` at RIR 3-4 (RIR mid = 3.5). Friday rules do not change which e1RM is used.",
+);
+p(
+  "- Accessories (rows, incline DB bench, Bulgarian...): NO step up and NO step down. Hold the LAST VALID load (last non-deload session) at the new reps and RIR. The same hold applies to accessories reduced on a deload Friday.",
+);
 p();
 p("**10. Pull-up gate** (weighted pull-ups are allowed only when the gate is open)");
 p("- Opens on a clean bodyweight set of 6 or more reps, or a check-in / test max of 6 or more.");
@@ -168,19 +177,22 @@ p(
   "- Stays open. Closes only if a later bodyweight max test is below 6, or the e1RM implies less than 5 bodyweight reps in 2 sessions in a row.",
 );
 p(
-  "- Gate closed: use the plan's fallback shown on the item: bodyweight if the last bodyweight max is at least the stated number, otherwise assisted.",
+  "- Gate closed: use the plan's fallback shown on the item: bodyweight 4 x 4-6 if the last bodyweight max is at least the stated number, otherwise assisted 4 x 6. Labels `fallback_bw` / `fallback_assisted`.",
 );
 p(
-  "  Labels `fallback_bw` / `fallback_assisted`. If the gate is closed and there is no max on record: start with one max-clean test set (`max_test_first`).",
+  "- **Last bodyweight max**: a clean bodyweight set counts as a max only if it was logged at RIR 0 or 1 (near max) OR has 6 or more reps. Check-in / test maxes always count. Take the LATEST day that has such a max and use the highest value of that day.",
 );
 p(
-  "- Bodyweight entries older than 14 days: label `bw_stale` and the bot also asks for today's weight (`ask: bodyweight`).",
+  "- No max on record at all: the session starts with one max-clean test set (`max_test_first`), then the fallback above.",
 );
 p();
 p(
   "**11. Readiness**: a session is GREEN with no active signals. Signals expire: button and chat after 24 h, recovery score after 3 days.",
 );
 p("Heavy Thursday is NOT a readiness signal. If the level is GREEN the plan is used as written.");
+p(
+  "If a level were YELLOW: main lifts show RIR 2-3 and the load is computed at RIR 2.5. (Not expected on these dates.)",
+);
 p();
 
 // ---------------------------------------------------------------------------
@@ -289,6 +301,26 @@ for (const date of HAND_SIM_DATES) {
       const k = `${e.kind === "test_max" ? "check-in max" : "clean bodyweight sets"} on ${nice(e.date)}`;
       byDay.set(k, [...(byDay.get(k) ?? []), String(e.reps)]);
     }
+    const maxes: string[] = [];
+    for (const rec of input.history[exerciseId("pull_up")] ?? []) {
+      rec.sets.forEach((st, i) => {
+        const bw = (st.addedKg ?? 0) === 0 && (st.assistKg ?? 0) === 0;
+        if (!bw || st.clean !== true || st.reps === null) return;
+        if (st.reps >= 6 || (st.rir !== null && st.rir <= 1)) {
+          maxes.push(
+            `${nice(rec.date)} set ${i + 1}: ${st.reps} reps, RIR ${st.rir === null ? "not logged" : st.rir}`,
+          );
+        }
+      });
+    }
+    for (const e of input.gateEvents) {
+      if (e.kind === "test_max") maxes.push(`${nice(e.date)} check-in max: ${e.reps} reps`);
+    }
+    p(
+      `- Sets that count as a bodyweight max (clean, RIR 0-1 or 6+ reps; plus check-in maxes): ${
+        maxes.length ? maxes.join("; ") : "none"
+      }.`,
+    );
     p(
       `- Pull-up gate events on record (oldest first, reps): ${
         byDay.size ? [...byDay].map(([k, v]) => `${k}: ${v.join(", ")}`).join("; ") : "none"

@@ -105,10 +105,25 @@ describe("gate state", () => {
   it("lastBwMax is the max of the latest day", () => {
     const g = gateState([
       { kind: "clean_bw_set", date: "2026-10-05", reps: 7 },
-      { kind: "clean_bw_set", date: "2026-10-12", reps: 3 },
-      { kind: "clean_bw_set", date: "2026-10-12", reps: 4 },
+      { kind: "clean_bw_set", date: "2026-10-12", reps: 3, rir: 1 },
+      { kind: "clean_bw_set", date: "2026-10-12", reps: 4, rir: 0 },
     ]);
     expect(g.lastBwMax).toBe(4);
+  });
+  it("a light working set is not a max", () => {
+    const g = gateState([
+      { kind: "test_max", date: "2026-10-01", reps: 5 },
+      { kind: "clean_bw_set", date: "2026-10-08", reps: 3, rir: 3 },
+      { kind: "clean_bw_set", date: "2026-10-08", reps: 3 },
+    ]);
+    expect(g.lastBwMax).toBe(5);
+    expect(gateState([{ kind: "clean_bw_set", date: "2026-10-08", reps: 3 }]).lastBwMax).toBeNull();
+  });
+  it("a max-test set at RIR 1 stops the max-test-first request", () => {
+    const none = gateState([{ kind: "clean_bw_set", date: "2026-10-08", reps: 3, rir: 2 }]);
+    expect(none.lastBwMax).toBeNull();
+    const done = gateState([{ kind: "clean_bw_set", date: "2026-10-08", reps: 4, rir: 1 }]);
+    expect(done.lastBwMax).toBe(4);
   });
 });
 

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { HistoryImport, HistoryIssue } from "../history-import/types.js";
 import type { Equipment } from "../plan-import/types.js";
+import { refreshUserState } from "../progression/store.js";
 import * as schema from "./schema/index.js";
 import type { Db } from "./seed-plan.js";
 
@@ -336,6 +337,8 @@ export async function importHistory(
         clashes,
         dryRun: opts.dryRun === true,
       };
+      // Derived state (pull-up gate, HSPU step) is rebuilt from the fresh history (SPEC 5.2).
+      await refreshUserState(tx);
       if (opts.dryRun) throw new DryRunRollback(summary);
       return summary;
     });

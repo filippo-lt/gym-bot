@@ -52,7 +52,9 @@ export function gateState(events: GateEvent[]): GateState {
       }
       continue;
     }
-    noteMax(ev.date, ev.reps);
+    // A working set is a "max" only when near-max (RIR <= 1 logged) or >= 6 reps; test maxes always count.
+    if (ev.kind === "test_max" || ev.reps >= OPEN_AT || (ev.rir != null && ev.rir <= 1))
+      noteMax(ev.date, ev.reps);
     if (ev.reps >= OPEN_AT) {
       if (!open) {
         open = true;
@@ -99,7 +101,12 @@ export function gateEventsFrom(
   for (const s of sessions) {
     for (const set of s.sets) {
       if (isCleanBw(set)) {
-        events.push({ kind: "clean_bw_set", date: s.date, reps: set.reps as number });
+        events.push({
+          kind: "clean_bw_set",
+          date: s.date,
+          reps: set.reps as number,
+          rir: set.rir,
+        });
       }
     }
     // Session estimate: deload, test, RED, unknown-split imports and missing bw are not valid.

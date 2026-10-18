@@ -57,8 +57,32 @@ export const LADDER = ["hspu_negative", "partial_rom_wall_hspu", "full_wall_hspu
   }),
 );
 
-export async function resetAndSeed(db: TestDb, sql: postgres.Sql): Promise<void> {
-  await sql`truncate table write_ledger, pending_actions, memory_items, conversation_messages, usage_logs, log_entries, log_groups, session_items, class_logs, weekly_metrics, bodyweight_logs, planned_item_options, planned_items, plan_weeks, plan_versions, plans, hspu_ladder, exercises, equipment restart identity cascade`;
+/** A Friday squat item (tag `squat`, 3 x 4) in each plan week: the Thursday-class rules need it. */
+function fridaySquat(week: number): ParsedItem {
+  const base = planFixture().plan.items.find((i) => i.key === "w01-mon-04-0") as ParsedItem;
+  const pad = `w0${week}`;
+  return {
+    ...base,
+    key: `${pad}-fri-01-0`,
+    week,
+    weekday: "fri",
+    order: 1,
+    plan_name: "Squat Friday",
+    exercise_options: ["squat"],
+    sets_min: 3,
+    sets_max: 3,
+    reps_min: 4,
+    reps_max: 4,
+    tags: ["squat"],
+  };
+}
+
+export async function resetAndSeed(
+  db: TestDb,
+  sql: postgres.Sql,
+  opts: { fridaySquat?: boolean } = {},
+): Promise<void> {
+  await sql`truncate table suggestions, readiness_logs, user_state, proposals, write_ledger, pending_actions, memory_items, conversation_messages, usage_logs, log_entries, log_groups, session_items, class_logs, weekly_metrics, bodyweight_logs, planned_item_options, planned_items, plan_weeks, plan_versions, plans, hspu_ladder, exercises, equipment restart identity cascade`;
   const resolved = planFixture();
   resolved.plan.exercises.push(...extraExercises);
   resolved.plan.hspu_ladder = LADDER;
@@ -80,6 +104,7 @@ export async function resetAndSeed(db: TestDb, sql: postgres.Sql): Promise<void>
       reps_max: 3,
     });
     void tue;
+    if (opts.fridaySquat) resolved.plan.items.push(fridaySquat(week));
   }
   await seedPlan(db, resolved);
 }

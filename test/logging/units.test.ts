@@ -81,9 +81,34 @@ describe("buildEntries", () => {
     expect(viaLoad?.addedKg).toBe(7.5);
   });
 
-  it("keeps a band as a note with no kg", () => {
+  it("stores an unmapped band as a colour with no assistance kg", () => {
+    const [e] = buildEntries(pullUp, [{ reps: 5, band: "Red band" }]);
+    expect(e).toMatchObject({ band: "red", note: null, addedKg: 0, assistKg: null });
+  });
+
+  it("takes the assistance kg of a mapped band from the equipment", () => {
+    const mapped: UnitExercise = {
+      ...pullUp,
+      equipment: {
+        slug: "pullup",
+        baseKg: null,
+        stepKg: 2.5,
+        discreteValues: null,
+        bands: { red: 15 },
+      },
+    };
+    const [e] = buildEntries(mapped, [{ reps: 5, band: "red" }]);
+    expect(e).toMatchObject({ band: "red", assistKg: 15 });
+    // an explicit assist_kg wins over the mapping
+    const [explicit] = buildEntries(mapped, [{ reps: 5, band: "red", assist_kg: 20 }]);
+    expect(explicit?.assistKg).toBe(20);
+  });
+
+  it("has no system load for a band set without a kg mapping", () => {
     const [e] = buildEntries(pullUp, [{ reps: 5, band: "red" }]);
-    expect(e).toMatchObject({ note: "band: red", addedKg: 0, assistKg: 0 });
+    expect(e && systemLoad(e, pullUp, 80)).toBeNull();
+    const [plain] = buildEntries(pullUp, [{ reps: 5, assist_kg: 20 }]);
+    expect(plain && systemLoad(plain, pullUp, 80)).toBe(60);
   });
 
   it("puts the group RIR on the last set only", () => {
