@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9 PR open; M7 in a parallel branch)._
+_Last updated: 18 Oct 2026 (M8 and M9 deployed via #15; M6, M8 and M9 live tests pending; M7 in a parallel branch)._
 
 ## Milestones (SPEC §8)
 
@@ -17,8 +17,8 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | deployed 18 Oct, live test pending | #12 |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
-| 8 | Morning message + charts | merged to dev, not deployed | #13 |
-| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | PR open, not merged | #14 |
+| 8 | Morning message + charts | deployed 18 Oct, live test pending | #13, #15 |
+| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | deployed 18 Oct, live test pending | #14, #15 |
 
 ## What happened, in short
 
@@ -46,14 +46,15 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
   - migration 0006 (`job_runs`, `pending_actions.input_source`/`transcript`) applied to production; STT env vars set in Vercel; health and tick OK after deploy
   - decisions: voice notes are mixed Italian/English, so no language is forced; every voice write needs a tap, even a single clear log; a ✏️ correction keeps the voice origin; on the photo card "Not heavy" saves in one tap; a photo without a caption never starts with groups ticked; set counts show only what is written ("6 sets", "6+ sets", or none); a heavy-only report keeps the stored moves and photo, a report with moves replaces them
   - design and plan: `docs/superpowers/specs/2026-10-18-m6-voice-photo-design.md`, `docs/superpowers/plans/2026-10-18-m6-voice-photo.md`
-- **M8 (#13, merged to dev 18 Oct, not deployed):**
+- **M8 (#13, deployed 18 Oct via #15):**
   - morning job: Mon–Fri 06:00–10:00 Rome, the exact `/today` text with 😴 / 🙂 / 💪 buttons; a tap re-freezes today until the first log and edits the message in place; Friday asks about Thursday first and re-sends the session after Save; "plan finished" once on Mon 21 Dec; quiet at weekends, before/after the plan and once something is logged
   - charts: `/chart <exercise>` (e1RM per session; most reps per set; pull-ups both; HSPU per step; holds in seconds), `/chart volume` (hard sets per week per muscle group), `/chart` buttons, and the `render_chart` chat tool (image after the reply, one per message)
   - renderer: Vega-Lite → SVG → PNG with `@resvg/resvg-js` and a bundled Inter font; no native build, no hosted chart service
   - no migration, no new env vars
   - decisions: the user left the design calls to Claude; an independent agent then answered the open questions and its answers were adopted (e1RM only for load, most reps only, timed holds out of volume). `/done`, `/checkin`, the Friday 20:00 check-in and the Sunday summary are NOT in M8 (proposed as their own milestone)
   - design and plan: `docs/superpowers/specs/2026-10-18-m8-morning-charts-design.md`, `docs/superpowers/plans/2026-10-18-m8-morning-charts.md`
-- **M9 (#14, PR open, 18 Oct):**
+- **M9 (#14, deployed 18 Oct via #15):**
+  - after deploy: health OK; `pnpm telegram:setup` run (webhook OK, menu now has `/chart`, `/usage`, `/export`); a manual tick inside the Sunday window sent the first weekly backup
   - backup: `/export` and a Sunday 18:00 job send a summary, the JSON backup (restore source; gzipped over 10 MB, refused over 45 MB) and a CSV zip (one file per table). `pnpm backup` writes the same files locally. The table list comes from the Postgres catalog, so M7's new tables are covered with no code change; only `inbox` and `chat_lease` are left out
   - restore: `pnpm backup:restore <file> [--dry-run] [--allow-remote]` into an empty, migrated database named by `RESTORE_DATABASE_URL` (no fallback). Refuses a non-empty target, a migration or table mismatch, a damaged file. Original ids, `write_ledger` and sequences are kept, so old taps and retries still write nothing twice. Runbook in `docs/SETUP.md`
   - failure messages: each step says what failed (Claude timeout / overloaded / rate limit / key rejected, Groq or OpenAI transcription, Telegram download, photo too large, database). Inbox retries tell the user on the first failure ("I'll retry automatically, so don't send it again") and give the reason after the third
@@ -77,13 +78,12 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 merged to dev. M9
 - Decide what to do with the untracked `.github/workflows/automerge.yml` (it auto-merges every PR; nobody in the sessions created it; it has never been committed). The standing rule is that only the user merges.
 - **Cutover:** pick a training day, run `pnpm history:import --dry-run`, then `pnpm history:import`, then stop using the old tool.
 
-- **M8 after merge:** run `pnpm telegram:setup https://gym-bot-xi.vercel.app` once to register `/chart` in the command menu. Then the M8 live test (below).
 - **M8 live test (from the phone, after deploy):**
   - `/chart squat` → a PNG with readable labels (if the labels are missing, the font didn't reach the Vercel bundle); `/chart pull-up` → two panels; `/chart volume` → stacked bars; `/chart` → buttons
   - "how is my bench going?" → a short reply, then the chart
   - the next weekday at 06:00 → the morning message; tap 😴 → the same message updates in place with "Noted: 😴"
   - Friday 06:00 with Thursday not reported → the class card first, then the session; Save → the session again with the Friday changes
-- **M9 after merge:** run `pnpm telegram:setup https://gym-bot-xi.vercel.app` once to register `/usage` and `/export`. Optionally rehearse a restore locally (`docs/SETUP.md`, "Restore from a backup"); never against production without an explicit OK.
+- **M9 (optional):** rehearse a restore locally (`docs/SETUP.md`, "Restore from a backup"), using the backup the bot sent on 18 Oct; never against production without an explicit OK.
 - **M9 demo (from the phone, after deploy):**
   - `/usage` → today's and this month's AI tokens against the caps, and today's voice minutes
   - `/export` → "Preparing your backup…", a summary with row counts, then `gymbot-backup-<date>.json` and `gymbot-backup-<date>-csv.zip`; open the zip in Files and a CSV in Numbers
