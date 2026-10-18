@@ -417,14 +417,15 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
   return unique(out);
 }
 
-function actionLine(a: StagedAction): string {
+/** Under a "Remove this?" header a removal needs no "Remove" of its own. */
+function actionLine(a: StagedAction, underRemoveHeader = false): string {
   switch (a.kind) {
     case "log_sets":
       return lineText(viewFromResolved(a.resolved));
     case "edit_group":
       return `Change ${editLine(a)}`;
     case "delete_group":
-      return `Remove ${plainLineText(viewFromSnapshot(a.snapshot))}`;
+      return `${underRemoveHeader ? "" : "Remove "}${plainLineText(viewFromSnapshot(a.snapshot))}`;
     case "clarify_exercise":
       return `Unclear exercise "${esc(a.said)}"`;
   }
@@ -441,6 +442,14 @@ export function cancelledText(actions: StagedAction[]): string {
   return dropped.length
     ? `Cancelled, nothing saved: ${esc(summarize(dropped))}`
     : "Cancelled, nothing saved.";
+}
+
+/** The card's final text once its request expired unanswered. */
+export function expiredText(actions: StagedAction[]): string {
+  const dropped = actions.filter((a) => a.kind !== "clarify_exercise");
+  return dropped.length
+    ? `Expired, nothing saved: ${esc(summarize(dropped))}`
+    : "Expired, nothing saved.";
 }
 
 /** The old card's text once a newer request replaced it. */
@@ -472,7 +481,7 @@ export function confirmCard(args: {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }
   lines.push(isDelete ? "Remove this?" : "Save this?");
-  for (const a of args.actions) lines.push(`• ${actionLine(a)}`);
+  for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete)}`);
   const why = reasonPhrases(args.actions, args.reasons);
   if (why.length) lines.push("", `Why I'm asking: ${esc(why.join("; "))}`);
   const keyboard: Button[] = [{ text: "✅", data: cb.pending(args.id, "ok") }];
@@ -483,6 +492,8 @@ export function confirmCard(args: {
 
 export function clarifyCard(args: {
   id: number;
+  /** Position of the clarify action in the request, carried by its buttons. */
+  actionIndex: number;
   said: string;
   candidates: Candidate[];
   replacedSummary?: string | null;
@@ -499,7 +510,7 @@ export function clarifyCard(args: {
   );
   if (args.partlyUnderstood) lines.push("Part of your message couldn't be saved.");
   const keyboard: Keyboard = args.candidates.map((c, i) => [
-    { text: c.name, data: cb.exercise(args.id, i) },
+    { text: c.name, data: cb.exercise(args.id, i, args.actionIndex) },
   ]);
   keyboard.push([{ text: "❌", data: cb.pending(args.id, "no") }]);
   return { text: lines.join("\n"), keyboard };

@@ -347,6 +347,7 @@ describe("cards", () => {
   it("clarify message", () => {
     const m = clarifyCard({
       id: 8,
+      actionIndex: 0,
       said: "fp",
       candidates: [
         { slug: "face_pull", name: "Face pull" },

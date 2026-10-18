@@ -15,7 +15,9 @@ import { appendMessage } from "../logging/conversation.js";
 import { describeSnapshot } from "../logging/describe.js";
 import {
   executeActions,
+  findEchoMessage,
   ledgerResults,
+  recordEchoMessage,
   setGroupClean,
   setLastSetRir,
   undoEdit,
@@ -29,6 +31,7 @@ import {
   getOpenPending,
   getPending,
   getPendingBySourceUpdate,
+  getReplacedPredecessor,
   markAwaitingEdit,
   type Pending,
   type PendingKind,
@@ -59,6 +62,7 @@ import {
   EXPIRED,
   echoMessage,
   editEchoMessage,
+  expiredText,
   type Keyboard,
   type Message,
   memoryList,
@@ -95,7 +99,6 @@ export interface Flow {
 
 const PARTLY = "partly_understood";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
-const CLARIFIED = "clarified:";
 const HTML = { parse_mode: "HTML" as const };
 
 function markup(kb: Keyboard): InlineKeyboard {
@@ -259,28 +262,69 @@ export function createFlow(deps: FlowDeps): Flow {
     };
   }
 
-  /** One message per saved group (or edit, or delete). */
-  async function echoes(
+  /** One message per saved group (or edit, or delete), with the result it belongs to. */
+  async function echoesIndexed(
     sourceKey: string,
     actions: StagedAction[],
     results: LedgerResult[],
-  ): Promise<Message[]> {
-    const out: Message[] = [];
+  ): Promise<{ message: Message; index: number; result: LedgerResult }[]> {
+    const out: { message: Message; index: number; result: LedgerResult }[] = [];
     for (const [i, r] of results.entries()) {
       const a = actions[i];
+      const add = (message: Message) => out.push({ message, index: i, result: r });
       if (r.kind === "log") {
         const view = await loadEchoView(r.groupId);
-        if (view) out.push(echoMessage(view));
+        if (view) add(echoMessage(view));
       } else if (r.kind === "edit") {
         const action = a?.kind === "edit_group" ? a : await rebuildEditAction(r);
-        out.push(
-          action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] },
-        );
+        add(action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] });
       } else {
-        out.push({ text: removedText(r.snapshot), keyboard: [] });
+        add({ text: removedText(r.snapshot), keyboard: [] });
       }
     }
     return out;
+  }
+
+  /**
+   * Best effort: an edited group's original echo shows the new values (its Undo button stays).
+   * Only an echo recorded for that very group is touched; Telegram errors don't matter.
+   */
+  async function refreshEcho(ctx: Context, groupId: number): Promise<void> {
+    try {
+      const chatId = chatOf(ctx);
+      const messageId = await findEchoMessage(db, groupId);
+      if (chatId === undefined || messageId === null) return;
+      const view = await loadEchoView(groupId);
+      if (!view) return;
+      const m = echoMessage(view);
+      await ctx.api.editMessageText(chatId, messageId, m.text, opts(m));
+    } catch {
+      // message too old, deleted, not modified...
+    }
+  }
+
+  /**
+   * Sends the echoes of a write and remembers each saved group's echo message id (best effort),
+   * so a later edit can refresh it; an edit refreshes the echo of the group it changed.
+   */
+  async function sendEchoes(
+    ctx: Context,
+    sourceKey: string,
+    actions: StagedAction[],
+    results: LedgerResult[],
+  ): Promise<void> {
+    for (const e of await echoesIndexed(sourceKey, actions, results)) {
+      const id = await send(ctx, e.message);
+      if (id !== undefined && e.result.kind === "log") {
+        try {
+          await recordEchoMessage(db, sourceKey, e.index, id);
+        } catch (error) {
+          // A DB hiccup must not make the inbox retry and send the echoes again.
+          console.error(`echo id not stored (${error instanceof Error ? error.name : "error"})`);
+        }
+      }
+    }
+    for (const r of results) if (r.kind === "edit") await refreshEcho(ctx, r.groupId);
   }
 
   // -------------------------------------------------------------------------
@@ -293,6 +337,7 @@ export function createFlow(deps: FlowDeps): Flow {
       if (a?.kind === "clarify_exercise") {
         return clarifyCard({
           id: p.id,
+          actionIndex: d.mode === "clarify" ? d.index : 0,
           said: a.said,
           candidates: a.candidates,
           replacedSummary,
@@ -330,7 +375,17 @@ export function createFlow(deps: FlowDeps): Flow {
     });
     // The handler ran twice for one update: the first run already sent (or finished) the card.
     if (reused && (pending.messageId !== null || pending.status !== "open")) return pending;
-    // A replaced request is always announced on the new card, and its own card is retired.
+    await sendPendingCard(ctx, chatId, pending, replaced);
+    return pending;
+  }
+
+  /** A replaced request is always announced on the new card, and its own card is retired. */
+  async function sendPendingCard(
+    ctx: Context,
+    chatId: number,
+    pending: Pending,
+    replaced: Pending | null,
+  ): Promise<void> {
     const notice = replaced ? plainSummary(replaced.actions) : null;
     const id = await send(ctx, renderPending(pending, notice));
     if (id !== undefined) await setPendingMessageId(db, pending.id, id);
@@ -338,7 +393,6 @@ export function createFlow(deps: FlowDeps): Flow {
       await retireCard(ctx, chatId, replaced);
       await remember(chatId, `Replaced the earlier request: ${plainSummary(replaced.actions)}`);
     }
-    return pending;
   }
 
   /** Best effort: the old card loses its buttons. Telegram errors don't matter here. */
@@ -349,6 +403,35 @@ export function createFlow(deps: FlowDeps): Flow {
     } catch {
       // message too old, already edited, deleted...
     }
+  }
+
+  /** Best effort: Telegram errors (message too old, deleted...) must not fail the update. */
+  async function editQuietly(ctx: Context, m: Message | string): Promise<void> {
+    try {
+      await edit(ctx, m);
+    } catch {
+      // message too old, already edited, deleted...
+    }
+  }
+
+  /**
+   * A tap on a card whose request is over (saved, expired, replaced, cancelled): the buttons go
+   * and the card shows how it ended. Best effort, and never a new chat message.
+   */
+  async function closeStaleCard(ctx: Context, p: Pending): Promise<void> {
+    // A clarify card that was resolved and saved already shows "Exercise: …": keep it.
+    if (p.status === "executed" && p.kind === "clarify_exercise") return;
+    const text =
+      p.status === "executed"
+        ? p.kind === "delete"
+          ? "Removed ✓"
+          : "Saved ✓"
+        : p.status === "replaced"
+          ? replacedText(p.actions)
+          : p.status === "cancelled"
+            ? cancelledText(p.actions)
+            : expiredText(p.actions);
+    await editQuietly(ctx, text);
   }
 
   // -------------------------------------------------------------------------
@@ -370,14 +453,15 @@ export function createFlow(deps: FlowDeps): Flow {
     // The inbox can run a handler twice. Never ask the model again for work already done.
     const prior = await ledgerResults(db, key);
     if (prior.length > 0) {
-      for (const m of await echoes(key, [], prior)) await send(ctx, m);
+      await sendEchoes(ctx, key, [], prior);
       return;
     }
     const existing = await getPendingBySourceUpdate(db, chatId, updateId);
     if (existing) {
       if (existing.status === "open" && existing.messageId === null) {
-        const id = await send(ctx, renderPending(existing, null));
-        if (id !== undefined) await setPendingMessageId(db, existing.id, id);
+        // The first run crashed before its card went out: do what it would have done, including
+        // the "Replaces: …" notice and retiring the older card.
+        await sendPendingCard(ctx, chatId, existing, await getReplacedPredecessor(db, existing));
       }
       return;
     }
@@ -438,7 +522,7 @@ export function createFlow(deps: FlowDeps): Flow {
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
       if (r.status === "done") {
-        for (const m of await echoes(key, staged, r.results)) await send(ctx, m);
+        await sendEchoes(ctx, key, staged, r.results);
         await appendMessage(db, chatId, "assistant", `Saved: ${plainSummary(staged)}`);
       } else {
         await send(ctx, r.status === "stale" ? STALE : EXPIRED);
@@ -459,7 +543,7 @@ export function createFlow(deps: FlowDeps): Flow {
         `Asked which exercise "${a?.kind === "clarify_exercise" ? a.said : "?"}" is.`,
       );
     } else {
-      const kind: PendingKind = staged.some((a) => a.kind === "delete_group")
+      const kind: PendingKind = staged.every((a) => a.kind === "delete_group")
         ? "delete"
         : "confirm";
       await presentPending(ctx, {
@@ -546,7 +630,7 @@ export function createFlow(deps: FlowDeps): Flow {
       case "pa":
         return pendingButton(ctx, a.id, a.act, answer, now);
       case "ex":
-        return exerciseButton(ctx, a.pendingId, a.index, answer, now);
+        return exerciseButton(ctx, a.pendingId, a.index, a.action, answer, now);
       case "rir":
       case "cl": {
         const snap =
@@ -602,6 +686,7 @@ export function createFlow(deps: FlowDeps): Flow {
           await remember(chatOf(ctx), "Edit not undone: nothing to undo.");
           return;
         }
+        await refreshEcho(ctx, undone.snapshot.groupId);
         await edit(ctx, `Change undone: ${removedText(undone.snapshot).replace(/^Removed: /, "")}`);
         await answer("Change undone.");
         await remember(
@@ -646,6 +731,14 @@ export function createFlow(deps: FlowDeps): Flow {
       await remember(chatId, "A tapped request was not found (expired); nothing changed.");
       return;
     }
+    if (pending.status === "executed") {
+      // A late or double tap (✅ then ✏️/❌ before the first edit landed, a retried update):
+      // it was saved, nothing to write, nothing to repeat.
+      await answer("Already saved.");
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      return;
+    }
     if (act === "no") {
       if (await cancelPending(db, id)) {
         await edit(ctx, cancelledText(pending.actions));
@@ -655,14 +748,9 @@ export function createFlow(deps: FlowDeps): Flow {
           `Cancelled by the user, nothing saved: ${plainSummary(pending.actions)}`,
         );
       } else {
-        const saved = pending.status === "executed";
-        await answer(saved ? "Already saved." : EXPIRED);
-        await remember(
-          chatId,
-          saved
-            ? "A tapped cancel was too late: the request was already saved."
-            : "A tapped cancel found the request expired; nothing changed.",
-        );
+        await answer(EXPIRED);
+        await closeStaleCard(ctx, pending);
+        await remember(chatId, "A tapped cancel found the request expired; nothing changed.");
       }
       return;
     }
@@ -683,6 +771,7 @@ export function createFlow(deps: FlowDeps): Flow {
         );
       } else {
         await answer(EXPIRED);
+        await closeStaleCard(ctx, pending);
         await remember(chatId, "A tapped edit button had expired; nothing changed.");
       }
       return;
@@ -693,16 +782,10 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     const doneText = pending.kind === "delete" ? "Removed ✓" : "Saved ✓";
-    if (pending.status === "executed") {
-      // A second tap, or a retried update: nothing to write, nothing to repeat.
-      await edit(ctx, doneText);
-      await answer("Already saved.");
-      return;
-    }
     const key = `p:${id}`;
     const r = await executeActions(db, key, pending.actions, { pendingId: id, now });
     if (r.status === "stale") {
-      await edit(ctx, STALE);
+      await editQuietly(ctx, STALE);
       await answer(STALE);
       await remember(
         chatId,
@@ -712,13 +795,14 @@ export function createFlow(deps: FlowDeps): Flow {
     }
     if (r.status === "expired") {
       await answer(EXPIRED);
-      await send(ctx, EXPIRED);
+      await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
       await remember(chatId, "The tapped request had expired; nothing saved.");
       return;
     }
-    await edit(ctx, doneText);
+    // The write is committed: a failing card edit must not stop the echoes (and their Undo).
+    await editQuietly(ctx, doneText);
     await answer(doneText);
-    for (const m of await echoes(key, pending.actions, r.results)) await send(ctx, m);
+    await sendEchoes(ctx, key, pending.actions, r.results);
     await remember(
       chatId,
       `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
@@ -729,17 +813,34 @@ export function createFlow(deps: FlowDeps): Flow {
     ctx: Context,
     pendingId: number,
     index: number,
+    tappedAction: number | null,
     answer: Answer,
     now: Date,
   ): Promise<void> {
     const chatId = chatOf(ctx);
     const pending = await getPending(db, pendingId);
+    if (tappedAction === null) {
+      // A button without the clarify position (sent before it was encoded) can't say which
+      // question it answers: never apply it.
+      if (pending?.status === "executed") {
+        await answer("Already saved.");
+        await closeStaleCard(ctx, pending);
+        return;
+      }
+      await answer(EXPIRED);
+      if (pending) {
+        // Close the request too, or a later message would announce "Replaces: …".
+        await cancelPending(db, pendingId);
+        await closeStaleCard(ctx, { ...pending, status: "expired" });
+      }
+      await remember(chatId, "A tapped exercise choice was from an old card; nothing saved.");
+      return;
+    }
     if (pending?.status === "executed" && (await ledgerResults(db, `p:${pendingId}`)).length > 0) {
       // A retried tap: the choice was already saved. Nothing to write, nothing to repeat.
       // Best effort: a card still showing buttons (its first edit failed) gets its final text.
-      const mark = [...pending.reasons].reverse().find((r) => r.startsWith(CLARIFIED));
-      const at = mark ? Number(mark.slice(CLARIFIED.length)) : Number.NaN;
-      const done = pending.actions[at];
+      // The button names its own clarify.
+      const done = pending.actions[tappedAction];
       try {
         await edit(
           ctx,
@@ -762,12 +863,18 @@ export function createFlow(deps: FlowDeps): Flow {
       pending.expiresAt.getTime() > now.getTime();
     if (!pending || !usable) {
       await answer(EXPIRED);
+      if (pending) await closeStaleCard(ctx, pending);
       await remember(chatId, "A tapped exercise choice had expired; nothing saved.");
       return;
     }
     const d = decidePolicy(pending.actions);
     const clarify = d.mode === "clarify" ? pending.actions[d.index] : undefined;
     const chosen = clarify?.kind === "clarify_exercise" ? clarify.candidates[index] : undefined;
+    if (d.mode === "clarify" && d.index !== tappedAction) {
+      // A button of an earlier clarify in this request: its card moved on to the next question.
+      await answer("Already answered.");
+      return;
+    }
     if (d.mode !== "clarify" || clarify?.kind !== "clarify_exercise" || !chosen) {
       await answer("That choice is no longer available.");
       await remember(
@@ -841,6 +948,7 @@ export function createFlow(deps: FlowDeps): Flow {
           ctx,
           clarifyCard({
             id: pendingId,
+            actionIndex: next.index,
             said: q.said,
             candidates: q.candidates,
             partlyUnderstood: partly,
@@ -854,12 +962,12 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     if (next.mode === "confirm") {
-      const kind: PendingKind = actions.some((x) => x.kind === "delete_group")
+      const kind: PendingKind = actions.every((x) => x.kind === "delete_group")
         ? "delete"
         : "confirm";
       const row = await replacePendingActions(db, pendingId, actions, {
         kind,
-        reasons: [...next.reasons, `${CLARIFIED}${d.index}`],
+        reasons: next.reasons,
       });
       if (!row) {
         await answer(EXPIRED);
@@ -879,12 +987,12 @@ export function createFlow(deps: FlowDeps): Flow {
       pendingId,
       now,
       replaceActions: actions,
-      replaceReasons: [...pending.reasons, `${CLARIFIED}${d.index}`],
+      replaceReasons: pending.reasons,
     });
     if (r.status !== "done") {
-      const msg = r.status === "stale" ? STALE : EXPIRED;
-      await answer(msg);
-      await send(ctx, msg);
+      await answer(r.status === "stale" ? STALE : EXPIRED);
+      if (r.status === "stale") await editQuietly(ctx, STALE);
+      else await closeStaleCard(ctx, (await getPending(db, pendingId)) ?? pending);
       await remember(chatId, "The tapped exercise choice could not be saved; nothing changed.");
       return;
     }
@@ -893,7 +1001,7 @@ export function createFlow(deps: FlowDeps): Flow {
     const aliasMessage = await saveChosenAlias();
     if (aliasMessage) await send(ctx, aliasMessage);
     await answer();
-    for (const m of await echoes(key, actions, r.results)) await send(ctx, m);
+    await sendEchoes(ctx, key, actions, r.results);
   }
 
   return { text, callback, undoCommand, memoryCommand };

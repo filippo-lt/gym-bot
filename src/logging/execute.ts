@@ -435,6 +435,43 @@ export async function ledgerResults(db: Q, sourceKey: string): Promise<LedgerRes
   return rows.map((r) => r.result);
 }
 
+/** Remembers the Telegram message of a direct write's echo (only for a `log` result). */
+export async function recordEchoMessage(
+  db: Q,
+  sourceKey: string,
+  actionIndex: number,
+  messageId: number,
+): Promise<void> {
+  await db
+    .update(writeLedger)
+    .set({ result: sql`${writeLedger.result} || ${JSON.stringify({ messageId })}::jsonb` })
+    .where(
+      and(
+        eq(writeLedger.sourceKey, sourceKey),
+        eq(writeLedger.actionIndex, actionIndex),
+        sql`${writeLedger.result}->>'kind' = 'log'`,
+      ),
+    );
+}
+
+/** The echo message recorded for a group's write, if any (old rows and card writes have none). */
+export async function findEchoMessage(db: Q, groupId: number): Promise<number | null> {
+  const [row] = await db
+    .select({ result: writeLedger.result })
+    .from(writeLedger)
+    .where(
+      and(
+        sql`${writeLedger.result}->>'kind' = 'log'`,
+        sql`(${writeLedger.result}->>'groupId')::int = ${groupId}`,
+        sql`${writeLedger.result} ? 'messageId'`,
+      ),
+    )
+    .orderBy(desc(writeLedger.createdAt))
+    .limit(1);
+  const r = row?.result;
+  return r?.kind === "log" && typeof r.messageId === "number" ? r.messageId : null;
+}
+
 /** Removes a group. Returns its snapshot, or null when it was already gone. */
 export async function undoGroup(db: Db, groupId: number): Promise<GroupSnapshot | null> {
   return db.transaction((tx) => deleteGroup(tx, groupId));

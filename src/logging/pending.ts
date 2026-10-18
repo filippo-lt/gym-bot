@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { and, desc, eq, gt, lt, lte } from "drizzle-orm";
 import { pendingActions } from "../db/schema/agent.js";
 import type { Db, Q } from "./db.js";
 import type { StagedAction } from "./types.js";
@@ -63,6 +63,23 @@ export async function getPendingBySourceUpdate(
     .orderBy(desc(pendingActions.id))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The request a still-open one replaced, for a re-run that must announce it again. The
+ * predecessor is the chat's previous row: only the open request can be replaced, so if that row
+ * is 'replaced' it was replaced by this one. An already-expired one isn't worth announcing.
+ */
+export async function getReplacedPredecessor(db: Q, p: Pending): Promise<Pending | null> {
+  const [prev] = await db
+    .select()
+    .from(pendingActions)
+    .where(and(eq(pendingActions.chatId, p.chatId), lt(pendingActions.id, p.id)))
+    .orderBy(desc(pendingActions.id))
+    .limit(1);
+  return prev?.status === "replaced" && prev.expiresAt.getTime() > p.createdAt.getTime()
+    ? prev
+    : null;
 }
 
 export async function getPending(db: Q, id: number): Promise<Pending | null> {

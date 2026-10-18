@@ -212,7 +212,12 @@ export async function importHistory(
       }
 
       // A bot-logged slot the export has no row for (its old import row was deleted above)
-      // still needs its done row.
+      // still needs its done row. It comes back as source = 'bot' even if the deleted row was an
+      // import one: the SPEC "Transition" rule only promises that a re-import never deletes bot
+      // data, and this row now exists only for a bot log. Keeping it 'bot' means a later re-import
+      // leaves it alone instead of deleting and restoring it again; if the export ever gains the
+      // row, the "a bot row already exists, kept" clash above applies. Undoing the bot log still
+      // works (it restores the status recorded at log time on this row).
       const allBot = await tx
         .select({
           d: schema.logGroups.sessionDate,

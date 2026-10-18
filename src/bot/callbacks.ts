@@ -4,7 +4,8 @@ export type PendingAct = "ok" | "ed" | "no";
 
 export type CallbackAction =
   | { t: "pa"; id: number; act: PendingAct }
-  | { t: "ex"; pendingId: number; index: number }
+  /** `action` is the clarify's position in the request; null on buttons sent before it was encoded. */
+  | { t: "ex"; pendingId: number; index: number; action: number | null }
   | { t: "rir"; groupId: number; value: number }
   | { t: "cl"; groupId: number; clean: boolean }
   | { t: "ug"; groupId: number }
@@ -15,7 +16,9 @@ export const CALLBACK_MAX_BYTES = 64;
 
 export const cb = {
   pending: (id: number, act: PendingAct) => `pa:${id}:${act}`,
-  exercise: (pendingId: number, index: number) => `ex:${pendingId}:${index}`,
+  /** `index` is the candidate, `action` the clarify it belongs to (a message can hold several). */
+  exercise: (pendingId: number, index: number, action: number) =>
+    `ex:${pendingId}:${index}:${action}`,
   /** value 4 means "4+". */
   rir: (groupId: number, value: number) => `rir:${groupId}:${value}`,
   clean: (groupId: number, clean: boolean) => `cl:${groupId}:${clean ? 1 : 0}`,
@@ -42,9 +45,10 @@ export function parseCallback(data: string): CallbackAction | null {
     case "ex": {
       const pendingId = int(a);
       const index = int(b);
-      return pendingId === null || index === null || parts.length !== 3
-        ? null
-        : { t: "ex", pendingId, index };
+      const action = parts.length === 4 ? int(parts[3]) : null;
+      if (pendingId === null || index === null) return null;
+      if (parts.length === 4 ? action === null : parts.length !== 3) return null;
+      return { t: "ex", pendingId, index, action };
     }
     case "rir": {
       const groupId = int(a);
