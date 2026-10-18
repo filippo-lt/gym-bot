@@ -6,6 +6,8 @@ export interface ScriptedTurn {
   outputTokens?: number;
   /** Resolve after this many ms (honours the abort signal). */
   delayMs?: number;
+  /** Overrides the derived stop reason (e.g. "max_tokens" for a truncated turn). */
+  stopReason?: IntentResponse["stop_reason"];
 }
 
 let idCounter = 0;
@@ -59,7 +61,8 @@ export function createFakeModel(script: (ScriptedTurn | ContentBlock[])[]): Fake
       }
       const res: IntentResponse = {
         content: t.content,
-        stop_reason: t.content.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn",
+        stop_reason:
+          t.stopReason ?? (t.content.some((b) => b.type === "tool_use") ? "tool_use" : "end_turn"),
         usage: { input_tokens: t.inputTokens ?? 100, output_tokens: t.outputTokens ?? 20 },
       };
       return res;

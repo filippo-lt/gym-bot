@@ -462,6 +462,7 @@ export function clarifyCard(args: {
   said: string;
   candidates: Candidate[];
   replacedSummary?: string | null;
+  partlyUnderstood?: boolean;
 }): Message {
   const lines: string[] = [];
   if (args.replacedSummary) {
@@ -472,6 +473,7 @@ export function clarifyCard(args: {
       ? `Which exercise is "${esc(args.said)}"?`
       : `I couldn't find an exercise called "${esc(args.said)}".`,
   );
+  if (args.partlyUnderstood) lines.push("Part of your message couldn't be saved.");
   const keyboard: Keyboard = args.candidates.map((c, i) => [
     { text: c.name, data: cb.exercise(args.id, i) },
   ]);

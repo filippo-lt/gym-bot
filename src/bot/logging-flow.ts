@@ -90,6 +90,7 @@ export interface Flow {
   memoryCommand(ctx: Context): Promise<void>;
 }
 
+const PARTLY = "partly_understood";
 const HTML = { parse_mode: "HTML" as const };
 
 function markup(kb: Keyboard): InlineKeyboard {
@@ -268,7 +269,13 @@ export function createFlow(deps: FlowDeps): Flow {
       const d = decidePolicy(p.actions);
       const a = d.mode === "clarify" ? p.actions[d.index] : undefined;
       if (a?.kind === "clarify_exercise") {
-        return clarifyCard({ id: p.id, said: a.said, candidates: a.candidates, replacedSummary });
+        return clarifyCard({
+          id: p.id,
+          said: a.said,
+          candidates: a.candidates,
+          replacedSummary,
+          partlyUnderstood: p.reasons.includes(PARTLY),
+        });
       }
     }
     return confirmCard({
@@ -384,8 +391,11 @@ export function createFlow(deps: FlowDeps): Flow {
     }
 
     const staged = result.staged;
+    const partly = result.toolErrors > 0 || result.truncated;
     if (staged.length === 0) {
-      const reply = result.replyText ?? DIDNT_GET_IT;
+      const reply = result.truncated
+        ? "Sorry, that message was too long for me. Please split it."
+        : (result.replyText ?? DIDNT_GET_IT);
       await send(ctx, { text: esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
       return;
@@ -396,7 +406,7 @@ export function createFlow(deps: FlowDeps): Flow {
     const open = await getOpenPending(db, chatId, now);
     const decision = decidePolicy(staged, {
       openPending: open !== null,
-      partlyUnderstood: result.toolErrors > 0,
+      partlyUnderstood: partly,
     });
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
@@ -410,7 +420,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await presentPending(ctx, {
         kind: "clarify_exercise",
         actions: staged,
-        reasons: [],
+        reasons: partly ? [PARTLY] : [],
         updateId,
         now,
       });
@@ -638,6 +648,16 @@ export function createFlow(deps: FlowDeps): Flow {
     const pending = await getPending(db, pendingId);
     if (pending?.status === "executed" && (await ledgerResults(db, `p:${pendingId}`)).length > 0) {
       // A retried tap: the choice was already saved. Nothing to write, nothing to repeat.
+      // Best effort: a card still showing buttons (its first edit failed) gets its final text.
+      const done = pending.actions.find((x) => x.kind === "log_sets");
+      try {
+        await edit(
+          ctx,
+          done?.kind === "log_sets" ? `Exercise: ${esc(done.resolved.exercise.name)}` : "Saved ✓",
+        );
+      } catch {
+        // already edited, deleted or too old
+      }
       await answer("Already saved.");
       return;
     }
@@ -702,7 +722,8 @@ export function createFlow(deps: FlowDeps): Flow {
     };
 
     const actions = pending.actions.map((x, i) => (i === d.index ? resolved : x));
-    const next = decidePolicy(actions);
+    const partly = pending.reasons.includes(PARTLY);
+    const next = decidePolicy(actions, { partlyUnderstood: partly });
     if (next.mode === "clarify") {
       if (!(await replacePendingActions(db, pendingId, actions))) {
         await answer(EXPIRED);
@@ -710,7 +731,15 @@ export function createFlow(deps: FlowDeps): Flow {
       }
       const q = actions[next.index];
       if (q?.kind === "clarify_exercise") {
-        await edit(ctx, clarifyCard({ id: pendingId, said: q.said, candidates: q.candidates }));
+        await edit(
+          ctx,
+          clarifyCard({
+            id: pendingId,
+            said: q.said,
+            candidates: q.candidates,
+            partlyUnderstood: partly,
+          }),
+        );
       }
       const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);
@@ -735,13 +764,13 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer();
       return;
     }
-    // direct
-    if (!(await replacePendingActions(db, pendingId, actions))) {
-      await answer(EXPIRED);
-      return;
-    }
+    // direct: storing the resolved actions, claiming and writing are one transaction
     const key = `p:${pendingId}`;
-    const r = await executeActions(db, key, actions, { pendingId, now });
+    const r = await executeActions(db, key, actions, {
+      pendingId,
+      now,
+      replaceActions: actions,
+    });
     if (r.status !== "done") {
       const msg = r.status === "stale" ? STALE : EXPIRED;
       await answer(msg);

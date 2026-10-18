@@ -531,7 +531,13 @@ describe("retries and stale buttons", () => {
     await t.tap(squat?.data as string, 1001, 8000);
     const editsAfterFirst = t.edits().length;
     await t.tap(squat?.data as string, 1001, 8000);
-    expect(t.edits().length).toBe(editsAfterFirst); // MINOR-7: the card text is left alone
+    // the card is only re-set to its final text, never to something else
+    expect(
+      t
+        .edits()
+        .slice(editsAfterFirst)
+        .map((c) => c.payload.text),
+    ).toEqual(["Exercise: squat"]);
     expect(await count("log_groups")).toBe(1);
     expect(t.answers().some((a) => a.payload.text === EXPIRED)).toBe(false);
     expect(t.texts().includes(EXPIRED)).toBe(false);
@@ -759,5 +765,106 @@ describe("round 3", () => {
     await t.tap(`pa:${id}:ed`, 1001);
     expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
     expect(t.texts().at(-1)).not.toContain("Pick one");
+  });
+});
+
+describe("round 4", () => {
+  it("a clarify keeps 'partly understood' through the tap: confirm card, no write (BLOCKER-1)", async () => {
+    const t = setup([
+      turn(
+        toolUse("log_sets", {
+          exercise: { said: "sq" },
+          sets: { count: 3, reps: 8, load_kg: 60 },
+          guessed_fields: [],
+          needs_confirmation: false,
+        }),
+        toolUse("log_sets", log("lateral_raise", [{ reps: 15, load_kg: 6, pad_height: 10 }])),
+      ),
+      nothing,
+    ]);
+    await t.say("sq 3x8 60 and lateral raise pad height 10");
+    expect(t.texts().at(-1)).toContain("Part of your message couldn't be saved.");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain(
+      "part of your message couldn't be saved",
+    );
+    expect(await count("log_groups")).toBe(0);
+    expect((await sql`select kind, status from pending_actions`)[0]).toMatchObject({
+      kind: "confirm",
+      status: "open",
+    });
+  });
+
+  it("a truncated turn: confirm card for what was staged, nothing written (MAJOR-1)", async () => {
+    const t = setup([
+      tool("log_sets", benchLog()),
+      { content: [toolUse("log_sets", lateralLog())], stopReason: "max_tokens" },
+    ]);
+    await t.say("bench 2x6 55 and a very long message");
+    const card = t.texts().at(-1);
+    expect(card).toContain("Save this?");
+    expect(card).toContain("bench_press");
+    expect(card).not.toContain("lateral_raise");
+    expect(card).toContain("part of your message couldn't be saved");
+    expect(await count("log_groups")).toBe(0);
+  });
+
+  it("a truncated turn with nothing staged asks to split the message (MAJOR-1)", async () => {
+    const t = setup([{ content: [toolUse("log_sets", benchLog())], stopReason: "max_tokens" }]);
+    await t.say("a huge message");
+    expect(t.texts()).toEqual(["Sorry, that message was too long for me. Please split it."]);
+    expect(await count("log_groups")).toBe(0);
+  });
+
+  it("a DB failure on the exercise tap leaves the card usable; the retry saves once (MAJOR-2)", async () => {
+    const said = {
+      exercise: { said: "sq" },
+      sets: { count: 3, reps: 8, load_kg: 60 },
+      rir: 2,
+      guessed_fields: [],
+      needs_confirmation: false,
+    };
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("sq 3x8 60 rir 2");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await sql`create sequence if not exists fail_once_seq`;
+    await sql`select setval('fail_once_seq', 1, false)`;
+    await sql`create or replace function fail_once() returns trigger as $$ begin if nextval('fail_once_seq') = 1 then raise exception 'boom'; end if; return new; end $$ language plpgsql`;
+    await sql`create trigger fail_once_t before insert on log_groups for each row execute function fail_once()`;
+    try {
+      await expect(t.tap(squat?.data as string, 1001)).rejects.toThrow();
+      expect(await count("log_groups")).toBe(0);
+      expect((await sql`select kind, status from pending_actions`)[0]).toMatchObject({
+        kind: "clarify_exercise",
+        status: "open",
+      });
+      await t.tap(squat?.data as string, 1001);
+      expect(await count("log_groups")).toBe(1);
+      expect(
+        t.answers().some((a) => a.payload.text === "That choice is no longer available."),
+      ).toBe(false);
+    } finally {
+      await sql`drop trigger if exists fail_once_t on log_groups`;
+    }
+  });
+
+  it("a late tap on an executed pending re-edits the card to its final text (MINOR-3)", async () => {
+    const t = setup([
+      tool("log_sets", {
+        exercise: { said: "sq" },
+        sets: { count: 3, reps: 8, load_kg: 60 },
+        rir: 2,
+        guessed_fields: [],
+        needs_confirmation: false,
+      }),
+      nothing,
+    ]);
+    await t.say("sq 3x8 60 rir 2");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001);
+    await t.tap(squat?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
+    expect(await count("log_groups")).toBe(1);
   });
 });

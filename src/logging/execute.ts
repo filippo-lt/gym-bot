@@ -253,7 +253,7 @@ export async function executeActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number; now?: Date } = {},
+  opts: { pendingId?: number; now?: Date; replaceActions?: StagedAction[] } = {},
 ): Promise<ExecuteResult> {
   const now = opts.now ?? new Date();
   try {
@@ -275,11 +275,19 @@ function runActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number },
+  opts: { pendingId?: number; replaceActions?: StagedAction[] },
   now: Date,
 ): Promise<ExecuteResult> {
   return db.transaction(async (tx): Promise<ExecuteResult> => {
     if (opts.pendingId !== undefined) {
+      // Stored in the same transaction as the writes: a failure leaves the pending untouched,
+      // so a retried tap starts from the original clarify card.
+      if (opts.replaceActions) {
+        await tx
+          .update(pendingActions)
+          .set({ actions: opts.replaceActions, awaitingEdit: false })
+          .where(and(eq(pendingActions.id, opts.pendingId), eq(pendingActions.status, "open")));
+      }
       const claimed = await tx
         .update(pendingActions)
         .set({ status: "executed" })

@@ -33,9 +33,13 @@ const NO_LOAD_TYPES = new Set<ResolvedExercise["type"]>([
 
 /** Union of the keys present on any of the given objects (sets, or edit changes). */
 export function usedKeys(...objects: UsedKeys[]): UsedKeys {
-  const out: Record<string, true> = {};
+  const out: Record<string, unknown> = {};
   for (const o of objects) {
-    for (const [k, v] of Object.entries(o)) if (v !== undefined) out[k] = true;
+    for (const [k, v] of Object.entries(o)) {
+      if (v === undefined) continue;
+      // clean keeps its value: only `true` is something a non-clean exercise can't take
+      out[k] = k === "clean" ? v === true || out[k] === true : true;
+    }
   }
   return out;
 }
@@ -87,7 +91,7 @@ export function checkKeys(
   if ((t === "weighted" || t === "bodyweight_plus") && (has("duration_s") || has("distance_m"))) {
     return `${has("duration_s") ? "duration_s" : "distance_m"} does not apply to ${n}.`;
   }
-  if (opts.checkClean && has("clean") && !exercise.needsClean) {
+  if (opts.checkClean && used.clean === true && !exercise.needsClean) {
     return `clean does not apply to ${n}.`;
   }
   return null;

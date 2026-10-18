@@ -478,6 +478,23 @@ describe("keys the exercise can't take (MINOR-4/7)", () => {
     );
   });
 
+  it("clean: false is fine anywhere, only clean: true is rejected (round 4)", async () => {
+    expect((await stageLogSets(db, input({ clean: false }), MON)).ok).toBe(true);
+    await executeActions(db, "u:62", [await stage(input())], { now: MON });
+    const e = await stageEdit(
+      db,
+      { changes: { clean: false, reps: 7 }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    expect(e.ok).toBe(true);
+    const bad = await stageEdit(
+      db,
+      { changes: { clean: true }, guessed_fields: [], needs_confirmation: false },
+      MON,
+    );
+    expect(bad.ok).toBe(false);
+  });
+
   it("rejects conflicting load keys, naming both (MINOR-2)", async () => {
     await fails(
       input({ sets: [{ reps: 5, load_kg: 50, plates_per_side_kg: 10 }] }),

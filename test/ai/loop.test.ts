@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeModel, text, toolUse } from "../../src/ai/fake-model.js";
-import { runIntent } from "../../src/ai/loop.js";
+import { countUnresolvedErrors, type IntentEvent, runIntent } from "../../src/ai/loop.js";
 import { fakeBackend, fakeUsage, promptContext, promptStatic } from "./helpers.js";
 
 const base = {
@@ -127,5 +127,65 @@ describe("runIntent", () => {
     });
     expect(res).toEqual({ kind: "budget_reached" });
     expect(model.requests).toHaveLength(0);
+  });
+});
+
+describe("unresolved tool errors", () => {
+  const err = (
+    tool: string,
+    said: string | null = null,
+    slug: string | null = null,
+  ): IntentEvent => ({
+    type: "error",
+    tool,
+    said,
+    slug,
+  });
+  const staged = (said: string | null, slug: string | null, isLog = true): IntentEvent => ({
+    type: "staged",
+    said,
+    slug,
+    isLog,
+  });
+
+  it("counts an error nobody fixed, not one the model retried", () => {
+    expect(countUnresolvedErrors([err("log_sets", "bench"), staged("bench", "bench_press")])).toBe(
+      0,
+    );
+    expect(countUnresolvedErrors([err("log_sets", "bench")])).toBe(1);
+    expect(countUnresolvedErrors([err("log_sets", "x", "squat"), staged("squat", "squat")])).toBe(
+      0,
+    );
+    expect(countUnresolvedErrors([err("log_sets", "lunges"), staged("squats", "squat")])).toBe(1);
+  });
+
+  it("an edit or undo error is fixed by any later staged action", () => {
+    expect(countUnresolvedErrors([err("edit_last_entry"), staged("face pulls", "face_pull")])).toBe(
+      0,
+    );
+    expect(countUnresolvedErrors([staged("a", "a"), err("undo_last_entry")])).toBe(1);
+  });
+
+  it("the loop reports unresolved errors and a retried one as zero", async () => {
+    const bad = { exercise: { said: "bench" }, sets: [] };
+    const model = createFakeModel([
+      [toolUse("log_sets", bad)],
+      [toolUse("log_sets", logSets("bench"))],
+      [text("done")],
+    ]);
+    const res = await runIntent({ ...base, model, backend: fakeBackend(), usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", toolErrors: 0, truncated: false });
+  });
+
+  it("a max_tokens turn executes none of its tool calls and is flagged", async () => {
+    const model = createFakeModel([
+      [toolUse("log_sets", logSets("bench"))],
+      { content: [toolUse("log_sets", logSets("lateral"))], stopReason: "max_tokens" },
+    ]);
+    const backend = fakeBackend();
+    const res = await runIntent({ ...base, model, backend, usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", truncated: true });
+    if (res.kind === "ok") expect(res.staged).toHaveLength(1);
+    expect(backend.calls).toEqual(["log_sets:bench"]);
   });
 });

@@ -321,7 +321,9 @@ export type IntentResult =
       staged: StagedAction[];
       replyText: string | null;
       turns: number;
-      /** Tool calls that came back as errors (their actions were not staged). */
+      /** Tool errors still unresolved at the end (a later call that fixed them doesn't count). */
       toolErrors: number;
+      /** A model turn hit max_tokens: its tool calls were not executed. */
+      truncated: boolean;
     }
   | { kind: "budget_reached" };
