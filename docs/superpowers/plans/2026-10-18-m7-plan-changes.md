@@ -34,6 +34,19 @@
 
 ---
 
+### Task 1a: Amend Tasks 1–2 after the independent design review
+
+Spec changes after Tasks 1–2 were built: week count is derived from `plan_weeks` rows (no column), swapped items get RIR recomputed and `fallback_prescription` cleared with the HSPU step.
+
+**Files:** `src/db/schema/plan.ts`, `drizzle/0007_*` + `drizzle/meta` (regenerate), `src/db/seed-plan.ts`, `test/db/plan-seed.test.ts`, `src/plan/swap-transform.ts`, `test/plan/swap-transform.test.ts`
+
+**Interfaces:**
+- Produces: `applySwap(content, s: { fromExerciseId; toExerciseId; fromDate; weekdays; clearHspuStep: boolean; rirFor: (item: ItemSpec, newOptionIds: number[], weekIsDeload: boolean) => { rirMin: number | null; rirMax: number | null } })`. Changed items get `rirMin/rirMax` from `rirFor`; when `clearHspuStep`, also `fallbackPrescription = null`. Callers build `rirFor` from `computeRir` (src/plan-import/rir.ts) with exercise rows from the DB.
+
+- [ ] Remove `plan_versions.weeks` from the schema, delete the generated `drizzle/0007_*.sql` + its snapshot/journal entry, regenerate so 0007 contains only `change` + `session_overrides`; revert the seed's `weeks` write and its test assertion (keep the `change` null assertion). Add indexes on `session_overrides.planned_item_id` and `replacement_exercise_id` (deferred minor from Task 1).
+- [ ] Tests: `applySwap` recomputes RIR via `rirFor` only on changed items (stub returns a marker value); `clearHspuStep` nulls `fallbackPrescription` on changed items only.
+- [ ] Lint, typecheck, unit, db green. Commit `M7: derive week count from plan_weeks; RIR and fallback on swapped items`.
+
 ### Task 1: Schema + migration 0007
 
 **Files:**
@@ -114,6 +127,7 @@
 
 **Interfaces:**
 - Consumes: Task 1 schema, Task 3 `createVersion` (tests only).
+- Week count = number of `plan_weeks` rows of the version (no column). For an overridden item, recompute `rirMin/rirMax` with `computeRir` using the replacement as the option, the item's modifiers and the week's deload flag.
 - Produces (exact shapes from the spec section "The central reader"): `versionOn`, `loadVersionIndex` (returns `{ versions; versionFor(date): VersionInfo | null; weekOf(date): WeekInfo | null; fridayOf(week: number, asOf: string): string }`), `planDayOn`, types `VersionInfo { planId; versionId; version; startDate; weeks; effectiveFrom }`, `WeekInfo { versionId; week; phase; isDeload; isTest; startDate }`, `PlanDay`, `PlanDayItem`. Also `planDaysBetween(db, from, to): Promise<PlanDay[]>` for `/week` (one version index load, then per-day items).
 
 - [ ] **Step 1:** db tests: no plan → `no_plan`; before start; Saturday → `rest` with week info; v2 effective 2026-10-20: 2026-10-19 renders v1 items, 2026-10-20 renders v2; after an insert making 13 weeks, a W13 date is `day`, the day after W13 is `finished`; an override on 2026-10-19 swaps that item's option only on that date (`swappedToday` set), not on 2026-10-26; an OR item override keeps the other option.
@@ -123,14 +137,14 @@
 ### Task 5: Switch bot/query/logging readers to the effective plan
 
 **Files:**
-- Modify: `src/bot/session.ts` (`getSession`, `getWeek`, `loadWeekRow`), `src/logging/plan-context.ts` (`loadPlanContext`, `weekRefFor`, `loadDayPlan`), `src/logging/resolve.ts` (make-up walk uses per-date context), `src/logging/skip.ts` if it reads weeks, `src/queries/plan-overview.ts`, `src/queries/history.ts`, `src/queries/read-tools.ts` (`historyWindow`, `plan_finished`), `src/queries/alternatives.ts` ("where planned" = items of the version effective today, dates ≥ today), `src/jobs/class-question.ts`, `src/bot/format.ts` (`formatFinished` → "The plan is finished."), `src/logging/types.ts` + `src/ai/tools.ts` (`plan_week` max 52, description "plan_week (week number of the plan)"; code rejects a week beyond the version's `weeks`).
+- Modify: `src/db/import-history.ts` (guard: refuse rows dated on/after the first `effective_from` of a version > 1, clear error), `src/bot/session.ts` (`getSession`, `getWeek`, `loadWeekRow`), `src/logging/plan-context.ts` (`loadPlanContext`, `weekRefFor`, `loadDayPlan`), `src/logging/resolve.ts` (make-up walk uses per-date context), `src/logging/skip.ts` if it reads weeks, `src/queries/plan-overview.ts`, `src/queries/history.ts`, `src/queries/read-tools.ts` (`historyWindow`, `plan_finished`), `src/queries/alternatives.ts` ("where planned" = items of the version effective today, dates ≥ today), `src/jobs/class-question.ts`, `src/bot/format.ts` (`formatFinished` → "The plan is finished."), `src/logging/types.ts` + `src/ai/tools.ts` (`plan_week` max 52, description "plan_week (week number of the plan)"; code rejects a week beyond the version's `weeks`).
 - Test: extend `test/db/bot-session.test.ts`, `test/db/queries.test.ts`, `test/db/logging-flow.test.ts` (make-up), unit snapshots as needed.
 
 **Interfaces:**
 - Consumes: Task 4 `planDayOn`, `planDaysBetween`, `versionOn`, `loadVersionIndex`.
 - Produces: unchanged public signatures of `getSession`, `getWeek`, `loadDayPlan`, `getPlanOverview` (callers untouched). `SessionItem` gains `swappedFrom: string | null` (name of the replaced exercise, for "instead of X today").
 
-- [ ] **Step 1:** db tests: (a) `getSession` for a past date returns deep-equal results before and after creating v2 (swap) and v3 (deload insert); (b) a week straddling v1/v2 — Monday logged in v1 shows done in `getWeek`, Wednesday counts v2 items; (c) `getPlanOverview` after an insert shows 13 weeks and the moved deload; (d) a make-up on Tuesday for Monday's v1 item still matches when v2 is effective from Tuesday; (e) class question job runs in W13 of a 13-week version.
+- [ ] **Step 1:** db tests: (a) `getSession` for a past date returns deep-equal results before and after creating v2 (swap) and v3 (deload insert); (b) a week straddling v1/v2 — Monday logged in v1 shows done in `getWeek`, Wednesday counts v2 items; (c) `getPlanOverview` after an insert shows 13 weeks and the moved deload; (d) a make-up on Tuesday for Monday's v1 item still matches when v2 is effective from Tuesday; (e) class question job runs in W13 of a 13-week version; (f) history import refuses a row dated on/after a version-2 `effective_from`.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement: `getSession`/`loadDayPlan` build from `planDayOn` and keep their extra joins (status, groups, HSPU step name, Thursday class). Remove the duplicated version lookup in `loadPlanContext` (delegate to `versionOn`). **Step 4:** All four commands pass full suite.
 - [ ] **Step 5:** Commit `M7: plan readers use the version effective on the date`.
 
@@ -194,28 +208,29 @@
 
 **Interfaces:**
 - Consumes: Task 3 `createVersion`/`loadLatestContent`, Task 2 `applySwap`, Task 7 types and formatters.
-- Produces: `executeSwap(tx: Q, r: ResolvedSwap, today: string): Promise<SwapResult>` with `SwapResult = { kind: "swap"; overrideIds: number[]; versionId: number | null; createdExerciseId: number | null }`.
+- Produces: `executeSwap(tx: Q, r: ResolvedSwap, today: string): Promise<PlanChangeResult>` with `PlanChangeResult = { kind: "plan_change"; overrideIds: number[]; versionId: number | null; createdExerciseId: number | null }` (also the `LedgerResult` variant). `undoPlanChange(tx: Q, sourceKey: string, index: number): Promise<{ ok: true } | { ok: false; reply: string }>` in `src/plan/undo.ts`. `cb.undoPlan(key, idx)` → `up:<key>:<idx>` (key `p:\d+` or `r:\d+`).
+- `today` and `effective_from` are computed at ✅ time; the base version is the latest at ✅ time. `rirFor` built from `computeRir`.
 
-- [ ] **Step 1:** db tests through the bot flow (fake model staging a `swap`): no scope → scope buttons; tap `r` on squat (Tue+Fri) → days buttons; tap `d` → card; ✅ → version 2 with Fri untouched, today override when the reference is today; ✅ again / retry → still one version (ledger); "today" when already logged → refusal, no rows; new exercise created once with the card's classification; `effective_from` = tomorrow when reference is today; stale `sw:` tap on an expired pending → "this expired, nothing saved"; `/swap` alone lists today's exercise names; `/plan` shows the change line.
+- [ ] **Step 1:** db tests through the bot flow (fake model staging a `swap`): no scope → scope buttons; tap `r` on squat (Tue+Fri) → days buttons; tap `d` → card; ✅ → version 2 with Fri untouched, today override when the reference is today; ✅ again / retry → still one version (ledger); "today" when already logged → refusal, no rows; new exercise created once with the card's classification; `effective_from` = tomorrow when reference is today; stale `sw:` tap on an expired pending → "this expired, nothing saved"; `/swap` alone lists today's exercise names; `/plan` shows the change line; Undo right after ✅ restores the plan (version and override gone); Undo after a log references the version → "Too late to undo"; Undo twice → "Already undone."; swapping HSPU to an HSPU ladder step name → reply, no write; RIR of a main-lift → non-main swap is 1–3.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement (one transaction: ledger claim, exercise create, override(s), version). Catch `StaleBaseVersionError` / unique violation → "The plan changed meanwhile, try again." **Step 4:** PASS.
 - [ ] **Step 5:** Commit `M7: save swaps, scope buttons, /swap`.
 
 ### Task 9: Deload-earlier proposal
 
 **Files:**
-- Modify: `src/progression/session-advice.ts` (`deloadHint` → `ensureDeloadProposal`), `src/progression/readiness.ts` (keep the trigger, update the comment), `src/bot/format.ts` (proposal card instead of the text hint), `src/bot/inputs-flow.ts` (`pr:` handler for `earlier_deload`)
+- Modify: `src/progression/session-advice.ts` (expose the trigger boolean instead of the text hint), `src/progression/readiness.ts` (keep the trigger, update the comment), `src/bot/format.ts` (remove the text hint), `src/bot/inputs-flow.ts` (`deloadProposal(ctx, advice)` sent after the session view exactly like `hspuProposal`; `pr:` handler for `earlier_deload`), `src/bot/bot.ts` (call it after `/today`)
 - Create: `src/plan/deload-proposal.ts` (create + apply), card text in `src/bot/plan-change-format.ts`
 - Test: `test/db/plan-deload.test.ts`, `test/bot/plan-change-format.test.ts`
 
 **Interfaces:**
 - Consumes: Task 2 `insertDeload`, Task 3 `createVersion`, Task 4 `versionOn`/`loadVersionIndex`.
 - Produces:
-  - `ensureDeloadProposal(db: Q, today: string, triggered: boolean): Promise<{ id: number; preview: DeloadPreview } | null>`
+  - `ensureDeloadProposal(db: Q, today: string, triggered: boolean): Promise<{ id: number; preview: DeloadPreview; messageId: number | null } | null>` — asked once until the trigger resets (spec "When it is proposed"); expires open proposals whose `mondayDate` arrived; none when next week is a deload or the test week or no later week exists.
   - `DeloadPreview { insertedWeek; mondayDate; sundayDate; shiftedFrom; shiftedTo; droppedWeek: number | null; newWeeks; endDate }`
-  - `applyDeloadProposal(tx: Q, proposalId: number, today: string): Promise<{ ok: true; versionId } | { ok: false; reply: string }>`
+  - `applyDeloadProposal(tx: Q, proposalId: number, today: string): Promise<{ ok: true; versionId } | { ok: false; reply: string }>` — writes ledger row `r:<proposalId>`/0 with a `plan_change` result; the reply carries the `up:r:<id>:0` Undo button (Task 8's `undoPlanChange`; on a deload undo the proposal becomes `declined`).
   - `deloadProposalText(p: DeloadPreview): string` (spec example wording).
 
-- [ ] **Step 1:** db tests: two RED sessions → `/today` shows the card once; a second `/today` same week → no new proposal; next week already deload → none; ✅ → version with `effective_from` = next Monday and `change.kind = "deload_earlier"`; ✅ on Monday or later → "This proposal expired; nothing changed."; ✅ when another version was created after the proposal → refused; ❌ → declined, not asked again that week; unit test for the text with the W6 example (dropped W8, "still ends Sun 20 Dec").
+- [ ] **Step 1:** db tests: two RED sessions → `/today` sends the card once (separate message); a second `/today` while still RED → no new card; after a GREEN session and two new REDs → asked again; next week already deload or the test week → none; Undo after ✅ → version gone, proposal declined; ✅ → version with `effective_from` = next Monday and `change.kind = "deload_earlier"`; ✅ on Monday or later → "This proposal expired; nothing changed."; ✅ when another version was created after the proposal → refused; ❌ → declined, not asked again that week; unit test for the text with the W6 example (dropped W8, "still ends Sun 20 Dec").
 - [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS.
 - [ ] **Step 5:** Commit `M7: deload-earlier proposal applies a new plan version`.
 

@@ -1,6 +1,6 @@
 # M7: plan changes (swaps with a scope, plan versions)
 
-Status: design. The user delegated every design call to Claude on 18 Oct 2026 ("skip the questions, you decide"), so every decision below is Claude's call and is marked as such where it goes beyond SPEC.md.
+Status: design. The user delegated the design calls on 18 Oct 2026 ("skip the questions, you decide"), then asked (through the parent session) for an independent agent to answer the open design questions. A fresh Opus agent answered 17 neutral questions (`.superpowers/sdd/2026-10-18-m7-plan-changes/design-questions.md`, git-ignored) without seeing this draft. Its answers are adopted below and marked "(independent review)". Other calls beyond SPEC.md are marked "(Claude's call)". See "Open points for the user" at the end.
 
 ## Why
 
@@ -17,7 +17,6 @@ Today the plan is frozen at version 1. The user cannot swap an exercise (equipme
 
 ## Non-goals
 
-- No undo button for plan changes (Claude's call). The confirm card is the safety net; swapping back creates another version.
 - No free editing of prescriptions (sets/reps/RIR) from chat. Only swaps and the deload move.
 - No plan upload or regeneration (Phase 2).
 - No change to how history import maps rows: it keeps mapping to version 1 by `item_key`.
@@ -40,8 +39,8 @@ Why a full copy and not a delta table: every reader already reads "items of vers
 - **Version lookup (unchanged rule, now in one place):** for a date, the highest `version` of the current plan whose `effective_from <= date`; if none, the lowest version.
 - **`effective_from` is never today or earlier.** A persistent change applies from tomorrow at the earliest (03:00 day boundary, Rome). This is what guarantees that no existing `session_items`, `log_groups` or `suggestions` row ever points at a planned item of a version that does not cover its date. (Claude's call; see "Rest of plan" below for how today is still covered.)
 - **`item_key` is the stable identity across versions.** Copied items keep their `item_key` (unique per version already). The `wNN` part is the item's *origin* week, not its current week number after a deload insert. Items of an inserted deload week get keys `dNN-<weekday>-NN-<sub>` (`NN` = the week number they were inserted at).
-- **Week count is per version:** new column `plan_versions.weeks` (backfilled from `plans.weeks` = 12). A deload insert can make the plan 13 weeks. "Plan finished" uses the effective version's `weeks`, never `plans.weeks`.
-- **Week numbers stay date arithmetic.** Weeks are always contiguous Monday–Sunday blocks from `plans.start_date` (an insert shifts later weeks, it never leaves gaps), so `planWeekFor(date, start, weeks)` stays right as long as `weeks` comes from the effective version.
+- **Week count is per version, derived from its `plan_weeks` rows** (independent review: a stored count is a second source that can drift; `plans.weeks` is never changed, because that would change how v1 dates render). A deload insert can make the plan 13 weeks. "Plan finished" uses the effective version's week count, never `plans.weeks`.
+- **Week numbers stay date arithmetic.** Weeks are always contiguous Monday–Sunday blocks from `plans.start_date` (an insert shifts later weeks, it never leaves gaps), so `planWeekFor(date, start, weeks)` stays right as long as `weeks` is the effective version's count.
 - **What changed:** new column `plan_versions.change` (jsonb, nullable for v1): `{ kind: "swap", from: exerciseId, to: exerciseId, weekdays: Weekday[] | "all", fromDate }` or `{ kind: "deload_earlier", insertedWeek, droppedWeek: number | null }`. `reason` holds a short human line. `/plan` lists changes from these rows.
 - `source_hash` / `resolved_hash` on a copied version are copied from the source version (they describe the plan file, and `seedPlan` only ever compares version 1).
 
@@ -55,9 +54,13 @@ On read, an override replaces `replaced_exercise_id` with `replacement_exercise_
 
 The swap replaces only the named option ("swap hack squat for leg press" on "Squat / hack squat" → "Squat / leg press"). Same rule for overrides and versions.
 
-### HSPU items (Claude's call)
+### HSPU items (independent review)
 
-Swapping the HSPU exercise away clears `hspu_step_id` on the new items (the replacement has no ladder). Overrides of an HSPU item render without the ladder step.
+Swapping the HSPU exercise away clears `hspu_step_id` and `fallback_prescription` on the new items (the replacement has no ladder; a leftover step would drive its reps and HSPU advance proposals). Overrides of an HSPU item render without the ladder step. If the replacement the user names is an HSPU ladder step (e.g. "pike push-up"), it is not a plan change: the bot replies that the HSPU step is tracked from logs (SPEC §5.2) and saves nothing.
+
+### RIR of swapped items (independent review)
+
+Tags, priority, block and sets × reps are inherited; **RIR is not**. RIR comes from rules (`computeRir` in src/plan-import/rir.ts: main lift / deload / easy / test, SPEC §5.2), so a changed item's `rir_min`/`rir_max` are recomputed with the replacement as the option (squat 1–2 → leg press 1–3). For a one-off override, `planDayOn` recomputes the RIR of the overridden item the same way at read time.
 
 ## The central reader (contract for M8 and M9)
 
@@ -65,7 +68,7 @@ New module `src/plan/effective.ts`:
 
 ```ts
 /** The plan version that renders `date` (Rome calendar date, YYYY-MM-DD). */
-versionOn(db, date): Promise<{ planId, versionId, version, startDate, weeks } | null>
+versionOn(db, date): Promise<{ planId, versionId, version, startDate, weeks /* count of its plan_weeks */ } | null>
 
 /** Loads all versions once; sync lookup for engines that walk many dates. */
 loadVersionIndex(db): Promise<{ versionFor(date): VersionInfo | null; weekOf(date): WeekInfo | null }>
@@ -104,11 +107,11 @@ Every one of these must use `versionOn` / `loadVersionIndex` / `planDayOn` for t
 - `historyWindow` (read-tools.ts) — plan_week → dates through the version effective today.
 - `loadPlanEnv` / `versionIdFor` / `weekFor` / `fridayOfWeek` (src/progression/load-history.ts) — replaced by `loadVersionIndex`. `loadOccurrences` (break rule) matches each earlier week in the version effective on that week's date (same weekday + sub_item + identical option set, overrides applied).
 - `loadSessionInput` / `ensureSuggestions` / `storedAdvice` — items from `planDayOn` (overrides applied). A suggestion for an overridden item is stored for the replacement exercise; the unique key already includes `exercise_id`. Past dates read stored suggestions for the exercise now shown.
-- `classQuestionJob` — "plan active" check through `versionOn` and the version's `weeks`.
+- `classQuestionJob` — "plan active" check through `versionOn` and the version's week count.
 - `getAlternativeFacts` — "where it is planned" from the version effective today (future items only).
 - Lookups by planned item id (logging-flow echo, execute.ts edit, resolve.ts reps_max) need no change: they read the row they point at.
 - Hard-coded 12s: `formatFinished` text ("The plan is finished."), `plan_week` Zod max and the tool description use the version's week count (max 13 is not enough after two inserts; use `.max(52)` and validate against the version in code).
-- History import: unchanged (version 1 by `item_key`).
+- History import: keeps mapping to version 1 by `item_key` (SPEC §8 Transition). New guard (independent review): refuse import rows dated on or after the first `effective_from` of a version above 1, with a clear error, since those dates may render a different version.
 
 ## Swap flow
 
@@ -127,7 +130,7 @@ swap_exercise({
 ```
 
 - `scope` "today" = "only today / just this time / today"; "rest" = "from now on / for the rest of the plan / always". Absent if not said.
-- `replacement.new` only when the replacement is not a catalog exercise. `type` is one of the exercise types, `load_basis` one of the four bases, `equipment_slug` one of `equipment.slug` (Zod-validated; unknown values → the card asks the user to describe it again). Code builds the slug from the name and adds `said` as an alias. The card shows the classification ("New exercise: Band pull-apart · reps only"), so a wrong guess is visible before ✅. (Claude's call: allow new exercises, because alternatives come from Claude's general knowledge and are often not in the catalog.)
+- `replacement.new` only when the replacement is not a catalog exercise. `type` is one of the exercise types, `load_basis` one of the four bases, `equipment_slug` one of `equipment.slug` (Zod-validated; unknown values → the card asks the user to describe it again). When unsure, the model picks a no-load-math type (prompt rule). `is_main_lift` is always false for a new exercise. Code builds the slug from the name and adds `said` as an alias. The card shows the classification ("New exercise: Band pull-apart · reps only"), so a wrong guess is visible before ✅. New exercises reach the resolver and STT vocabulary automatically (the catalog is read from the DB). No suggestion until the first log (SPEC §5.2 "No valid session yet → ask for the load"). (Independent review agrees: refusing would break SPEC §1's own "band pull-aparts" example.)
 - `get_alternatives` stays read-only. The prompt tells the model to call `swap_exercise` only when the user asks to swap, never after merely listing alternatives.
 
 ### Resolution (code)
@@ -146,11 +149,23 @@ swap_exercise({
 
 ### Saving (on ✅, one transaction, through `write_ledger` with `p:<pendingId>`)
 
+Everything is computed at ✅ time, not card time (independent review): the base version is the latest version *at ✅*, and `effective_from` uses "tomorrow" *at ✅* (a card confirmed after the 03:00 boundary moves with the day).
+
 - **Only today:** insert a `session_overrides` row for (reference date, planned item, replaced → replacement). If the item on that date already has a log group for the replaced exercise, refuse: "You already logged face pulls today; nothing changed." Several items on that day with the exercise (rare) → all of them.
 - **Rest of plan:** `effective_from = max(tomorrow, reference date)`. Create the new version as a full copy of the latest version, swapping the option on every item dated `>= effective_from` that has the exercise as an option (restricted to the chosen weekday for "this day only"). If the reference date is today and today's item has no log for the replaced exercise yet, also insert today's override, so the swap covers today too.
 - Create the new exercise first when `replacement.new` is set (slug unique; if it exists by then, reuse it).
-- Reply: `Saved. <same change line>`. No Undo button.
+- Reply: `Saved. <same change line>` with an **Undo** button (`up:<sourceKey>:<idx>`, independent review; matches the `uw:`/`us:` undo pattern).
 - **Concurrency:** the version number is `max(version)+1` inside the transaction; the `(plan_id, version)` unique constraint turns a race into a retry-safe failure ("plan changed meanwhile, try again").
+
+### Undo of a plan change (independent review)
+
+`up:<sourceKey>:<idx>` reads the ledger result (`versionId`, `overrideIds`, `createdExerciseId`). Undo succeeds only when:
+- the version (if any) is still the highest version of the plan, and no `session_items`, `log_groups` or `suggestions` row references its planned items, and no open pending action's jsonb mentions one of its planned item ids;
+- each override has no log group for the replacement exercise on its date.
+
+Then, in one transaction: delete the overrides, then the version's `planned_item_options`, `planned_items`, `plan_weeks` and the `plan_versions` row, then the created exercise if nothing references it. Reply `Undone. The plan is back as it was.` Otherwise reply `Too late to undo: it's already in use. Swap back instead.` and change nothing. With `effective_from >= tomorrow`, the undo window is naturally "until the change is first used". A second tap → "Already undone."
+
+The same Undo button follows an accepted deload move (source key `r:<proposalId>`, ledger row written on ✅); its undo also sets the proposal to `declined`, so it is not asked again until the trigger resets.
 
 ### `/swap` command
 
@@ -161,17 +176,17 @@ swap_exercise({
 
 ### When it is proposed
 
-Replaces today's text hint (`earlierDeloadHint` / `deloadHint` keep their trigger rule: the last two frozen session levels RED, or the last two weekly recovery scores ≤ 2). It becomes a `proposals` row of kind `earlier_deload` (the enum value already exists), created when `/today` (and M8's morning message, through `loadSessionAdvice`) computes advice for today and:
+Replaces today's text hint (`earlierDeloadHint` / `deloadHint` keep their trigger rule: the last two frozen session levels RED, or the last two weekly recovery scores ≤ 2). It becomes a `proposals` row of kind `earlier_deload` (the enum value already exists), created when `/today` computes live advice for today (the same hook `hspuProposal` uses in src/bot/inputs-flow.ts; M8's morning message can call the same function) and:
 
 - the trigger fires,
-- the week after the current week exists in the effective version and has `is_deload = false`,
-- no `earlier_deload` proposal was created in the current plan week (open, accepted or declined) — one ask per week (Claude's call).
+- the week after the current week exists in the effective version, is not a deload and is not the test week, and at least one week exists after it to shift (independent review),
+- **asked once until the trigger resets** (independent review, mirrors the HSPU "a no is respected until the next HSPU log" rule): no new proposal while an `earlier_deload` proposal exists (open, accepted or declined) that was created after the last moment the trigger was off. "Trigger off" = a frozen session level that is not RED, or a weekly recovery score > 2, recorded after that proposal. An open proposal whose `mondayDate` has arrived is set to `expired`.
 
 Payload: `{ currentWeek, insertAt: currentWeek + 1, mondayDate, versionId }`.
 
 ### What the user sees
 
-The session view shows the proposal card (instead of the old text hint) with code-built text:
+A **separate card sent after the session view** (independent review: exactly like `hspuProposal`, deduped by `proposals.message_id`), replacing the old text hint at src/bot/format.ts:354. Code-built text:
 
 `You've been tired 2 sessions in a row. Move the deload earlier? Next week (W7, 9–15 Nov) becomes a deload, weeks 7–12 move one week later. The W8 deload is dropped (it would be only 2 weeks after). The plan still ends Sun 20 Dec.`
 
@@ -191,21 +206,21 @@ Examples (12-week plan, deloads W4, W8, test W12):
 - Accept in W5 → insert W6; old W8 deload→W9 is 3 weeks after → kept. 13 weeks, ends a week later.
 - Accept in W10 → insert W11 (template = W8); old W11→W12, test→W13. 13 weeks.
 
-On ✅: refuse if `mondayDate` is today or earlier ("This proposal expired; nothing changed.") or if a newer version was created after the proposal (`versionId` no longer latest → "The plan changed since; I'll ask again if needed."). Else create the version (`effective_from = mondayDate`, `change = { kind: "deload_earlier", insertedWeek, droppedWeek }`) in one transaction with the proposal's status change, then refresh `user_state` as after any write.
+On ✅: refuse if `mondayDate` is today or earlier ("This proposal expired; nothing changed.") or if a newer version was created after the proposal (`versionId` no longer latest → "The plan changed since; I'll ask again if needed."), and re-check that week `insertAt` is still not a deload or the test week. Else create the version (`effective_from = mondayDate`, `change = { kind: "deload_earlier", insertedWeek, droppedWeek }`) in one transaction with the proposal's status change and a `write_ledger` row (`r:<proposalId>`, index 0) holding `{ kind: "plan_change", versionId, overrideIds: [], createdExerciseId: null }`, then refresh `user_state` as after any write. Reply with the change line and the Undo button.
 
 Weekly metrics stay keyed by `plan_week`: only future weeks shift, so past numbers never change meaning.
 
 ## Telegram surface
 
 - New callback prefix `sw:<pendingId>:t|r|d|a` (scope / days answers on a swap pending). Handled before the generic callback handler; stale or replaced pendings reply "this expired, nothing saved" like other pendings.
+- New callback prefix `up:<sourceKey>:<idx>` (Undo of a plan change; source key `p:<pendingId>` for swaps, `r:<proposalId>` for an accepted deload move).
 - `pr:<id>:ok|no` now also handles `earlier_deload`.
-- `/swap` registered in `setMyCommands`.
+- `/swap` registered in `setMyCommands` (scripts/telegram-setup.ts) and listed in the help text.
 - `/plan` gains a "Changes" section: `• From Tue 20 Oct: Face pull → Band pull-apart (Mon, Fri)` / `• From Mon 9 Nov: deload moved to W7 (W8 deload dropped)`.
 - Today's session marks a one-off swap: `Band pull-apart (instead of Face pull today)`.
 
 ## Data model changes (migration 0007)
 
-- `plan_versions.weeks integer not null` (hand-edit the generated SQL: add nullable, backfill from `plans.weeks`, set not null).
 - `plan_versions.change jsonb` nullable.
 - New table `session_overrides` as above, RLS enabled, no policies (the RLS db test covers it).
 - `PENDING_KINDS` / staged-action union: a new staged action `swap` (jsonb, no enum change unless the code needs a new `pending_kind`; if so, add it in the same migration).
@@ -215,7 +230,10 @@ Weekly metrics stay keyed by `plan_week`: only future weeks shift, so past numbe
 
 - `insertDeload`: the three examples above; insert right before the test week; template choice; keys unique; weeks contiguous; drop rule at exactly 3 weeks (kept) and 2 (dropped).
 - Version copy: identical rows before `effective_from`, swap applied only on/after it, only on the chosen weekday for "this day only", OR item keeps the other option, `item_key` preserved, HSPU step cleared.
-- `planDayOn`: date in v1 range after v2 exists renders v1; date after v2 renders v2; week straddling two versions in `/week`; finished uses version weeks (W13 after an insert is not "finished"); override applied only on its date.
+- `planDayOn`: date in v1 range after v2 exists renders v1; date after v2 renders v2; week straddling two versions in `/week`; finished uses the version's week count (W13 after an insert is not "finished"); override applied only on its date, with RIR recomputed.
+- Undo: undo right after ✅ deletes version + override; undo after a log/suggestion references the version is refused; undo twice → "Already undone."; deload undo sets the proposal to declined.
+- RIR: swapping a main lift for a non-main weighted exercise gives 1–3 on non-deload items and 3–4 on deload items.
+- History import guard: a row dated on/after a version-2 `effective_from` is refused.
 - Past session renders identically before and after a swap and after a deload insert (snapshot of `getSession` for a past date).
 - Logs keep `planned_item_id` and render under the old version; `session_items` untouched by a version create.
 - Swap policy: scope missing → scope question; multi-weekday → days question; always a card; ✅ twice → one version (ledger); swap of an already-logged exercise today refused; tomorrow-or-later `effective_from`.
@@ -228,3 +246,10 @@ Weekly metrics stay keyed by `plan_week`: only future weeks shift, so past numbe
 - Exact module split under `src/plan/` (beyond `effective.ts`, `deload.ts`, a `versions.ts` for the copy).
 - Card wording details within the examples' spirit (short, simple English, numbers from code).
 - How `getWeek` batches per-day version lookups.
+
+## Open points for the user
+
+No strong disagreement with the independent answers; all were adopted. Two points worth a look:
+
+1. **Deload drop threshold.** SPEC §6 says the next deload is dropped if it is "< 3 weeks away". Implemented literally: start dates less than 21 days apart → dropped; exactly 21 days → kept. At exactly 21 days only 2 training weeks sit between the two deloads, against the plan's 3-on/1-off rhythm. If you'd rather drop it unless 3 full training weeks sit between them (≤ 21 days → dropped), it is a one-line change in `src/plan/deload.ts`.
+2. **No proposal before the test week.** The deload move is not proposed when next week is the test week (W12), so a late-plan fatigue streak gets no deload offer. (Independent review's call.)
