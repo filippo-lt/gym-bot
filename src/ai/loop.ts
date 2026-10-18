@@ -10,6 +10,7 @@ import type {
 } from "../logging/types.js";
 import { overTokenBudget, tokenUsageOf } from "./budget.js";
 import { AI_BUDGET_MS, AI_MAX_TURNS } from "./constants.js";
+import { AiTimeoutError } from "./errors.js";
 import type { IntentModel, MessageParam } from "./model.js";
 import { buildSystem } from "./prompt.js";
 import { executeTool, READ_TOOLS, TOOLS } from "./tools.js";
@@ -171,7 +172,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error("AI budget exceeded")), budgetMs);
+  const timer = setTimeout(() => controller.abort(new AiTimeoutError()), budgetMs);
   const system = buildSystem(p.promptStatic, p.promptContext);
   const messages: MessageParam[] = [{ role: "user", content: p.text }];
   const staged: StagedAction[] = [];
