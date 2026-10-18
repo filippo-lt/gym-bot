@@ -170,6 +170,19 @@ describe("repsSeries", () => {
     expect(repsSeries([s], ex)[0]).toMatchObject({ seconds: 45, bestSet: null });
   });
 
+  it("skips perSetUnknown sessions", () => {
+    const ex = info({ type: "bodyweight_reps", loadBasis: null });
+    expect(repsSeries([session({ perSetUnknown: true, sets: [set({ reps: 17 })] })], ex)).toEqual(
+      [],
+    );
+  });
+
+  it("ignores unclean sets for the best set", () => {
+    const ex = info({ type: "bodyweight_reps", loadBasis: null });
+    const s = session({ sets: [set({ reps: 10, clean: false }), set({ reps: 7, clean: true })] });
+    expect(repsSeries([s], ex)[0]?.bestSet).toBe(7);
+  });
+
   it("drops sessions without data", () => {
     const ex = info({ type: "skill_ladder", loadBasis: null });
     expect(repsSeries([session({ hspuStepOrder: 2, sets: [] })], ex)).toEqual([]);

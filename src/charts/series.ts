@@ -65,7 +65,7 @@ export function loadSeries(sessions: SessionRec[], ex: ExerciseInfo): LoadPoint[
   });
 }
 
-/** Most reps in one logged set (any logged set, RIR not required); longest hold for `timed`. Empty sessions dropped. */
+/** Most reps in one logged set (any logged set, RIR not required); longest hold for `timed`. perSetUnknown sessions (total only) and unclean sets are skipped; empty sessions dropped. */
 export function repsSeries(
   sessions: SessionRec[],
   ex: ExerciseInfo,
@@ -73,9 +73,11 @@ export function repsSeries(
 ): RepsPoint[] {
   const out: RepsPoint[] = [];
   for (const s of oldestFirst(sessions)) {
+    if (s.perSetUnknown) continue;
     let bestSet: number | null = null;
     let seconds: number | null = null;
     for (const set of s.sets) {
+      if (set.clean === false) continue;
       if (ex.type === "timed") {
         if (set.durationS != null && (seconds == null || set.durationS > seconds)) {
           seconds = set.durationS;
