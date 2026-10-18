@@ -73,6 +73,16 @@ describe("env", () => {
     expect(() => sttEnv()).toThrowError(/GROQ_API_KEY/);
   });
 
+  it("STT_DAILY_SECONDS_CAP defaults to 1800", async () => {
+    process.env.STT_PROVIDER = "groq";
+    process.env.GROQ_API_KEY = "k";
+    let mod = await load();
+    expect(mod.sttEnv().STT_DAILY_SECONDS_CAP).toBe(1800);
+    process.env.STT_DAILY_SECONDS_CAP = "60";
+    mod = await load();
+    expect(mod.sttEnv().STT_DAILY_SECONDS_CAP).toBe(60);
+  });
+
   it("requires DATABASE_URL", async () => {
     const { dbEnv } = await load();
     expect(() => dbEnv()).toThrowError(/DATABASE_URL: missing/);

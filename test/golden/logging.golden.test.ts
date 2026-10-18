@@ -321,7 +321,12 @@ const promptContext: PromptContext = {
   lastSaved: [],
   recent: [],
 };
-const usage: UsageStore = { totals: async () => ({ day: 0, month: 0 }), record: async () => {} };
+const usage: UsageStore = {
+  totals: async () => ({ day: 0, month: 0 }),
+  record: async () => {},
+  sttSecondsToday: async () => 0,
+  recordStt: async () => {},
+};
 
 async function run(text: string) {
   const { backend, calls } = recordingBackend();

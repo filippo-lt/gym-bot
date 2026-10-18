@@ -353,6 +353,17 @@ describe("usage, conversation, prompt context", () => {
     expect(await store.totals(new Date("2026-10-20T12:00:00Z"))).toEqual({ day: 0, month: 1000 });
   });
 
+  it("recordStt and sttSecondsToday sum today's Rome date only", async () => {
+    const store = createUsageStore(db);
+    // 23:30 UTC on 31 Oct is already 1 Nov in Rome.
+    await store.recordStt(10, "groq:whisper-large-v3-turbo", new Date("2026-10-31T23:30:00Z"));
+    await store.recordStt(5, "groq:whisper-large-v3-turbo", new Date("2026-11-01T10:00:00Z"));
+    await store.recordStt(99, "groq:whisper-large-v3-turbo", new Date("2026-10-31T10:00:00Z"));
+    expect(await store.sttSecondsToday(new Date("2026-11-01T12:00:00Z"))).toBe(15);
+    expect(await store.sttSecondsToday(new Date("2026-10-31T12:00:00Z"))).toBe(99);
+    expect(await store.totals(new Date("2026-11-01T12:00:00Z"))).toEqual({ day: 0, month: 0 });
+  });
+
   it("returns the last 10 messages within 6 h, truncated, oldest first", async () => {
     const now = new Date();
     for (let i = 0; i < 12; i += 1) await appendMessage(db, CHAT, "user", `m${i}`);

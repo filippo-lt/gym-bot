@@ -576,6 +576,10 @@ export interface TokenUsage {
 export interface UsageStore {
   totals(now: Date): Promise<{ day: number; month: number }>;
   record(usage: TokenUsage, now: Date): Promise<void>;
+  /** Voice seconds transcribed today (Europe/Rome date). */
+  sttSecondsToday(now: Date): Promise<number>;
+  /** Records one transcription: `provider` goes in `model`, tokens 0. */
+  recordStt(seconds: number, provider: string, now: Date): Promise<void>;
 }
 
 export interface ReadRecord {

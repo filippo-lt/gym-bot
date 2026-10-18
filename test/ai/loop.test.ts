@@ -168,6 +168,10 @@ describe("runIntent", () => {
       async record(u: { inputTokens: number; outputTokens: number }) {
         recorded.push(u.inputTokens + u.outputTokens);
       },
+      async sttSecondsToday() {
+        return 0;
+      },
+      async recordStt() {},
     };
     const backend = fakeBackend();
     const res = await runIntent({ ...base, model, backend, usage });

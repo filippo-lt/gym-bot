@@ -1,0 +1,32 @@
+export class FileTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`file is larger than ${maxBytes} bytes`);
+    this.name = "FileTooLargeError";
+  }
+}
+
+/**
+ * Downloads a Telegram file. The download URL contains the bot token, so it
+ * never appears in an error message or a log.
+ */
+export async function downloadTelegramFile(args: {
+  api: { getFile(fileId: string): Promise<{ file_path?: string; file_size?: number }> };
+  token: string;
+  fileId: string;
+  maxBytes: number;
+  fetchImpl?: typeof fetch;
+}): Promise<Uint8Array> {
+  const { api, token, fileId, maxBytes, fetchImpl = fetch } = args;
+  const file = await api.getFile(fileId);
+  if (file.file_size !== undefined && file.file_size > maxBytes) {
+    throw new FileTooLargeError(maxBytes);
+  }
+  if (!file.file_path) throw new Error("telegram file has no path");
+  const res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+  if (!res.ok) throw new Error(`telegram file download failed (HTTP ${res.status})`);
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new FileTooLargeError(maxBytes);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new FileTooLargeError(maxBytes);
+  return bytes;
+}
