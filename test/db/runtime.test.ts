@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DrizzleQueryError } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -467,13 +468,19 @@ describe("invocation deadline and notices", () => {
   });
 
   it("sweep-failed stuck rows do not count as a handled row", async () => {
-    await seed(2);
+    for (const u of [1000, 1001]) {
+      await enqueue(main.db, {
+        update_id: u,
+        chat_id: CHAT,
+        payload: { n: u, message: { voice: {} } },
+      });
+    }
     await main.sql`update inbox set status = 'processing', attempts = 3, claimed_at = now() - interval '151 seconds' where update_id = 1000`;
     const handled: number[] = [];
     const summary = await processChat({
       ...base,
       startedAt: 0,
-      now: () => 10_000, // young invocation: a swept row must not use up the first-row grace
+      now: () => 12_000, // 68 s left < 75 s voice minimum: runs only through the first-row grace
       handle: async (p) => void handled.push((p as { n: number }).n),
     });
     expect(handled).toEqual([1001]);
@@ -505,10 +512,11 @@ describe("invocation deadline and notices", () => {
 
   it("stores a classified error without message text", async () => {
     await seed(1);
-    const err = Object.assign(new Error("secret text"), { name: "DrizzleQueryError" });
-    (err as { cause?: unknown }).cause = Object.assign(new Error("secret text"), {
-      name: "PostgresError",
-    });
+    const err = new DrizzleQueryError(
+      "select 1",
+      [],
+      Object.assign(new Error("secret text"), { name: "PostgresError" }),
+    );
     await processChat({
       ...base,
       handle: async () => {

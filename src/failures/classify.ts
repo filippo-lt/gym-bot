@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { DrizzleQueryError } from "drizzle-orm";
 import { AiTimeoutError } from "../ai/errors.js";
 import { SttError } from "../stt/stt.js";
 import { FileTooLargeError } from "../telegram/files.js";
@@ -106,8 +107,9 @@ function dbKind(e: unknown, viaDb: boolean): FailureKind | null {
 function chainViaDb(start: unknown): boolean {
   let current = start;
   for (let hop = 0; hop <= MAX_HOPS && current !== undefined && current !== null; hop++) {
-    const name = prop(current, "name");
-    if (name === "DrizzleQueryError" || name === "PostgresError") return true;
+    if (current instanceof DrizzleQueryError || prop(current, "name") === "PostgresError") {
+      return true;
+    }
     current = prop(current, "cause");
   }
   return false;
@@ -137,7 +139,7 @@ export function classify(error: unknown, step: FailureStep = "other"): Failure {
     const kind = kindOf(current, step, viaDb);
     if (kind) return { kind, detail: detailOf(current) };
     const cause = prop(current, "cause");
-    const follow = prop(current, "name") === "DrizzleQueryError" || !hasOwnStatusOrCode(current);
+    const follow = current instanceof DrizzleQueryError || !hasOwnStatusOrCode(current);
     if (cause === undefined || cause === null || !follow) break;
     current = cause;
     last = cause;

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { DrizzleQueryError } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { AiTimeoutError } from "../../src/ai/errors.js";
 import { classify, describeFailure } from "../../src/failures/classify.js";
@@ -49,7 +50,7 @@ describe("classify", () => {
     expect(classify(named("Error", { code: "ECONNRESET" })).kind).toBe("unknown");
     expect(classify(named("Error", { code: "ETIMEDOUT" }), "ai").kind).toBe("unknown");
     expect(
-      classify(named("DrizzleQueryError", { cause: named("Error", { code: "ECONNRESET" }) })).kind,
+      classify(new DrizzleQueryError("select 1", [], named("Error", { code: "ECONNRESET" }))).kind,
     ).toBe("db");
     expect(
       classify(
@@ -73,10 +74,17 @@ describe("classify", () => {
   it("unwraps BotError", () => {
     expect(classify({ name: "BotError", error: api(429) }, "ai").kind).toBe("ai_rate_limited");
   });
+  it("a real DrizzleQueryError around a socket error is db and leaks no query text", () => {
+    const cause = Object.assign(new Error("x"), { code: "ECONNREFUSED" });
+    for (const step of ["other", "ai"] as const) {
+      const f = classify(new DrizzleQueryError("select 1", ["p4ram"], cause), step);
+      expect(f.kind).toBe("db");
+      expect(describeFailure(f)).not.toContain("select 1");
+      expect(describeFailure(f)).not.toContain("p4ram");
+    }
+  });
   it("unwraps DrizzleQueryError cause without leaking message text", () => {
-    const e = named("DrizzleQueryError", {
-      cause: named("PostgresError", { code: "23505" }),
-    });
+    const e = new DrizzleQueryError("select 1", [], named("PostgresError", { code: "23505" }));
     const f = classify(e);
     expect(f.kind).toBe("db");
     expect(describeFailure(f)).not.toContain("secret text");
@@ -101,7 +109,7 @@ describe("classify", () => {
       kind: "download_failed",
       detail: "TypeError",
     });
-    const e = named("DrizzleQueryError", { cause: named("WeirdError") });
+    const e = new DrizzleQueryError("select 1", [], named("WeirdError"));
     expect(classify(e)).toEqual({ kind: "unknown", detail: "WeirdError" });
   });
   it("caller aborts are ai_timeout on ai/vision; a bare name elsewhere is not", () => {
