@@ -213,8 +213,7 @@ async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<Pl
   if (status.status === "before_start") {
     return { kind: "before_start", startDate: version.startDate };
   }
-  if (status.status === "finished")
-    return { kind: "finished", lastDate: lastDateOf(version) };
+  if (status.status === "finished") return { kind: "finished", lastDate: lastDateOf(version) };
   const week = index.weekOf(date);
   if (!week) throw new Error(`Plan week ${status.week} is missing.`);
   const common = {
