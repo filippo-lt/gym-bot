@@ -8,10 +8,11 @@ import { logGroups, weeklyMetrics } from "../db/schema/log.js";
 import { readinessLogs, suggestions } from "../db/schema/progression.js";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
+import { planDayOn } from "../plan/effective.js";
 import type { HiitSpec } from "../plan-import/types.js";
 import { hspuState } from "./hspu.js";
 import { loadExerciseInfos, loadFrozenLevel, RECOVERY_METRIC } from "./load-history.js";
-import { earlierDeloadHint } from "./readiness.js";
+import { type DeloadTrigger, earlierDeloadHint } from "./readiness.js";
 import { applyShort } from "./short.js";
 import { ensureSuggestions, freezeReadiness, suggestionFromRow } from "./store.js";
 import type {
@@ -62,8 +63,8 @@ export interface SessionAdvice {
   bodyweightDate: string | null;
   classAdvice: boolean;
   isTest: boolean;
-  /** Text line only: RED twice in a row or low recovery two weeks (SPEC 5.6c). */
-  earlierDeloadHint: boolean;
+  /** The trigger for the "move the deload earlier" card (SPEC 5.6c); the card itself is sent by the bot. */
+  earlierDeloadHint: DeloadTrigger | null;
   items: Map<number, AdviceItem>;
   exercises: Record<number, ExerciseInfo>;
 }
@@ -134,8 +135,12 @@ async function derivedRow(db: Db, date: string) {
   return row ?? null;
 }
 
-/** Text-only "move the deload earlier" hint: today's level plus the last session's, and the last two recovery scores. */
-async function deloadHint(db: Db, date: string, todayLevel: ReadinessLevel): Promise<boolean> {
+/** Trigger of the "move the deload earlier" proposal: today's level plus the last session's, and the last two recovery scores. */
+async function deloadHint(
+  db: Db,
+  date: string,
+  todayLevel: ReadinessLevel,
+): Promise<DeloadTrigger | null> {
   const [prev] = await db
     .selectDistinct({ d: logGroups.sessionDate })
     .from(logGroups)
@@ -213,7 +218,17 @@ async function liveAdvice(
 }
 
 async function storedAdvice(db: Db, date: string): Promise<SessionAdvice | null> {
-  const rows = await db.select().from(suggestions).where(eq(suggestions.sessionDate, date));
+  const all = await db.select().from(suggestions).where(eq(suggestions.sessionDate, date));
+  // Only the exercise shown on that date counts: a one-off swap leaves the replaced exercise's row behind.
+  const day = await planDayOn(db, date);
+  const shown = new Map<number, Set<number>>();
+  if (day.kind === "day") {
+    for (const it of day.items) shown.set(it.plannedItemId, new Set(it.options.map((o) => o.id)));
+  }
+  const rows = all.filter((r) => {
+    const opts = shown.get(r.plannedItemId);
+    return !opts || opts.has(r.exerciseId);
+  });
   const row = await derivedRow(db, date);
   if (rows.length === 0 && !row) return null;
   const exerciseIds = [...new Set(rows.map((r) => r.exerciseId))];
@@ -251,7 +266,7 @@ async function storedAdvice(db: Db, date: string): Promise<SessionAdvice | null>
     bodyweightDate: null,
     classAdvice: false,
     isTest: false,
-    earlierDeloadHint: false,
+    earlierDeloadHint: null,
     items,
     exercises,
   };

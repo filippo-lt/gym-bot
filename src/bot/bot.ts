@@ -13,7 +13,7 @@ import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-ov
 import { parseChartCallback, parseHistoryCallback } from "./callbacks.js";
 import { trySendFallback } from "./chart-fallback.js";
 import { createExportCommand } from "./export-command.js";
-import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
+import { esc, formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
   HELP_TEXT,
@@ -133,6 +133,7 @@ export function createBot(deps: BotDeps): Bot {
     const advice = session.kind === "session" ? await advise(date, short) : null;
     await ctx.reply(formatSession(session, advice, { short }), html);
     await inputs.hspuProposal(ctx, advice);
+    await inputs.deloadProposal(ctx, advice);
   }
   const inputs = createInputs({
     db: deps.db,
@@ -210,6 +211,18 @@ export function createBot(deps: BotDeps): Bot {
     const history = await reads.getExerciseHistory(deps.db, exerciseId);
     await ctx.reply(history ? formatHistory(history) : HISTORY_UNKNOWN, html);
   }
+
+  bot.command("swap", async (ctx) => {
+    const said = ctx.match.trim();
+    if (said) return void (await flow.text(ctx, said));
+    const session = await queries.getSession(deps.db, today());
+    const names =
+      session.kind === "session"
+        ? [...new Set(session.items.flatMap((i) => i.options.map((o) => o.name)))]
+        : [];
+    const hint = 'Tell me what to swap, e.g. "swap face pulls for band pull-aparts only today".';
+    await ctx.reply(names.length ? `${hint} Today: ${names.map(esc).join(", ")}.` : hint, html);
+  });
 
   async function sendChart(ctx: Context, req: ChartRequest) {
     try {

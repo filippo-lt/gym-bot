@@ -114,6 +114,9 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
     case "set_band_kg":
       out.push("equipment");
       break;
+    case "swap":
+      out.push("plan_change");
+      break;
     case "skip_items":
       if (a.otherDay) out.push("not_in_today");
       if (a.whole) out.push("skip_session");

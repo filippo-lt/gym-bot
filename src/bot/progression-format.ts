@@ -160,8 +160,6 @@ export function levelLines(
 }
 
 export const FRIDAY_ASK_CLASS = "How was Thursday's class? /class";
-export const EARLIER_DELOAD_HINT =
-  "💡 You have been run down for a while. It may be worth moving the next deload earlier.";
 
 /** Heavy group (lowercase) that touches an item, from its tags. */
 export function heavyGroupFor(

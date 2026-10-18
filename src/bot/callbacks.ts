@@ -23,7 +23,11 @@ export type CallbackAction =
   | { t: "pr"; id: number; act: "ok" | "no" }
   /** /skip list: one planned item of that date, or the whole session. */
   | { t: "sk"; date: string; item: number | "all" }
-  | { t: "us"; key: string; index: number };
+  | { t: "us"; key: string; index: number }
+  /** Swap questions: t = only that day, r = rest of plan, d = this weekday only, a = every day. */
+  | { t: "sw"; id: number; ans: "t" | "r" | "d" | "a" }
+  /** Undo of a plan change: the ledger row it belongs to ("p:<pendingId>" or "r:<proposalId>"). */
+  | { t: "up"; key: string; index: number };
 
 export const CALLBACK_MAX_BYTES = 64;
 
@@ -54,6 +58,9 @@ export const cb = {
   skip: (date: string, item: number | "all") => `sk:${date.replaceAll("-", "")}:${item}`,
   /** `key` is the write_ledger source key, like undoEdit. */
   undoSkip: (key: string, index: number) => `us:${key}:${index}`,
+  swap: (pendingId: number, ans: "t" | "r" | "d" | "a") => `sw:${pendingId}:${ans}`,
+  /** `key` is the write_ledger source key ("p:42" or "r:7"). */
+  undoPlan: (key: string, index: number) => `up:${key}:${index}`,
   /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
   history: (exerciseId: number) => `hx:${exerciseId}`,
   /** /chart for one exercise, or "v" for the volume chart. Not part of CallbackAction: parsed by parseChartCallback. */
@@ -160,6 +167,16 @@ export function parseCallback(data: string): CallbackAction | null {
     case "us": {
       const m = /^us:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
       return m ? { t: "us", key: m[1] as string, index: Number(m[2]) } : null;
+    }
+    case "sw": {
+      const id = int(a);
+      return id === null || parts.length !== 3 || (b !== "t" && b !== "r" && b !== "d" && b !== "a")
+        ? null
+        : { t: "sw", id, ans: b };
+    }
+    case "up": {
+      const m = /^up:([pr]:\d{1,15}):(\d{1,3})$/.exec(data);
+      return m ? { t: "up", key: m[1] as string, index: Number(m[2]) } : null;
     }
     default:
       return null;

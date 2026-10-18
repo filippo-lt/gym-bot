@@ -17,9 +17,17 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetAndSeed(db, sql);
   await sql`truncate table job_runs restart identity`;
-  // The fixture plan is 3 weeks; the dates below fall in week 4-5.
-  await sql`update plans set weeks = 12`;
+  // The fixture plan has 3 week rows; the dates below fall in week 4-5.
+  await addWeeks(4, 12);
 });
+
+async function addWeeks(from: number, to: number) {
+  const [v] = await sql`select id from plan_versions order by version desc limit 1`;
+  for (let w = from; w <= to; w += 1) {
+    await sql`insert into plan_weeks (plan_version_id, week, phase, is_deload, is_test, start_date)
+      values (${v?.id as number}, ${w}, 'Base', false, false, (date '2026-09-28' + ${7 * (w - 1)}::int))`;
+  }
+}
 
 const THU = "2026-10-22";
 const sent: Message[] = [];
@@ -88,9 +96,21 @@ describe("class question job", () => {
   });
 
   it("skipped outside the plan", async () => {
-    await sql`update plans set weeks = 3`;
+    await sql`delete from plan_weeks where week > 3`;
     expect((await tick("2026-10-22T19:00:00Z"))[0]?.outcome).toBe("skipped");
     expect(sent).toHaveLength(0);
+  });
+
+  it("runs in week 13 of a 13-week version", async () => {
+    await addWeeks(13, 13);
+    // Thursday of week 13 (2026-09-28 + 12 weeks + 3 days).
+    const r = await tick("2026-12-24T20:00:00Z");
+    expect(r).toEqual([{ job: "class_question", date: "2026-12-24", outcome: "sent" }]);
+  });
+
+  it("is skipped after the last week of the version", async () => {
+    await addWeeks(13, 13);
+    expect((await tick("2027-01-07T20:00:00Z"))[0]?.outcome).toBe("skipped");
   });
 
   it("a thrown run is failed and left claimed", async () => {

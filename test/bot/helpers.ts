@@ -61,6 +61,7 @@ export function sessionFor(
       timeMinMin: i.time_min_min,
       timeMinMax: i.time_min_max,
       fallback: i.fallback_prescription,
+      swappedFrom: null,
       status: opts.status?.[i.key] ?? "planned",
     }));
   const s: Extract<Session, { kind: "session" }> = {

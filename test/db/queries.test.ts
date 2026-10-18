@@ -288,14 +288,14 @@ describe("getAlternativeFacts", () => {
   });
 
   it("tags come from single-option items first; OR items only as a fallback", async () => {
-    const hack = await getAlternativeFacts(db, { id: await exId(sql, "hack_squat") });
+    const hack = await getAlternativeFacts(db, { id: await exId(sql, "hack_squat") }, "2026-09-28");
     expect(hack?.movementTags).toEqual(["squat"]);
-    const squat = await getAlternativeFacts(db, { id: await exId(sql, "squat") });
+    const squat = await getAlternativeFacts(db, { id: await exId(sql, "squat") }, "2026-09-28");
     expect([...(squat?.movementTags ?? [])].sort()).toEqual(["hinge", "squat"]);
   });
 
   it("describes where it is planned and what shares its pattern", async () => {
-    const f = await getAlternativeFacts(db, { id: await exId(sql, "cable_row") });
+    const f = await getAlternativeFacts(db, { id: await exId(sql, "cable_row") }, "2026-09-28");
     expect(f?.exercise).toMatchObject({ slug: "cable_row", type: "weighted", loadBasis: "stack" });
     expect(f?.exercise.equipment).toBe("Cable stack");
     expect(f?.plannedIn).toEqual([
@@ -305,7 +305,7 @@ describe("getAlternativeFacts", () => {
       { slug: "ring_row", name: "ring_row", equipment: null },
     ]);
 
-    const pull = await getAlternativeFacts(db, { id: await exId(sql, "pull_up") });
+    const pull = await getAlternativeFacts(db, { id: await exId(sql, "pull_up") }, "2026-09-28");
     expect(pull?.movementTags).toEqual(["vertical_pull"]);
     expect(pull?.plannedIn.map((p) => p.planName)).toEqual([
       "Clean strict pull-up",
@@ -314,16 +314,24 @@ describe("getAlternativeFacts", () => {
     expect(pull?.samePatternInCatalog).toEqual([]);
 
     // An OR option never pulls the other option's pattern in via its own item.
-    const hack = await getAlternativeFacts(db, { id: await exId(sql, "hack_squat") });
+    const hack = await getAlternativeFacts(db, { id: await exId(sql, "hack_squat") }, "2026-09-28");
     expect(hack?.samePatternInCatalog).toEqual([]);
   });
 
+  it("same-pattern exercises come from the version effective today", async () => {
+    await sql`insert into plan_versions (plan_id, version, effective_from, reason, source_hash, resolved_hash)
+      select plan_id, 2, '2026-09-29', 'empty', source_hash, resolved_hash from plan_versions where version = 1`;
+    const f = await getAlternativeFacts(db, { id: await exId(sql, "cable_row") }, "2026-10-01");
+    expect(f?.movementTags).toEqual(["row"]);
+    expect(f?.samePatternInCatalog).toEqual([]);
+  });
+
   it("returns active limitations and preferences only", async () => {
-    const f = await getAlternativeFacts(db, { id: await exId(sql, "bench_press") });
+    const f = await getAlternativeFacts(db, { id: await exId(sql, "bench_press") }, "2026-09-28");
     expect(f?.limitations).toEqual(["Left shoulder sensitive on dips"]);
     expect(f?.preferences).toEqual(["Prefers machines"]);
     expect(f?.movementTags).toEqual([]);
-    expect(await getAlternativeFacts(db, { id: 999_999 })).toBeNull();
+    expect(await getAlternativeFacts(db, { id: 999_999 }, "2026-09-28")).toBeNull();
   });
 });
 

@@ -22,6 +22,7 @@ import type {
   SetBandKgInput,
   SkipItemsInput,
   StagedAction,
+  SwapExerciseInput,
   UsageStore,
 } from "../../src/logging/types.js";
 import { CATALOG } from "../../src/plan-import/exercise-catalog.js";
@@ -41,7 +42,8 @@ type Call =
   | { tool: "render_chart"; input: RenderChartInput }
   | { tool: "log_class"; input: LogClassInput }
   | { tool: "set_band_kg"; input: SetBandKgInput }
-  | { tool: "skip_items"; input: SkipItemsInput };
+  | { tool: "skip_items"; input: SkipItemsInput }
+  | { tool: "swap_exercise"; input: SwapExerciseInput };
 
 function recordingBackend() {
   const calls: Call[] = [];
@@ -279,6 +281,10 @@ function recordingBackend() {
       calls.push({ tool: "skip_items", input });
       return { ok: false, error: "not used in this golden set" };
     },
+    async stageSwap(input) {
+      calls.push({ tool: "swap_exercise", input });
+      return { ok: false, error: "not used in this golden set" };
+    },
   };
   return { backend, calls };
 }
@@ -388,6 +394,7 @@ const WRITE_TOOLS = [
   "edit_last_entry",
   "undo_last_entry",
   "skip_items",
+  "swap_exercise",
   "save_memory",
   "log_readiness",
   "log_bodyweight",
@@ -525,6 +532,24 @@ describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
     expect(calls).toHaveLength(0);
     expect(res.replyText).toBeTruthy();
     expect((res.replyText ?? "").length).toBeLessThan(200);
+  });
+
+  describe("M7 swaps", () => {
+    it("swap face pulls for band pull-aparts only today", async () => {
+      const { calls } = await run("swap face pulls for band pull-aparts only today");
+      const s = calls.find((c) => c.tool === "swap_exercise");
+      expect(s && "input" in s && s.input.scope).toBe("today");
+      expect(s && "input" in s && s.input.exercise.said.toLowerCase()).toContain("face pull");
+      expect(calls.some((c) => c.tool === "log_sets")).toBe(false);
+    });
+
+    it("from now on use leg press instead of hack squat", async () => {
+      const { calls } = await run("from now on use leg press instead of hack squat");
+      const s = calls.find((c) => c.tool === "swap_exercise");
+      expect(s && "input" in s && s.input.scope).toBe("rest");
+      expect(s && "input" in s && s.input.replacement.said.toLowerCase()).toContain("leg press");
+      expect(calls.some((c) => c.tool === "log_sets")).toBe(false);
+    });
   });
 
   describe("M4 queries", () => {

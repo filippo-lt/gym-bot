@@ -2,7 +2,6 @@ import { DateTime } from "luxon";
 import type { FallbackPrescription } from "../plan-import/types.js";
 import type { AdviceItem, SessionAdvice } from "../progression/session-advice.js";
 import {
-  EARLIER_DELOAD_HINT,
   FRIDAY_ASK_CLASS,
   heavyGroupFor,
   type LabelContext,
@@ -90,6 +89,11 @@ const VARIANT_LABEL: Record<string, string> = {
 };
 
 function itemName(item: SessionItem, hspuStepName?: string | null): string {
+  const name = baseItemName(item, hspuStepName);
+  return item.swappedFrom ? `${name} (instead of ${item.swappedFrom} today)` : name;
+}
+
+function baseItemName(item: SessionItem, hspuStepName?: string | null): string {
   const names = item.options.map((o) => o.name);
   if (names.length > 1) {
     return [names[0], ...names.slice(1).map((n) => n.charAt(0).toLowerCase() + n.slice(1))].join(
@@ -351,7 +355,6 @@ export function formatToday(
     })) {
       lines.push(esc(l));
     }
-    if (advice.earlierDeloadHint) lines.push(esc(EARLIER_DELOAD_HINT));
   }
   lines.push("");
 
@@ -366,7 +369,7 @@ export function formatToday(
   });
   const dropped = mains
     .filter((i) => hidden.has(i.plannedItemId))
-    .map((i) => itemName(i))
+    .map((i) => baseItemName(i))
     .filter((name, idx, all) => all.indexOf(name) === idx);
   if (dropped.length) lines.push("", `Dropped today: ${esc(dropped.join(", "))}`);
 
@@ -384,7 +387,7 @@ export function formatBeforeStart(startDate: string): string {
 }
 
 export function formatFinished(): string {
-  return "The 12-week plan is finished. 🎉 A new plan comes later.";
+  return "The plan is finished.";
 }
 
 export function formatSession(

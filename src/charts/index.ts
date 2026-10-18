@@ -2,7 +2,7 @@
 import { DateTime } from "luxon";
 import { trainingDate } from "../domain/calendar.js";
 import type { Db } from "../logging/db.js";
-import { loadPlanEnv, type PlanEnv, weekFor } from "../progression/load-history.js";
+import { loadPlanEnv, type PlanEnv } from "../progression/load-history.js";
 import {
   distinctSessions,
   exerciseCaption,
@@ -95,11 +95,10 @@ async function buildVolume(db: Db, since: string | undefined, now: Date): Promis
  * null before the start. Version-aware (plan_weeks of every version), never `plans.weeks`.
  */
 function volumeWeek(env: PlanEnv, date: string): number | null {
-  if (date < env.startDate) return null;
-  const current = weekFor(env, date);
+  const first = env.versions[0];
+  if (!first || date < first.startDate) return null;
+  const current = env.weekOf(date);
   if (current) return current.week;
-  let last = 0;
-  for (const rows of env.weeksByVersion.values())
-    for (const w of rows) last = Math.max(last, w.week);
+  const last = Math.max(0, ...env.versions.map((v) => v.weeks));
   return last > 0 ? last : null;
 }

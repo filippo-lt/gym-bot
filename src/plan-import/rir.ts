@@ -1,7 +1,7 @@
 import type { CatalogExercise, Modifier } from "./types.js";
 
 export interface RirInput {
-  options: CatalogExercise[];
+  options: Pick<CatalogExercise, "type" | "is_main_lift">[];
   modifiers: Modifier[];
   weekIsDeload: boolean;
 }

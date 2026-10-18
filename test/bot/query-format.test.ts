@@ -280,6 +280,7 @@ describe("plan", () => {
     ],
     nextDeload: { week: 4, startDate: "2026-10-19" },
     nextTrainingDay: { date: "2026-10-20", weekday: "tue", focus: "HSPU + push + squat" },
+    changes: [],
   };
   const none = { week: null, phase: null, weekStart: null, weekEnd: null };
 
@@ -291,6 +292,44 @@ describe("plan", () => {
         "Phases: W1–3 Base · W4 Deload",
         "Next deload: this week",
         "Next training day: Tue 20 Oct — HSPU + push + squat",
+      ].join("\n"),
+    );
+  });
+  it("lists plan changes, one line each, and omits the section when there are none", () => {
+    expect(formatPlan(overview)).not.toContain("Changes");
+    const out = formatPlan({
+      ...overview,
+      changes: [
+        {
+          effectiveFrom: "2026-10-20",
+          change: {
+            kind: "swap",
+            from: "Face pull",
+            to: "Band pull-apart",
+            weekdays: ["mon", "fri"],
+          },
+        },
+        {
+          effectiveFrom: "2026-10-21",
+          change: { kind: "swap", from: "Dips", to: "Push-up", weekdays: "all" },
+        },
+        {
+          effectiveFrom: "2026-11-09",
+          change: { kind: "deload_earlier", insertedWeek: 7, droppedWeek: 8 },
+        },
+        {
+          effectiveFrom: "2026-11-16",
+          change: { kind: "deload_earlier", insertedWeek: 8, droppedWeek: null },
+        },
+      ],
+    });
+    expect(out).toContain(
+      [
+        "<b>Changes</b>",
+        "• From Tue 20 Oct: Face pull → Band pull-apart (Mon, Fri)",
+        "• From Wed 21 Oct: Dips → Push-up (every day)",
+        "• From Mon 9 Nov: deload moved to W7 (W8 deload dropped)",
+        "• From Mon 16 Nov: deload moved to W8 (no deload dropped)",
       ].join("\n"),
     );
   });

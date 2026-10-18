@@ -13,7 +13,16 @@ import { thursdayOnOrBefore, trainingDate, weekdayOf } from "../domain/calendar.
 import { executeActions } from "../logging/execute.js";
 import type { LedgerResult } from "../logging/types.js";
 import { logBodyweightInputSchema } from "../logging/types.js";
+import {
+  applyDeloadProposal,
+  CLOSED,
+  type DeloadPreview,
+  ensureDeloadProposal,
+  expireDeloadProposal,
+} from "../plan/deload-proposal.js";
+import { StaleBaseVersionError } from "../plan/versions.js";
 import { loadFrozenLevel } from "../progression/load-history.js";
+import type { DeloadTrigger } from "../progression/readiness.js";
 import type { SessionAdvice } from "../progression/session-advice.js";
 import { refreshUserState } from "../progression/store.js";
 import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
@@ -26,6 +35,7 @@ import {
   maskToGroups,
 } from "./log-format.js";
 import { morningMessage, renderTodayText } from "./morning.js";
+import { deloadAppliedText, deloadProposalText } from "./plan-change-format.js";
 import { READINESS_EMOJI, READINESS_QUESTION } from "./readiness-text.js";
 
 const HTML = { parse_mode: "HTML" as const };
@@ -93,6 +103,23 @@ export function proposalCard(id: number, from: string, to: string): Message {
   };
 }
 
+/** Card for the "move the deload earlier" proposal. */
+export function deloadCard(
+  id: number,
+  preview: DeloadPreview,
+  trigger: DeloadTrigger = "sessions",
+): Message {
+  return {
+    text: deloadProposalText(preview, trigger),
+    keyboard: [
+      [
+        { text: "✅ Move deload", data: cb.proposal(id, "ok") },
+        { text: "❌ Not now", data: cb.proposal(id, "no") },
+      ],
+    ],
+  };
+}
+
 const nextDay = (iso: string): string =>
   DateTime.fromISO(iso, { zone: "utc" }).plus({ days: 1 }).toISODate() as string;
 
@@ -110,6 +137,8 @@ export interface Inputs {
   callback(ctx: Context): Promise<void>;
   /** Sends the "move to the next HSPU step?" card when the engine proposes it (live sessions only). */
   hspuProposal(ctx: Context, advice: SessionAdvice | null): Promise<void>;
+  /** Sends the "move the deload earlier?" card once when the fatigue trigger fires (live sessions only). */
+  deloadProposal(ctx: Context, advice: SessionAdvice | null): Promise<void>;
 }
 
 export function createInputs(deps: InputsDeps): Inputs {
@@ -229,6 +258,7 @@ export function createInputs(deps: InputsDeps): Inputs {
   async function proposalTap(ctx: Context, id: number, act: "ok" | "no"): Promise<void> {
     const now = deps.now();
     const [row] = await db.select().from(proposals).where(eq(proposals.id, id));
+    if (row?.kind === "earlier_deload") return deloadTap(ctx, id, act);
     const p = row?.payload as { fromName?: string; toName?: string } | undefined;
     const decided = await db.transaction(async (tx) => {
       const updated = await tx
@@ -252,6 +282,50 @@ export function createInputs(deps: InputsDeps): Inputs {
       keyboard: [],
     });
     await ctx.answerCallbackQuery({ text: act === "ok" ? "Moved." : "Staying." });
+  }
+
+  async function deloadTap(ctx: Context, id: number, act: "ok" | "no"): Promise<void> {
+    if (act === "no") {
+      const declined = await db
+        .update(proposals)
+        .set({ status: "declined", decidedAt: deps.now() })
+        .where(and(eq(proposals.id, id), eq(proposals.status, "open")))
+        .returning({ id: proposals.id });
+      if (declined.length === 0) {
+        const [cur] = await db.select().from(proposals).where(eq(proposals.id, id));
+        if (cur?.status === "expired") {
+          await edit(ctx, { text: CLOSED, keyboard: [] });
+          await ctx.answerCallbackQuery({ text: CLOSED });
+        } else await ctx.answerCallbackQuery({ text: "Already decided." });
+        return;
+      }
+      await edit(ctx, { text: "OK, I won't move the deload.", keyboard: [] });
+      await ctx.answerCallbackQuery({ text: "Not now." });
+      return;
+    }
+    const now = deps.now();
+    let result: Awaited<ReturnType<typeof applyDeloadProposal>>;
+    try {
+      result = await db.transaction((tx) => applyDeloadProposal(tx, id, trainingDate(now), now));
+    } catch (error) {
+      if (!(error instanceof StaleBaseVersionError)) throw error;
+      await expireDeloadProposal(db, id, now);
+      result = { ok: false, reason: "closed", reply: CLOSED };
+    }
+    if (!result.ok) {
+      if (result.reason === "decided") {
+        await ctx.answerCallbackQuery({ text: result.reply });
+        return;
+      }
+      await edit(ctx, { text: result.reply, keyboard: [] });
+      await ctx.answerCallbackQuery({ text: result.reply });
+      return;
+    }
+    await edit(ctx, {
+      text: deloadAppliedText(result),
+      keyboard: [[{ text: "Undo", data: cb.undoPlan(`r:${id}`, 0) }]],
+    });
+    await ctx.answerCallbackQuery({ text: "Moved." });
   }
 
   async function callback(ctx: Context): Promise<void> {
@@ -313,16 +387,31 @@ export function createInputs(deps: InputsDeps): Inputs {
         .returning();
     }
     if (!row || row.messageId !== null) return;
-    const sent = (await reply(ctx, proposalCard(row.id, adv.from.name, adv.to.name))) as
-      | { message_id?: number }
-      | undefined;
+    await sendCard(ctx, row.id, proposalCard(row.id, adv.from.name, adv.to.name));
+  }
+
+  /** Sends a proposal card and stores its message id (the dedupe key). */
+  async function sendCard(ctx: Context, id: number, card: Message): Promise<void> {
+    const sent = (await reply(ctx, card)) as { message_id?: number } | undefined;
     if (sent?.message_id !== undefined) {
-      await db
-        .update(proposals)
-        .set({ messageId: sent.message_id })
-        .where(eq(proposals.id, row.id));
+      await db.update(proposals).set({ messageId: sent.message_id }).where(eq(proposals.id, id));
     }
   }
 
-  return { readinessCommand, bodyweightCommand, classCommand, callback, hspuProposal };
+  /** Sends the "move the deload earlier" card once (separate message, deduped by message_id). */
+  async function deloadProposal(ctx: Context, advice: SessionAdvice | null): Promise<void> {
+    if (advice?.mode !== "live") return;
+    const row = await ensureDeloadProposal(db, trainingDate(deps.now()), advice.earlierDeloadHint);
+    if (!row || row.messageId !== null) return;
+    await sendCard(ctx, row.id, deloadCard(row.id, row.preview, row.trigger));
+  }
+
+  return {
+    readinessCommand,
+    bodyweightCommand,
+    classCommand,
+    callback,
+    hspuProposal,
+    deloadProposal,
+  };
 }

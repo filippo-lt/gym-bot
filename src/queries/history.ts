@@ -1,12 +1,11 @@
 /** Read-only: the last sessions of one exercise, any source. */
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { logEntries, logGroups } from "../db/schema/log.js";
-import { equipment, exercises, hspuLadder, planWeeks } from "../db/schema/plan.js";
-import { planWeekFor } from "../domain/calendar.js";
+import { equipment, exercises, hspuLadder } from "../db/schema/plan.js";
 import { type DayName, dayName } from "../domain/day-ref.js";
 import type { Db } from "../logging/db.js";
-import { loadPlanContext } from "../logging/plan-context.js";
 import { bandAssist } from "../logging/units.js";
+import { loadVersionIndex } from "../plan/effective.js";
 import type { ExerciseType, LoadBasis } from "../plan-import/types.js";
 
 export const DEFAULT_HISTORY_LIMIT = 5;
@@ -131,20 +130,13 @@ export async function getExerciseHistory(
     .where(and(eq(logGroups.exerciseId, exerciseId), inArray(logGroups.sessionDate, dates)))
     .orderBy(asc(logGroups.performedAt), asc(logGroups.id), asc(logEntries.setIndex));
 
-  // Plan weeks of the version that applies to the newest day (the week table is tiny).
-  const ctx = await loadPlanContext(db, dates[0] as string);
-  const weekRows = ctx
-    ? await db.select().from(planWeeks).where(eq(planWeeks.planVersionId, ctx.versionId))
-    : [];
-  const weekInfo = new Map(weekRows.map((w) => [w.week, w]));
+  // Each listed date gets the week, phase and deload flag of the version effective on that date.
+  const index = await loadVersionIndex(db);
 
   const byDate = new Map<string, HistorySession>();
   for (const date of dates) {
-    const status = ctx
-      ? planWeekFor(date, ctx.startDate, ctx.weeks)
-      : { status: "finished" as const };
-    const week = status.status === "active" ? status.week : null;
-    const info = week === null ? undefined : weekInfo.get(week);
+    const info = index.weekOf(date);
+    const week = info?.week ?? null;
     byDate.set(date, {
       sessionDate: date,
       weekday: dayName(date),
