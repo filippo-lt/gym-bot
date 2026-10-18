@@ -56,6 +56,8 @@ export const cb = {
   undoSkip: (key: string, index: number) => `us:${key}:${index}`,
   /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
   history: (exerciseId: number) => `hx:${exerciseId}`,
+  /** /chart for one exercise, or "v" for the volume chart. Not part of CallbackAction: parsed by parseChartCallback. */
+  chart: (exerciseId: number | "v") => `ch:${exerciseId}`,
 };
 
 const int = (s: string | undefined): number | null =>
@@ -167,5 +169,12 @@ export function parseCallback(data: string): CallbackAction | null {
 /** `hx:<exerciseId>`: handled by its own bot handler, outside the logging flow's dispatch. */
 export function parseHistoryCallback(data: string): { exerciseId: number } | null {
   const m = /^hx:(\d{1,9})$/.exec(data);
+  return m ? { exerciseId: Number(m[1]) } : null;
+}
+
+/** `ch:<exerciseId>` or `ch:v`: handled by its own bot handler, outside the logging flow's dispatch. */
+export function parseChartCallback(data: string): { exerciseId: number } | { volume: true } | null {
+  if (data === "ch:v") return { volume: true };
+  const m = /^ch:(\d{1,9})$/.exec(data);
   return m ? { exerciseId: Number(m[1]) } : null;
 }

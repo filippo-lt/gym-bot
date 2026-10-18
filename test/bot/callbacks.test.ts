@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CALLBACK_MAX_BYTES, cb, parseCallback } from "../../src/bot/callbacks.js";
+import {
+  CALLBACK_MAX_BYTES,
+  cb,
+  parseCallback,
+  parseChartCallback,
+} from "../../src/bot/callbacks.js";
 
 // Worst-case ids: Postgres int4 for rows, a long Telegram update id for source keys.
 const ID = 2_147_483_647;
@@ -151,5 +156,21 @@ describe("morning readiness callback", () => {
     expect(parseCallback("rd:t")).toEqual({ t: "rd", level: "t" });
     expect(parseCallback("rd:t:m:20261340")).toBeNull();
     expect(parseCallback("rd:t:x:20261026")).toBeNull();
+  });
+});
+
+describe("chart callbacks", () => {
+  it("round-trips an exercise id and volume", () => {
+    expect(cb.chart(123)).toBe("ch:123");
+    expect(cb.chart("v")).toBe("ch:v");
+    expect(parseChartCallback("ch:123")).toEqual({ exerciseId: 123 });
+    expect(parseChartCallback("ch:v")).toEqual({ volume: true });
+  });
+  it("rejects anything else and stays within the byte limit", () => {
+    expect(parseChartCallback("ch:x")).toBeNull();
+    expect(parseChartCallback("ch:")).toBeNull();
+    expect(parseChartCallback("hx:1")).toBeNull();
+    expect(parseCallback("ch:1")).toBeNull();
+    expect(cb.chart(999999999).length).toBeLessThanOrEqual(CALLBACK_MAX_BYTES);
   });
 });
