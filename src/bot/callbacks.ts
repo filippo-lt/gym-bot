@@ -26,6 +26,8 @@ export const cb = {
   /** `key` is the write_ledger source key, e.g. "u:123456" or "p:42". */
   undoEdit: (key: string, index: number) => `ue:${key}:${index}`,
   memory: (id: number) => `md:${id}`,
+  /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
+  history: (exerciseId: number) => `hx:${exerciseId}`,
 };
 
 const int = (s: string | undefined): number | null =>
@@ -79,4 +81,10 @@ export function parseCallback(data: string): CallbackAction | null {
     default:
       return null;
   }
+}
+
+/** `hx:<exerciseId>`: handled by its own bot handler, outside the logging flow's dispatch. */
+export function parseHistoryCallback(data: string): { exerciseId: number } | null {
+  const m = /^hx:(\d{1,9})$/.exec(data);
+  return m ? { exerciseId: Number(m[1]) } : null;
 }

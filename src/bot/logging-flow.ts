@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 import { type Context, InlineKeyboard } from "grammy";
 import { runIntent } from "../ai/loop.js";
 import type { IntentModel } from "../ai/model.js";
+import { checkNumbers } from "../ai/number-guard.js";
+import { buildDynamicText } from "../ai/prompt.js";
 import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
@@ -49,7 +51,7 @@ import {
 import type { GroupSnapshot, LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
-import { esc } from "./format.js";
+import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
   BUDGET_REACHED,
@@ -66,7 +68,9 @@ import {
   type Keyboard,
   type Message,
   memoryList,
+  memorySaved,
   NO_AI_KEY,
+  NUMBER_GUARD_FALLBACK,
   type Place,
   removedText,
   replacedText,
@@ -134,6 +138,15 @@ async function edit(ctx: Context, m: Message | string): Promise<void> {
   } catch (error) {
     if (!isNotModified(error)) throw error;
   }
+}
+
+/** Telegram HTML to plain text, for the conversation memory the model reads. */
+function htmlToPlain(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
 }
 
 function plainSummary(actions: StagedAction[]): string {
@@ -278,6 +291,8 @@ export function createFlow(deps: FlowDeps): Flow {
       } else if (r.kind === "edit") {
         const action = a?.kind === "edit_group" ? a : await rebuildEditAction(r);
         add(action ? editEchoMessage(action, sourceKey, i) : { text: "Changed ✓", keyboard: [] });
+      } else if (r.kind === "memory") {
+        add(memorySaved(r.content, r.memoryId));
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -304,6 +319,21 @@ export function createFlow(deps: FlowDeps): Flow {
   }
 
   /**
+   * Best effort: a removed group's original echo becomes "Removed: …" and loses its buttons.
+   * Telegram errors (message too old, deleted, not modified...) don't matter.
+   */
+  async function retireEcho(ctx: Context, snap: GroupSnapshot): Promise<void> {
+    try {
+      const chatId = chatOf(ctx);
+      const messageId = await findEchoMessage(db, snap.groupId);
+      if (chatId === undefined || messageId === null) return;
+      await ctx.api.editMessageText(chatId, messageId, removedText(snap), HTML);
+    } catch {
+      // message too old, deleted, not modified...
+    }
+  }
+
+  /**
    * Sends the echoes of a write and remembers each saved group's echo message id (best effort),
    * so a later edit can refresh it; an edit refreshes the echo of the group it changed.
    */
@@ -324,7 +354,10 @@ export function createFlow(deps: FlowDeps): Flow {
         }
       }
     }
-    for (const r of results) if (r.kind === "edit") await refreshEcho(ctx, r.groupId);
+    for (const r of results) {
+      if (r.kind === "edit") await refreshEcho(ctx, r.groupId);
+      else if (r.kind === "delete") await retireEcho(ctx, r.snapshot);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -466,10 +499,9 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
 
-    const [staticBlock, context] = await Promise.all([
-      promptStatic(),
-      buildPromptContext(db, chatId, now),
-    ]);
+    // One query at a time (session pooler rule).
+    const staticBlock = await promptStatic();
+    const context = await buildPromptContext(db, chatId, now);
     await appendMessage(db, chatId, "user", body);
 
     let result: Awaited<ReturnType<typeof runIntent>>;
@@ -502,11 +534,44 @@ export function createFlow(deps: FlowDeps): Flow {
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
     if (staged.length === 0) {
+      const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
+      const sendFallback = async (html: string | null) => {
+        await send(ctx, {
+          text: html ? html : esc(NUMBER_GUARD_FALLBACK),
+          keyboard: [],
+        });
+        await appendMessage(
+          db,
+          chatId,
+          "assistant",
+          html ? htmlToPlain(html) : NUMBER_GUARD_FALLBACK,
+        );
+      };
+      if (result.replyText && !result.truncated) {
+        // Number guard (SPEC 3): a number the model wrote must come from this run's facts.
+        const reply = stripMarkdown(result.replyText);
+        const checked = checkNumbers(reply, [
+          ...result.reads.map((r) => r.content),
+          buildDynamicText(context),
+          body,
+        ]);
+        if (!checked.ok) {
+          console.warn(`ai: reply rejected, ${checked.unknown.length} unknown number(s)`);
+          await sendFallback(fallback?.fallbackHtml ?? null);
+          return;
+        }
+        await send(ctx, { text: esc(guardLength(reply, 3000)), keyboard: [] });
+        await appendMessage(db, chatId, "assistant", reply);
+        return;
+      }
+      if (!result.truncated && fallback?.fallbackHtml) {
+        // The model read something but wrote nothing: show the code-formatted answer.
+        await sendFallback(fallback.fallbackHtml);
+        return;
+      }
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
-        : result.replyText
-          ? stripMarkdown(result.replyText)
-          : DIDNT_GET_IT;
+        : DIDNT_GET_IT;
       await send(ctx, { text: esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
       return;
@@ -670,6 +735,7 @@ export function createFlow(deps: FlowDeps): Flow {
           return;
         }
         await edit(ctx, removedText(snap));
+        await retireEcho(ctx, snap);
         await answer("Removed.");
         await remember(chatOf(ctx), `Removed (Undo button): ${describeSnapshot(snap)}`);
         return;

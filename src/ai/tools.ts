@@ -1,16 +1,34 @@
 import { z } from "zod";
 import {
   editLastInputSchema,
+  getAlternativesInputSchema,
+  getExerciseHistoryInputSchema,
   getSessionInputSchema,
   type LoggingBackend,
   logSetsInputSchema,
+  type ReadResult,
   type StagedAction,
   type StageResult,
+  saveMemoryInputSchema,
   undoLastInputSchema,
 } from "../logging/types.js";
 import type { ToolDef } from "./model.js";
 
-export type ToolName = "get_session" | "log_sets" | "edit_last_entry" | "undo_last_entry";
+export type ToolName =
+  | "get_session"
+  | "get_exercise_history"
+  | "get_alternatives"
+  | "log_sets"
+  | "edit_last_entry"
+  | "undo_last_entry"
+  | "save_memory";
+
+/** Read-only tools: their errors never make a confirm card "partly understood". */
+export const READ_TOOLS: readonly string[] = [
+  "get_session",
+  "get_exercise_history",
+  "get_alternatives",
+];
 
 function inputSchema(schema: z.ZodType): ToolDef["input_schema"] {
   const json = z.toJSONSchema(schema, { io: "input", target: "draft-7" }) as Record<
@@ -27,8 +45,20 @@ export const TOOLS: ToolDef[] = [
   {
     name: "get_session",
     description:
-      "Read-only. Returns the planned session for a day with each item's prescription and what is already logged. Use it for questions about today's plan or what is done.",
+      "Read-only. Returns the planned session for a day with each item's prescription and what is already logged, plus the next open item. With no day and no date it is today. Pass day or date only when the user named one (day: today, yesterday, tomorrow, mon..sun; date: YYYY-MM-DD). Never both.",
     input_schema: inputSchema(getSessionInputSchema),
+  },
+  {
+    name: "get_exercise_history",
+    description:
+      "Read-only. Returns the user's logged sessions of ONE exercise, newest first, each with a ready-made 'line' in code-formatted text. Use it for 'what did I do', 'when did I last', 'my history of X'. Give exercise.said (the user's words) and slug only when sure. last_n is how many sessions (default 5, max 10). period (this_week or last_week) or plan_week (1-12) narrows the dates: code turns them into dates, never you. Never both period and plan_week. If the result says found:false, tell the user briefly (ambiguous: name the candidates).",
+    input_schema: inputSchema(getExerciseHistoryInputSchema),
+  },
+  {
+    name: "get_alternatives",
+    description:
+      "Read-only. Returns facts for 'what can I do instead of X': the exercise, its movement tags, where it is planned, other catalog exercises with the same movement pattern, and the user's saved limitations and preferences. Give exercise.said and slug only when sure; 'want' is what the user asked for in their words (e.g. 'machine version').",
+    input_schema: inputSchema(getAlternativesInputSchema),
   },
   {
     name: "log_sets",
@@ -46,12 +76,20 @@ export const TOOLS: ToolDef[] = [
       "Stage the removal of the most recent logged entry (nothing is removed until the user confirms). Use for 'undo', 'delete that', 'remove the last one'.",
     input_schema: inputSchema(undoLastInputSchema),
   },
+  {
+    name: "save_memory",
+    description:
+      "Stage remembering a LASTING limitation (injury, sore joint, exercise to avoid) or preference (equipment, exercise variant) the user states about themselves. Nothing is saved until the user confirms. Write content as a short neutral fact (e.g. 'left shoulder sensitive on dips'). Never use it for a one-off feeling or today's condition ('slept badly', 'tired today'): just reply.",
+    input_schema: inputSchema(saveMemoryInputSchema),
+  },
 ];
 
 export interface ToolExecution {
   toolResultContent: string;
   isError: boolean;
   staged?: StagedAction;
+  /** Set for read tools: the code-formatted answer, used when the reply fails the number guard. */
+  read?: { fallbackHtml: string | null };
 }
 
 function describeIssues(error: z.ZodError): string {
@@ -63,6 +101,14 @@ function describeIssues(error: z.ZodError): string {
 function fromStage(result: StageResult): ToolExecution {
   if (!result.ok) return { toolResultContent: result.error, isError: true };
   return { toolResultContent: result.preview, isError: false, staged: result.action };
+}
+
+function fromRead(result: ReadResult): ToolExecution {
+  return {
+    toolResultContent: JSON.stringify(result.facts),
+    isError: result.isError === true,
+    read: { fallbackHtml: result.fallbackHtml },
+  };
 }
 
 export async function executeTool(
@@ -78,10 +124,22 @@ export async function executeTool(
     case "get_session": {
       const p = getSessionInputSchema.safeParse(rawInput ?? {});
       if (!p.success) return invalid(p.error);
-      return {
-        toolResultContent: JSON.stringify(await backend.getSession(p.data)),
-        isError: false,
-      };
+      return fromRead(await backend.getSession(p.data));
+    }
+    case "get_exercise_history": {
+      const p = getExerciseHistoryInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromRead(await backend.getExerciseHistory(p.data));
+    }
+    case "get_alternatives": {
+      const p = getAlternativesInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromRead(await backend.getAlternatives(p.data));
+    }
+    case "save_memory": {
+      const p = saveMemoryInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageSaveMemory(p.data));
     }
     case "log_sets": {
       const p = logSetsInputSchema.safeParse(rawInput);

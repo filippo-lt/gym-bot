@@ -1,18 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUDGET_REACHED,
   cancelledText,
   clarifyCard,
   confirmCard,
+  DIDNT_GET_IT,
   deleteQuestion,
   type EchoView,
+  EXPIRED,
   echoMessage,
   editEchoMessage,
+  HELP_TEXT,
+  MEMORY_EMPTY,
   memoryList,
+  NO_AI_KEY,
+  NUMBER_GUARD_FALLBACK,
   reasonPhrases,
   removedText,
   replacedText,
+  STALE,
   stripMarkdown,
+  TEXT_ONLY,
+  UNKNOWN_COMMAND,
 } from "../../src/bot/log-format.js";
+import { HISTORY_UNKNOWN, HISTORY_USAGE, SESSION_USAGE } from "../../src/bot/query-format.js";
 import { decidePolicy } from "../../src/logging/policy.js";
 import type { ResolvedEntry, StagedAction } from "../../src/logging/types.js";
 import { editInput, entry, logAction, logInput, snapshot } from "../logging/helpers.js";
@@ -322,7 +333,7 @@ describe("cards", () => {
       "missing: load",
       "sets were guessed",
       "I wasn't sure",
-      "far from last time: 600 kg",
+      "far from last time: 600 kg vs 60 kg last time",
       "reps look high: 50",
       "not in today's session",
     ]);
@@ -371,5 +382,59 @@ describe("cards", () => {
     ]);
     expect(render(m)).toMatchSnapshot();
     expect(memoryList([]).text).toBe("I don't know anything about you yet.");
+  });
+});
+
+describe("HTML-safe constants", () => {
+  const ALLOWED = new Set([
+    "b",
+    "strong",
+    "i",
+    "em",
+    "u",
+    "ins",
+    "s",
+    "strike",
+    "del",
+    "a",
+    "code",
+    "pre",
+    "tg-spoiler",
+    "blockquote",
+    "span",
+  ]);
+  const texts = {
+    HELP_TEXT,
+    HISTORY_USAGE,
+    HISTORY_UNKNOWN,
+    SESSION_USAGE,
+    NUMBER_GUARD_FALLBACK,
+    TEXT_ONLY,
+    UNKNOWN_COMMAND,
+    NO_AI_KEY,
+    BUDGET_REACHED,
+    DIDNT_GET_IT,
+    EXPIRED,
+    STALE,
+    MEMORY_EMPTY,
+  };
+  for (const [name, value] of Object.entries(texts)) {
+    it(`${name} has only allowed tags and no bare < or &`, () => {
+      for (const m of value.matchAll(/<\/?([a-zA-Z][\w-]*)/g)) {
+        expect(ALLOWED.has((m[1] as string).toLowerCase())).toBe(true);
+      }
+      expect(value.replace(/<[^>]*>/g, "")).not.toMatch(/[<>]/);
+      expect(value.replace(/&(?:amp|lt|gt|quot|#\d+);/g, "")).not.toContain("&");
+    });
+  }
+});
+
+describe("memory card", () => {
+  it("explains a memory-only card", () => {
+    const a: StagedAction = {
+      kind: "save_memory",
+      input: { kind: "limitation", content: "no dips" },
+    };
+    expect(reasonPhrases([a], ["memory"])).toEqual(["new memory item"]);
   });
 });

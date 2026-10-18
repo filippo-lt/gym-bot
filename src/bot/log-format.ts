@@ -8,7 +8,7 @@ import { trainingDate } from "../domain/calendar.js";
 import { dateLabel, describeAction } from "../logging/describe.js";
 import type { MemoryItem } from "../logging/memory.js";
 import type { Pending } from "../logging/pending.js";
-import { farOffLoad, farOffReps } from "../logging/policy.js";
+import { farOffLoadRef, farOffReps } from "../logging/policy.js";
 import type {
   Candidate,
   EditLastInput,
@@ -35,7 +35,11 @@ export const HELP_TEXT = [
   "I'm your workout bot.",
   "Commands:",
   "/today — today's session",
+  "/next — the next exercise to do",
+  "/session — a specific day, e.g. /session mon or /session 26/10",
   "/week — this week",
+  "/plan — week, phases and next deload",
+  "/history — last sessions of an exercise, e.g. /history squat",
   "/undo — remove your last log",
   "/memory — what I remember about you",
   "/help — this message",
@@ -45,12 +49,19 @@ export const HELP_TEXT = [
   "• bench 2x6 55",
   "• no it was 57.5",
   "• undo that",
+  "",
+  "Or ask me, for example:",
+  "• what did I squat last week?",
+  "• alternative to dips?",
+  "• show me Monday's session",
 ].join("\n");
 
 export const TEXT_ONLY = "I can read text only for now.";
 export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";
+export const NUMBER_GUARD_FALLBACK =
+  "I can't answer that reliably — try /history, /session or /plan.";
 export const DIDNT_GET_IT = "Sorry, I didn't get that. Try /help.";
 export const EXPIRED = "This expired, nothing saved.";
 export const REPLACED = "Replaced by a newer request.";
@@ -400,8 +411,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         break;
       case "load_far_off":
         for (const a of actions) {
-          const load = farOffLoad(a);
-          if (load !== null) out.push(`far from last time: ${fmt(load)} kg`);
+          const far = farOffLoadRef(a);
+          if (far)
+            out.push(`far from last time: ${fmt(far.load)} kg vs ${fmt(far.ref)} kg last time`);
         }
         break;
       case "reps_far_off":
@@ -409,6 +421,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
           const reps = farOffReps(a);
           if (reps !== null) out.push(`reps look high: ${reps}`);
         }
+        break;
+      case "memory":
+        out.push("new memory item");
         break;
       default:
         break; // "delete" needs no explanation
@@ -428,6 +443,8 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
       return `${underRemoveHeader ? "" : "Remove "}${plainLineText(viewFromSnapshot(a.snapshot))}`;
     case "clarify_exercise":
       return `Unclear exercise "${esc(a.said)}"`;
+    case "save_memory":
+      return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
   }
 }
 
@@ -547,6 +564,14 @@ export function memoryList(items: MemoryItem[]): Message {
   return {
     text: ["Here is what I remember:", ...items.map((i) => `• ${esc(i.content)}`)].join("\n"),
     keyboard: items.map((i) => [{ text: `🗑 ${i.content.slice(0, 40)}`, data: cb.memory(i.id) }]),
+  };
+}
+
+/** "Saved: left shoulder sensitive on dips" with an Undo that deactivates the item. */
+export function memorySaved(content: string, memoryId: number): Message {
+  return {
+    text: `Saved: ${esc(content)}`,
+    keyboard: [[{ text: "Undo", data: cb.memory(memoryId) }]],
   };
 }
 

@@ -87,10 +87,76 @@ export type EditLastInput = z.infer<typeof editLastInputSchema>;
 export const undoLastInputSchema = z.strictObject({});
 export type UndoLastInput = z.infer<typeof undoLastInputSchema>;
 
-export const getSessionInputSchema = z.strictObject({
-  day: z.enum(DAY_VALUES).default("today"),
-});
+/** Read-only day names: also yesterday/tomorrow, which log_sets does not accept. */
+export const READ_DAY_VALUES = [
+  "today",
+  "yesterday",
+  "tomorrow",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+] as const;
+export type ReadDay = (typeof READ_DAY_VALUES)[number];
+
+export const getSessionInputSchema = z
+  .strictObject({
+    /** A day the user named. Omit both day and date for today. */
+    day: z.enum(READ_DAY_VALUES).optional(),
+    /** A calendar date the user gave, YYYY-MM-DD. */
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD")
+      .optional(),
+  })
+  .refine((v) => !(v.day !== undefined && v.date !== undefined), {
+    message: "Give either day or date, not both.",
+  });
 export type GetSessionInput = z.infer<typeof getSessionInputSchema>;
+
+export const HISTORY_PERIODS = ["this_week", "last_week"] as const;
+export const HISTORY_DEFAULT_LAST_N = 5;
+
+export const getExerciseHistoryInputSchema = z
+  .strictObject({
+    exercise: z.strictObject({
+      slug: z.string().min(1).max(60).optional(),
+      said: z.string().min(1).max(100),
+    }),
+    /** How many sessions, newest first. Default 5. */
+    last_n: z.number().int().min(1).max(10).optional(),
+    /** Calendar week of today. Code turns it into dates. */
+    period: z.enum(HISTORY_PERIODS).optional(),
+    /** A week of the 12-week plan. */
+    plan_week: z.number().int().min(1).max(12).optional(),
+  })
+  .refine((v) => !(v.period !== undefined && v.plan_week !== undefined), {
+    message: "Give either period or plan_week, not both.",
+  });
+export type GetExerciseHistoryInput = z.infer<typeof getExerciseHistoryInputSchema>;
+
+export const getAlternativesInputSchema = z.strictObject({
+  exercise: z.strictObject({
+    slug: z.string().min(1).max(60).optional(),
+    said: z.string().min(1).max(100),
+  }),
+  /** What the user wants, in their words, e.g. "machine version". */
+  want: z.string().max(100).optional(),
+});
+export type GetAlternativesInput = z.infer<typeof getAlternativesInputSchema>;
+
+export const MEMORY_KINDS = ["limitation", "preference"] as const;
+export const MEMORY_CONTENT_MAX = 200;
+
+export const saveMemoryInputSchema = z.strictObject({
+  kind: z.enum(MEMORY_KINDS),
+  /** The lasting fact, short, in the user's meaning. */
+  content: z.string().trim().min(1).max(MEMORY_CONTENT_MAX),
+});
+export type SaveMemoryInput = z.infer<typeof saveMemoryInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Resolved data (produced by src/logging, consumed by policy, executor, formatters)
@@ -215,16 +281,32 @@ export type StagedAction =
       /** The planned item's reps_max: the far-off reps fallback when there is no last session. */
       plannedRepsMax?: number | null;
     }
-  | { kind: "delete_group"; snapshot: GroupSnapshot };
+  | { kind: "delete_group"; snapshot: GroupSnapshot }
+  /** A lasting limitation/preference. Always goes through a confirm card (SPEC 5.6e). */
+  | { kind: "save_memory"; input: SaveMemoryInput };
 
 /** What a staging call returns to the AI loop. `preview` is shown to the model as the tool result. */
 export type StageResult =
   | { ok: true; action: StagedAction; preview: string }
   | { ok: false; error: string };
 
+/**
+ * What a read tool returns. `facts` is sent to the model as JSON; `fallbackHtml` is the
+ * code-formatted answer the bot sends when the model's reply fails the number guard.
+ */
+export interface ReadResult {
+  facts: unknown;
+  fallbackHtml: string | null;
+  /** The input was refused (e.g. an unknown date): reported to the model, not a staging error. */
+  isError?: boolean;
+}
+
 /** The tools' backend, injected into the AI loop (DB-backed in production, fake in tests). */
 export interface LoggingBackend {
-  getSession(input: GetSessionInput): Promise<unknown>;
+  getSession(input: GetSessionInput): Promise<ReadResult>;
+  getExerciseHistory(input: GetExerciseHistoryInput): Promise<ReadResult>;
+  getAlternatives(input: GetAlternativesInput): Promise<ReadResult>;
+  stageSaveMemory(input: SaveMemoryInput): Promise<StageResult>;
   stageLogSets(input: LogSetsInput): Promise<StageResult>;
   stageEdit(input: EditLastInput): Promise<StageResult>;
   stageUndoLast(input: UndoLastInput): Promise<StageResult>;
@@ -243,6 +325,8 @@ export type ConfirmReason =
   | "load_far_off"
   | "reps_far_off"
   | "delete"
+  /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
+  | "memory"
   /** An unsaved request is open: new actions replace it through a card, never a direct write. */
   | "replaces_pending"
   /** A tool call failed while others were staged: part of the message was not understood. */
@@ -294,7 +378,8 @@ export type LedgerResult =
       after?: ResolvedEntry[];
       afterGroup?: BeforeGroup;
     }
-  | { kind: "delete"; snapshot: GroupSnapshot };
+  | { kind: "delete"; snapshot: GroupSnapshot }
+  | { kind: "memory"; memoryId: number; memoryKind: "limitation" | "preference"; content: string };
 
 // ---------------------------------------------------------------------------
 // AI layer
@@ -318,6 +403,8 @@ export interface PromptContext {
   todayLabel: string;
   todayItems: { name: string; options: Candidate[]; prescription: string; status: string }[];
   aliases: { said: string; slug: string; name: string }[];
+  /** Active limitations and preferences, newest first, capped by size (SPEC 5.6e). */
+  memory: { kind: "limitation" | "preference"; content: string }[];
   pending: { summary: string; awaitingEdit: boolean } | null;
   /** Newest bot logs, formatted in code: edit_last_entry targets the first one. */
   lastSaved: { summary: string; sessionDate: string }[];
@@ -338,6 +425,13 @@ export interface UsageStore {
   record(usage: TokenUsage, now: Date): Promise<void>;
 }
 
+export interface ReadRecord {
+  tool: string;
+  /** The tool-result text sent to the model. */
+  content: string;
+  fallbackHtml: string | null;
+}
+
 export type IntentResult =
   | {
       kind: "ok";
@@ -348,5 +442,7 @@ export type IntentResult =
       toolErrors: number;
       /** A model turn hit max_tokens: its tool calls were not executed. */
       truncated: boolean;
+      /** Read-tool results as the model saw them, in call order. */
+      reads: ReadRecord[];
     }
   | { kind: "budget_reached" };

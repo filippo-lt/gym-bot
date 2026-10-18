@@ -1,10 +1,24 @@
-import { Bot, type Transformer } from "grammy";
+import { Bot, type Context, InlineKeyboard, type Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
+import { parseDayArg } from "../domain/day-ref.js";
+import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.js";
+import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
+import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
+import { parseHistoryCallback } from "./callbacks.js";
 import { formatSession, formatWeek } from "./format.js";
-import { HELP_TEXT, TEXT_ONLY, UNKNOWN_COMMAND } from "./log-format.js";
+import { HELP_TEXT, type Message, TEXT_ONLY, UNKNOWN_COMMAND } from "./log-format.js";
 import { type AiSource, createFlow, type Flow } from "./logging-flow.js";
+import {
+  formatHistory,
+  formatHistoryChoice,
+  formatNext,
+  formatPlan,
+  HISTORY_UNKNOWN,
+  HISTORY_USAGE,
+  SESSION_USAGE,
+} from "./query-format.js";
 import { getSession, getWeek, type Session, type WeekOverview } from "./session.js";
 
 export interface BotDeps {
@@ -20,6 +34,12 @@ export interface BotDeps {
     getSession: (db: Db, date: string) => Promise<Session>;
     getWeek: (db: Db, date: string) => Promise<WeekOverview>;
   };
+  /** Test seam: replace the read-only query DB calls (/history, /plan). */
+  reads?: {
+    lookupExercise: (db: Db, said: string) => Promise<ExerciseLookup>;
+    getExerciseHistory: (db: Db, exerciseId: number) => Promise<ExerciseHistory | null>;
+    getPlanOverview: (db: Db, today: string) => Promise<PlanOverview | null>;
+  };
   /** Test seam: replace the logging flow. */
   flow?: Flow;
 }
@@ -31,7 +51,21 @@ export function createBot(deps: BotDeps): Bot {
   if (deps.transformer) bot.api.config.use(deps.transformer);
   const queries = deps.sessions ?? { getSession, getWeek };
   const flow = deps.flow ?? createFlow({ db: deps.db, now: deps.now, ai: deps.ai });
+  const reads = deps.reads ?? {
+    lookupExercise,
+    getExerciseHistory: (db: Db, id: number) => getExerciseHistory(db, id),
+    getPlanOverview,
+  };
   const html = { parse_mode: "HTML" as const };
+  const today = () => trainingDate(deps.now());
+  const withKeyboard = (m: Message) => {
+    const kb = new InlineKeyboard();
+    m.keyboard.forEach((row, i) => {
+      for (const b of row) kb.text(b.text, b.data);
+      if (i < m.keyboard.length - 1) kb.row();
+    });
+    return { ...html, reply_markup: kb };
+  };
 
   bot.command(["start", "help"], (ctx) => ctx.reply(HELP_TEXT, html));
 
@@ -45,8 +79,50 @@ export function createBot(deps: BotDeps): Bot {
     await ctx.reply(formatWeek(week), html);
   });
 
+  bot.command("next", async (ctx) => {
+    const session = await queries.getSession(deps.db, today());
+    await ctx.reply(formatNext(nextItem(session)), html);
+  });
+
+  bot.command("session", async (ctx) => {
+    const arg = ctx.match.trim();
+    if (!arg) return void (await ctx.reply(SESSION_USAGE, html));
+    const day = parseDayArg(arg, today());
+    if (!day.ok) return void (await ctx.reply(`${day.error}\n${SESSION_USAGE}`, html));
+    await ctx.reply(formatSession(await queries.getSession(deps.db, day.date)), html);
+  });
+
+  bot.command("history", async (ctx) => {
+    const said = ctx.match.trim();
+    if (!said) return void (await ctx.reply(HISTORY_USAGE, html));
+    const found = await reads.lookupExercise(deps.db, said);
+    if (found.kind === "unknown") return void (await ctx.reply(HISTORY_UNKNOWN, html));
+    if (found.kind === "ambiguous") {
+      const choice = formatHistoryChoice(said, found.candidates);
+      return void (await ctx.reply(choice.text, withKeyboard(choice)));
+    }
+    await sendHistory(ctx, found.exercise.id);
+  });
+
+  bot.command("plan", async (ctx) => {
+    const overview = await reads.getPlanOverview(deps.db, today());
+    await ctx.reply(overview ? formatPlan(overview) : "No plan found in the database.", html);
+  });
+
+  async function sendHistory(ctx: Context, exerciseId: number) {
+    const history = await reads.getExerciseHistory(deps.db, exerciseId);
+    await ctx.reply(history ? formatHistory(history) : HISTORY_UNKNOWN, html);
+  }
+
   bot.command("undo", (ctx) => flow.undoCommand(ctx));
   bot.command("memory", (ctx) => flow.memoryCommand(ctx));
+
+  // /history buttons: before the generic handler, which would hand them to the logging flow.
+  bot.callbackQuery(/^hx:\d{1,9}$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const parsed = parseHistoryCallback(ctx.callbackQuery.data);
+    if (parsed) await sendHistory(ctx, parsed.exerciseId);
+  });
 
   bot.on("callback_query:data", (ctx) => flow.callback(ctx));
   bot.on("callback_query", (ctx) => ctx.answerCallbackQuery());

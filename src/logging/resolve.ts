@@ -4,10 +4,10 @@
  * are all decided here, in code.
  */
 import { and, desc, eq, isNotNull } from "drizzle-orm";
-import { getSession } from "../bot/session.js";
 import { logGroups } from "../db/schema/log.js";
 import { plannedItems } from "../db/schema/plan.js";
 import { trainingDate } from "../domain/calendar.js";
+import { readAlternatives, readExerciseHistory, readSession } from "../queries/read-tools.js";
 import { type CatalogExercise, type LadderStep, loadCatalog, loadLadder } from "./catalog.js";
 import type { Db, Q } from "./db.js";
 import { dateLabel, describeEntries } from "./describe.js";
@@ -37,6 +37,7 @@ import type {
   ResolvedEntry,
   ResolvedExercise,
   ResolvedLog,
+  SaveMemoryInput,
   StagedAction,
   StageResult,
   UndoLastInput,
@@ -635,8 +636,13 @@ export async function stageUndoLast(db: Q, _now: Date): Promise<StageResult> {
 // ---------------------------------------------------------------------------
 // Backend for the AI loop
 
-const range = (min: number | null, max: number | null): string | null =>
-  min === null ? null : max === null || max === min ? String(min) : `${min}-${max}`;
+export function stageSaveMemory(input: SaveMemoryInput): StageResult {
+  return {
+    ok: true,
+    action: { kind: "save_memory", input },
+    preview: `Staged remembering a ${input.kind}. The bot will ask the user to confirm. Do not repeat it.`,
+  };
+}
 
 export interface BackendOptions {
   /** The chat's unsaved request, if any: edits and undo then act on nothing but saved logs. */
@@ -656,36 +662,10 @@ export function createLoggingBackend(
         )
       : null;
   return {
-    async getSession(input: GetSessionInput) {
-      const t = clock();
-      const today = trainingDate(t);
-      const ctx = await loadPlanContext(db, today);
-      const date = dateForDay(ctx, today, input.day);
-      const s = await getSession(db, date);
-      if (s.kind === "before_start") return { kind: "before_start", startDate: s.startDate };
-      if (s.kind === "finished") return { kind: "plan_finished" };
-      if (s.kind === "rest") {
-        return { kind: "rest_day", date: s.date, week: s.week, phase: s.phase };
-      }
-      return {
-        kind: "session",
-        date: s.date,
-        weekday: s.weekday,
-        week: s.week,
-        phase: s.phase,
-        focus: s.focus,
-        deload: s.isDeload,
-        items: s.items.map((i) => ({
-          name: i.planName,
-          options: i.options.map((o) => o.slug),
-          sets: range(i.setsMin, i.setsMax),
-          reps: range(i.repsMin, i.repsMax),
-          prescription: i.prescriptionRaw,
-          rir: range(i.rirMin, i.rirMax),
-          status: i.status,
-        })),
-      };
-    },
+    getSession: (input: GetSessionInput) => readSession(db, clock(), input),
+    getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
+    getAlternatives: (input) => readAlternatives(db, input),
+    stageSaveMemory: async (input) => stageSaveMemory(input),
     stageLogSets: (input) => stageLogSets(db, input, clock()),
     stageEdit: async (input) => blocked() ?? stageEdit(db, input, clock()),
     stageUndoLast: async (_input: UndoLastInput) => blocked() ?? stageUndoLast(db, clock()),

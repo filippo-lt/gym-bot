@@ -12,7 +12,7 @@ exports[`cards > confirm card with every reason 1`] = `
 • Squat — 1 × 50 · 600 kg · Monday's session (26 Oct)
 • Squat — 3 × 8 · 60 kg · extra
 
-Why I'm asking: more than one change; Monday's session (26 Oct); missing: load; sets were guessed; I wasn't sure; far from last time: 600 kg; reps look high: 50; not in today's session
+Why I'm asking: more than one change; Monday's session (26 Oct); missing: load; sets were guessed; I wasn't sure; far from last time: 600 kg vs 60 kg last time; reps look high: 50; not in today's session
 [✅ pa:3:ok] [✏️ pa:3:ed] [❌ pa:3:no]"
 `;
 

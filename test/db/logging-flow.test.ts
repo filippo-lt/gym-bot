@@ -712,7 +712,7 @@ describe("backend with an open request (B1)", () => {
 describe("backend", () => {
   it("returns a compact session without loads", async () => {
     const backend = createLoggingBackend(db, MON);
-    const s = (await backend.getSession({ day: "today" })) as {
+    const s = (await backend.getSession({ day: "today" })).facts as {
       kind: string;
       items: { name: string; options: string[]; status: string }[];
     };
@@ -722,9 +722,11 @@ describe("backend", () => {
       "hack_squat",
     ]);
     expect(JSON.stringify(s)).not.toMatch(/"(load|loadKg|load_kg)"/);
-    const tue = (await backend.getSession({ day: "tue" })) as { weekday: string };
+    const tue = (await backend.getSession({ day: "tue" })).facts as { weekday: string };
     expect(tue.weekday).toBe("tue");
     const sat = createLoggingBackend(db, () => SAT);
-    expect(((await sat.getSession({ day: "today" })) as { kind: string }).kind).toBe("rest_day");
+    expect(((await sat.getSession({ day: "today" })).facts as { kind: string }).kind).toBe(
+      "rest_day",
+    );
   });
 });
