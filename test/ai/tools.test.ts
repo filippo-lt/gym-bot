@@ -4,7 +4,7 @@ import { executeTool, TOOLS } from "../../src/ai/tools.js";
 import { fakeBackend, promptContext, promptStatic } from "./helpers.js";
 
 describe("tool schemas", () => {
-  it("has twelve tools, each a top-level object schema without $schema", () => {
+  it("has thirteen tools, each a top-level object schema without $schema", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       "get_session",
       "get_exercise_history",
@@ -18,6 +18,7 @@ describe("tool schemas", () => {
       "log_bodyweight",
       "log_class",
       "set_band_kg",
+      "swap_exercise",
     ]);
     for (const t of TOOLS) {
       expect(t.input_schema.type).toBe("object");
@@ -216,5 +217,58 @@ describe("skip_items input", () => {
       const r = await run(bad);
       expect(r.toolResultContent, JSON.stringify(bad)).toContain("Invalid input for skip_items");
     }
+  });
+});
+
+describe("swap_exercise input", () => {
+  const base = { exercise: { said: "face pull" }, replacement: { said: "band pull-apart" } };
+  const run = (input: unknown) => executeTool("swap_exercise", input, fakeBackend());
+
+  it("stages through the backend with a minimal input", async () => {
+    const backend = fakeBackend();
+    await executeTool("swap_exercise", base, backend);
+    expect(backend.calls).toEqual(["swap:face pull>band pull-apart"]);
+  });
+
+  it("accepts scope, days, day and a new exercise", async () => {
+    const r = await run({
+      ...base,
+      scope: "rest",
+      days: "every_day",
+      day: "mon",
+      replacement: {
+        said: "band pull-apart",
+        new: { name: "Band pull-apart", type: "bodyweight_reps", muscle_group: "back" },
+      },
+    });
+    // The fake backend refuses, but the input itself was valid.
+    expect(r.toolResultContent).not.toContain("Invalid input");
+  });
+
+  it("rejects unknown type, load_basis, scope and extra keys", async () => {
+    const withNew = (n: Record<string, unknown>) => ({
+      ...base,
+      replacement: {
+        said: "x",
+        new: { name: "X", type: "bodyweight_reps", muscle_group: "back", ...n },
+      },
+    });
+    for (const bad of [
+      withNew({ type: "magic" }),
+      withNew({ load_basis: "cloud" }),
+      withNew({ muscle_group: "" }),
+      { ...base, scope: "forever" },
+      { ...base, extra: 1 },
+    ]) {
+      const r = await run(bad);
+      expect(r.isError, JSON.stringify(bad)).toBe(true);
+      expect(r.toolResultContent, JSON.stringify(bad)).toContain("Invalid input for swap_exercise");
+    }
+  });
+
+  it("the prompt tells the model when to call it", () => {
+    const rules = buildSystem(promptStatic, promptContext)[0]?.text ?? "";
+    expect(rules).toContain("swap_exercise");
+    expect(rules).toContain("never right after you listed alternatives");
   });
 });

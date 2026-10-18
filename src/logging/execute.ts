@@ -464,6 +464,9 @@ async function writeAction(
       return writeSkip(tx, a);
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");
+    case "swap":
+      // Saving a swap (override or plan version) comes with the swap flow.
+      throw new Error("Saving a swap is not implemented yet.");
   }
 }
 

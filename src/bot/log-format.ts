@@ -23,6 +23,7 @@ import type {
 import type { ExerciseType, LoadBasis, Weekday } from "../plan-import/types.js";
 import { cb } from "./callbacks.js";
 import { day, esc } from "./format.js";
+import { swapCardText } from "./plan-change-format.js";
 
 export interface Button {
   text: string;
@@ -479,6 +480,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
       case "equipment":
         out.push("this changes your equipment");
         break;
+      case "plan_change":
+        out.push("this changes your plan");
+        break;
       case "skip_primary":
         out.push("skipping a PRIMARY item");
         break;
@@ -508,6 +512,8 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
       return `Unclear exercise "${esc(a.said)}"`;
     case "save_memory":
       return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
+    case "swap":
+      return swapCardText(a.resolved);
     case "set_band_kg":
       return `Set the ${esc(a.input.colour)} band to ${fmt(a.input.kg)} kg of assistance${
         a.previousKg !== null ? ` (was ${fmt(a.previousKg)} kg)` : ""

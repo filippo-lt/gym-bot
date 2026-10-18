@@ -10,6 +10,7 @@ import type {
   SaveMemoryInput,
   SkipItemsInput,
   StagedAction,
+  SwapExerciseInput,
   TokenUsage,
   UndoLastInput,
   UsageStore,
@@ -67,6 +68,10 @@ export function fakeBackend(): LoggingBackend & { calls: string[] } {
     async stageUndoLast(_i: UndoLastInput) {
       calls.push("undo");
       return { ok: false, error: "nothing to undo" };
+    },
+    async stageSwap(i: SwapExerciseInput) {
+      calls.push(`swap:${i.exercise.said}>${i.replacement.said}`);
+      return { ok: false, error: "not in this test" };
     },
     async stageSkip(i: SkipItemsInput) {
       calls.push(i.whole_session ? "skip:all" : `skip:${i.exercise?.said}`);

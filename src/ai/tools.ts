@@ -15,6 +15,7 @@ import {
   saveMemoryInputSchema,
   setBandKgInputSchema,
   skipItemsInputSchema,
+  swapExerciseInputSchema,
   undoLastInputSchema,
 } from "../logging/types.js";
 import type { ToolDef } from "./model.js";
@@ -31,7 +32,8 @@ export type ToolName =
   | "log_readiness"
   | "log_bodyweight"
   | "log_class"
-  | "set_band_kg";
+  | "set_band_kg"
+  | "swap_exercise";
 
 /** Read-only tools: their errors never make a confirm card "partly understood". */
 export const READ_TOOLS: readonly string[] = [
@@ -121,6 +123,12 @@ export const TOOLS: ToolDef[] = [
     description:
       "Stage how many kg of assistance a pull-up band colour gives ('red band is 15 kg'). The colour is the colour word only. Nothing is saved until the user confirms.",
     input_schema: inputSchema(setBandKgInputSchema),
+  },
+  {
+    name: "swap_exercise",
+    description:
+      "Stage replacing ONE exercise in the plan with another (nothing is saved; code asks the user to confirm). Use it only when the user asks to swap or replace an exercise ('swap face pulls for band pull-aparts', 'use leg press instead of hack squat from now on'), never right after you listed alternatives. exercise = what to replace, replacement = what to use; give each said (the user's words) and slug only when sure. Set scope only when the user said it: 'today' for only today or just this time, 'rest' for from now on or the rest of the plan. Set days only when said: 'this_day' for only that weekday, 'every_day' for all days. Set day only when the user named a session. If the replacement is not in the catalog, give replacement.new with name, type, muscle_group, and load_basis or equipment_slug only when sure; when unsure of the type use bodyweight_reps. Pass no numbers.",
+    input_schema: inputSchema(swapExerciseInputSchema),
   },
 ];
 
@@ -215,6 +223,11 @@ export async function executeTool(
       const p = undoLastInputSchema.safeParse(rawInput ?? {});
       if (!p.success) return invalid(p.error);
       return fromStage(await backend.stageUndoLast(p.data));
+    }
+    case "swap_exercise": {
+      const p = swapExerciseInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromStage(await backend.stageSwap(p.data));
     }
     case "skip_items": {
       const p = skipItemsInputSchema.safeParse(rawInput);

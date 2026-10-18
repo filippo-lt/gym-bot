@@ -23,7 +23,9 @@ export type CallbackAction =
   | { t: "pr"; id: number; act: "ok" | "no" }
   /** /skip list: one planned item of that date, or the whole session. */
   | { t: "sk"; date: string; item: number | "all" }
-  | { t: "us"; key: string; index: number };
+  | { t: "us"; key: string; index: number }
+  /** Swap questions: t = only that day, r = rest of plan, d = this weekday only, a = every day. */
+  | { t: "sw"; id: number; ans: "t" | "r" | "d" | "a" };
 
 export const CALLBACK_MAX_BYTES = 64;
 
@@ -51,6 +53,7 @@ export const cb = {
   skip: (date: string, item: number | "all") => `sk:${date.replaceAll("-", "")}:${item}`,
   /** `key` is the write_ledger source key, like undoEdit. */
   undoSkip: (key: string, index: number) => `us:${key}:${index}`,
+  swap: (pendingId: number, ans: "t" | "r" | "d" | "a") => `sw:${pendingId}:${ans}`,
   /** /history for one exercise. Not part of CallbackAction: parsed by parseHistoryCallback. */
   history: (exerciseId: number) => `hx:${exerciseId}`,
 };
@@ -145,6 +148,12 @@ export function parseCallback(data: string): CallbackAction | null {
     case "us": {
       const m = /^us:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
       return m ? { t: "us", key: m[1] as string, index: Number(m[2]) } : null;
+    }
+    case "sw": {
+      const id = int(a);
+      return id === null || parts.length !== 3 || (b !== "t" && b !== "r" && b !== "d" && b !== "a")
+        ? null
+        : { t: "sw", id, ans: b };
     }
     default:
       return null;

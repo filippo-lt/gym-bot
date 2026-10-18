@@ -6,6 +6,7 @@ import {
   isRepsFarOff,
 } from "../../src/logging/policy.js";
 import type { StagedAction } from "../../src/logging/types.js";
+import { resolvedSwap } from "../plan/helpers.js";
 import { editInput, entry, logAction, logInput, snapshot, squat } from "./helpers.js";
 
 const reasons = (actions: StagedAction[]) => {
@@ -14,6 +15,19 @@ const reasons = (actions: StagedAction[]) => {
 };
 
 describe("decidePolicy", () => {
+  it("always puts a swap behind a card", () => {
+    const swap: StagedAction = {
+      kind: "swap",
+      input: {
+        exercise: { said: "face pull" },
+        replacement: { said: "band pull-apart" },
+        scope: "today",
+      },
+      resolved: resolvedSwap({ scope: "today" }),
+    };
+    expect(decidePolicy([swap])).toEqual({ mode: "confirm", reasons: ["plan_change"] });
+  });
+
   it("never writes directly while a request is open", () => {
     expect(decidePolicy([logAction()], { openPending: true })).toEqual({
       mode: "confirm",

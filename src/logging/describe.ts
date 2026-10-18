@@ -55,6 +55,8 @@ export function describeAction(a: StagedAction): string {
       return `unclear exercise "${a.said}"`;
     case "save_memory":
       return `remember (${a.input.kind}): ${a.input.content}`;
+    case "swap":
+      return `swap ${a.resolved.from.name} for ${a.resolved.to.name}`;
     case "set_band_kg":
       return `${a.input.colour} band = ${fmt(a.input.kg)} kg`;
     case "log_readiness":

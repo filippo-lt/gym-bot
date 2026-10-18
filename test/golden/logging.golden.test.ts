@@ -260,6 +260,9 @@ function recordingBackend() {
       calls.push({ tool: "skip_items", input });
       return { ok: false, error: "not used in this golden set" };
     },
+    async stageSwap() {
+      return { ok: false, error: "not used in this golden set" };
+    },
   };
   return { backend, calls };
 }

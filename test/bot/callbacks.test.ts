@@ -26,6 +26,8 @@ describe("callback data", () => {
     cb.skip("2026-10-19", "all"),
     cb.undoSkip(`u:${UPDATE}`, 19),
     cb.undoSkip(`p:${ID}`, 19),
+    cb.swap(ID, "t"),
+    cb.swap(ID, "a"),
   ];
 
   it("is at most 64 bytes", () => {
@@ -34,6 +36,10 @@ describe("callback data", () => {
   });
 
   it("round-trips", () => {
+    expect(parseCallback(cb.swap(7, "r"))).toEqual({ t: "sw", id: 7, ans: "r" });
+    expect(cb.swap(7, "d")).toBe("sw:7:d");
+    expect(parseCallback("sw:7:x")).toBeNull();
+    expect(parseCallback("sw:x:t")).toBeNull();
     expect(parseCallback(cb.pending(7, "ok"))).toEqual({ t: "pa", id: 7, act: "ok" });
     expect(parseCallback(cb.exercise(7, 2, 1))).toEqual({
       t: "ex",

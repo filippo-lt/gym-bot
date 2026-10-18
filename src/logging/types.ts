@@ -4,6 +4,7 @@
  * (SPEC 5.6d). Every number shown to the user comes from code, never from the model.
  */
 import { z } from "zod";
+import { EXERCISE_TYPES, LOAD_BASES } from "../db/schema/plan.js";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 import { classMoveSchema } from "./class-moves.js";
 
@@ -213,6 +214,39 @@ export const saveMemoryInputSchema = z.strictObject({
 });
 export type SaveMemoryInput = z.infer<typeof saveMemoryInputSchema>;
 
+export const SWAP_SCOPES = ["today", "rest"] as const;
+export const SWAP_DAYS = ["this_day", "every_day"] as const;
+
+/** Stages a swap of one exercise (M7). Code resolves it; nothing is saved until the user confirms. */
+export const swapExerciseInputSchema = z.strictObject({
+  /** What to replace. */
+  exercise: z.strictObject({
+    said: z.string().min(1).max(100),
+    slug: z.string().min(1).max(60).optional(),
+  }),
+  replacement: z.strictObject({
+    said: z.string().min(1).max(100),
+    slug: z.string().min(1).max(60).optional(),
+    /** Only when the replacement is not in the catalog. */
+    new: z
+      .strictObject({
+        name: z.string().trim().min(1).max(60),
+        type: z.enum(EXERCISE_TYPES),
+        load_basis: z.enum(LOAD_BASES).nullable().optional(),
+        equipment_slug: z.string().min(1).max(60).nullable().optional(),
+        muscle_group: z.string().trim().min(1).max(40),
+      })
+      .optional(),
+  }),
+  /** Only when the user said it: "today" = just this time, "rest" = from now on. */
+  scope: z.enum(SWAP_SCOPES).optional(),
+  /** Only when the user said it. */
+  days: z.enum(SWAP_DAYS).optional(),
+  /** Which session the user means, when named. */
+  day: z.enum(DAY_VALUES).optional(),
+});
+export type SwapExerciseInput = z.infer<typeof swapExerciseInputSchema>;
+
 // ---------------------------------------------------------------------------
 // Resolved data (produced by src/logging, consumed by policy, executor, formatters)
 
@@ -333,6 +367,40 @@ export interface SkipTarget {
   priority: Priority;
 }
 
+export interface ResolvedSwap {
+  from: { id: number; name: string };
+  to: {
+    id: number | null;
+    name: string;
+    slug: string;
+    isNew: boolean;
+    newSpec: {
+      type: ExerciseType;
+      loadBasis: LoadBasis | null;
+      equipmentSlug: string | null;
+      muscleGroup: string;
+    } | null;
+  };
+  /** YYYY-MM-DD */
+  referenceDate: string;
+  /** null = ask */
+  scope: "today" | "rest" | null;
+  days: "this_day" | "every_day" | null;
+  referenceWeekday: Weekday;
+  /** Weekdays with the exercise in future items of the latest version. */
+  futureWeekdays: Weekday[];
+  /** Items on referenceDate with the exercise (after overrides). */
+  todayItemIds: number[];
+  /** A log group for `from` exists on referenceDate. */
+  loggedOnReference: boolean;
+  /** Future sessions changed by "rest" under the current `days`, for the card. */
+  affectedSessions: number;
+  /** Future sessions per weekday (feeds `affectedSessions` when `days` changes). */
+  sessionsByWeekday: Partial<Record<Weekday, number>>;
+  /** "3 × 15" from the reference item's sets and reps; null when it has none. */
+  prescription: string | null;
+}
+
 export type StagedAction =
   | { kind: "log_sets"; input: LogSetsInput; resolved: ResolvedLog }
   /** The exercise is unclear: the bot asks with buttons before anything else. */
@@ -352,6 +420,8 @@ export type StagedAction =
       suggestedSystemLoad?: number | null;
     }
   | { kind: "delete_group"; snapshot: GroupSnapshot }
+  /** A plan change (M7). Always goes through a confirm card. */
+  | { kind: "swap"; input: SwapExerciseInput; resolved: ResolvedSwap }
   /** A lasting limitation/preference. Always goes through a confirm card (SPEC 5.6e). */
   | { kind: "save_memory"; input: SaveMemoryInput }
   /** Band colour -> kg: it changes equipment, so it always goes through a confirm card. */
@@ -419,6 +489,7 @@ export interface LoggingBackend {
   stageEdit(input: EditLastInput): Promise<StageResult>;
   stageUndoLast(input: UndoLastInput): Promise<StageResult>;
   stageSkip(input: SkipItemsInput): Promise<StageResult>;
+  stageSwap(input: SwapExerciseInput): Promise<StageResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +514,8 @@ export type ConfirmReason =
   | "class_moves"
   /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
   | "memory"
+  /** A swap changes the plan: always a tap. */
+  | "plan_change"
   /** Band kg changes the equipment table: always a tap. */
   | "equipment"
   /** An unsaved request is open: new actions replace it through a card, never a direct write. */

@@ -1,3 +1,4 @@
+import type { ResolvedSwap } from "../../src/logging/types.js";
 import type { ItemSpec, PlanContent, WeekSpec } from "../../src/plan/types.js";
 import { addDays } from "../../src/plan-import/build-plan.js";
 import type { Weekday } from "../../src/plan-import/types.js";
@@ -65,4 +66,22 @@ export function buildContent(): PlanContent {
     }
   }
   return { weeks, items };
+}
+
+export function resolvedSwap(over: Partial<ResolvedSwap> = {}): ResolvedSwap {
+  return {
+    from: { id: 1, name: "Face pull" },
+    to: { id: 2, name: "Band pull-apart", slug: "band_pull_apart", isNew: false, newSpec: null },
+    referenceDate: "2026-10-19",
+    scope: null,
+    days: null,
+    referenceWeekday: "mon",
+    futureWeekdays: ["mon", "fri"],
+    todayItemIds: [10],
+    loggedOnReference: false,
+    affectedSessions: 14,
+    sessionsByWeekday: { mon: 8, fri: 6 },
+    prescription: "3 × 15",
+    ...over,
+  };
 }
