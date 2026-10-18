@@ -116,6 +116,13 @@ describe("class question job", () => {
 });
 
 describe("morning job", () => {
+  /** The fixture only has weeks 1-3: copy week 3 so getSession can read every week up to `n`. */
+  const fillWeeks = async (n: number) => {
+    await sql`
+      insert into plan_weeks (plan_version_id, week, phase, is_deload, is_test, start_date)
+      select plan_version_id, g, phase, is_deload, is_test, date '2026-09-28' + (g - 1) * 7
+      from plan_weeks, generate_series(4, ${n}::int) g where week = 3`;
+  };
   const mtick = (iso: string) => runDueJobs(ctxAt(iso), [morningJob]);
   const TUE = "2026-10-27";
   beforeEach(async () => {
@@ -176,11 +183,27 @@ describe("morning job", () => {
 
   it("Mon 21 Dec sends the finished text once; Tue 22 Dec is skipped", async () => {
     await sql`update plans set start_date = '2026-09-28'`;
+    await fillWeeks(12);
     expect((await mtick("2026-12-21T05:00:00Z"))[0]?.outcome).toBe("sent");
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({ text: formatFinished(), keyboard: [] });
     sent.length = 0;
     expect((await mtick("2026-12-22T05:00:00Z"))[0]?.outcome).toBe("skipped");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("a plan one week longer moves the finished message to the following Monday", async () => {
+    await sql`update plans set start_date = '2026-09-28', weeks = 13`;
+    await sql`update plan_weeks set start_date = (date '2026-09-28' + (week - 1) * 7)`;
+    await fillWeeks(13);
+    const r = await mtick("2026-12-21T05:00:00Z");
+    expect(r[0]?.outcome).toBe("sent");
+    expect(sent.some((m) => m.text === formatFinished())).toBe(false);
+    sent.length = 0;
+    expect((await mtick("2026-12-28T05:00:00Z"))[0]?.outcome).toBe("sent");
+    expect(sent).toEqual([{ text: formatFinished(), keyboard: [] }]);
+    sent.length = 0;
+    expect((await mtick("2026-12-29T05:00:00Z"))[0]?.outcome).toBe("skipped");
     expect(sent).toHaveLength(0);
   });
 

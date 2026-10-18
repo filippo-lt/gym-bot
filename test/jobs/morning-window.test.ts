@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFirstWeekdayAfterPlan, morningWindow } from "../../src/jobs/morning.js";
+import { morningWindow, previousWeekday } from "../../src/jobs/morning.js";
 
 describe("morningWindow", () => {
   it("Mon 06:00 Rome (CET) is due", () => {
@@ -21,10 +21,9 @@ describe("morningWindow", () => {
   });
 });
 
-describe("isFirstWeekdayAfterPlan", () => {
-  it("first Monday after the 12 weeks only", () => {
-    expect(isFirstWeekdayAfterPlan("2026-12-21", "2026-09-28", 12)).toBe(true);
-    expect(isFirstWeekdayAfterPlan("2026-12-22", "2026-09-28", 12)).toBe(false);
-    expect(isFirstWeekdayAfterPlan("2026-12-18", "2026-09-28", 12)).toBe(false);
+describe("previousWeekday", () => {
+  it("Monday goes back to Friday, other days to the day before", () => {
+    expect(previousWeekday("2026-12-21")).toBe("2026-12-18");
+    expect(previousWeekday("2026-12-22")).toBe("2026-12-21");
   });
 });
