@@ -56,11 +56,11 @@ The swap replaces only the named option ("swap hack squat for leg press" on "Squ
 
 ### HSPU items (independent review)
 
-Swapping the HSPU exercise away clears `hspu_step_id` and `fallback_prescription` on the new items (the replacement has no ladder; a leftover step would drive its reps and HSPU advance proposals). Overrides of an HSPU item render without the ladder step. If the replacement the user names is an HSPU ladder step (e.g. "pike push-up"), it is not a plan change: the bot replies that the HSPU step is tracked from logs (SPEC §5.2) and saves nothing.
+Swapping the HSPU exercise away clears `hspu_step_id` and `fallback_prescription` on the new items (the replacement has no ladder; a leftover step would drive its reps and HSPU advance proposals). Overrides render without the ladder step and without the fallback prescription (a pull-up's closed-gate fallback must not apply to its replacement). If the replacement the user names is an HSPU ladder step (e.g. "pike push-up"), it is not a plan change: the bot replies that the HSPU step is tracked from logs (SPEC §5.2) and saves nothing.
 
 ### RIR of swapped items (independent review)
 
-Tags, priority, block and sets × reps are inherited; **RIR is not**. RIR comes from rules (`computeRir` in src/plan-import/rir.ts: main lift / deload / easy / test, SPEC §5.2), so a changed item's `rir_min`/`rir_max` are recomputed with the replacement as the option (squat 1–2 → leg press 1–3). For a one-off override, `planDayOn` recomputes the RIR of the overridden item the same way at read time.
+Tags, priority, block and sets × reps are inherited; **RIR is not**. RIR comes from rules (`computeRir` in src/plan-import/rir.ts: main lift / deload / easy / test, SPEC §5.2), so a changed item's `rir_min`/`rir_max` are recomputed over the item's new option list (the replacement plus any surviving OR option, the same rule the plan import uses): squat 1–2 → leg press 1–3; "Squat / hack squat" with hack → leg press stays 1–2 because squat is still an option. For a one-off override, `planDayOn` recomputes the RIR of the overridden item the same way at read time.
 
 ## The central reader (contract for M8 and M9)
 
