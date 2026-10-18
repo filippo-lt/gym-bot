@@ -9,6 +9,7 @@ import { equipment, exercises as exercisesTable, plannedItems } from "../db/sche
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
 import { acceptedHspuStep } from "../progression/load-history.js";
 import { ensureSuggestions } from "../progression/store.js";
+import { type ChartSlot, readRenderChart } from "../queries/chart-tool.js";
 import { readAlternatives, readExerciseHistory, readSession } from "../queries/read-tools.js";
 import { type CatalogExercise, type LadderStep, loadCatalog, loadLadder } from "./catalog.js";
 import type { Db, Q } from "./db.js";
@@ -45,6 +46,7 @@ import type {
   LogReadinessInput,
   LogSetsInput,
   MatchKind,
+  PendingChart,
   PlannedItemInfo,
   ResolvedEntry,
   ResolvedExercise,
@@ -775,7 +777,8 @@ export function createLoggingBackend(
   db: Db,
   now: Date | (() => Date),
   options: BackendOptions = {},
-): LoggingBackend {
+): LoggingBackend & { takeChart(): PendingChart | null } {
+  const slot: ChartSlot = { chart: null };
   const clock = () => (typeof now === "function" ? now() : now);
   const blocked = (): StageResult | null =>
     options.openPending
@@ -787,6 +790,8 @@ export function createLoggingBackend(
     getSession: (input: GetSessionInput) => readSession(db, clock(), input),
     getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
     getAlternatives: (input) => readAlternatives(db, input),
+    renderChart: (input) => readRenderChart(db, clock(), input, slot),
+    takeChart: () => slot.chart,
     stageSaveMemory: async (input) => stageSaveMemory(input),
     stageReadiness: async (input) => stageReadiness(input, clock()),
     stageBodyweight: async (input) => stageBodyweight(input, clock()),

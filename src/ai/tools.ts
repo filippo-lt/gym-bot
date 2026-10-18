@@ -10,6 +10,7 @@ import {
   logReadinessInputSchema,
   logSetsInputSchema,
   type ReadResult,
+  renderChartInputSchema,
   type StagedAction,
   type StageResult,
   saveMemoryInputSchema,
@@ -23,6 +24,7 @@ export type ToolName =
   | "get_session"
   | "get_exercise_history"
   | "get_alternatives"
+  | "render_chart"
   | "log_sets"
   | "edit_last_entry"
   | "undo_last_entry"
@@ -38,6 +40,7 @@ export const READ_TOOLS: readonly string[] = [
   "get_session",
   "get_exercise_history",
   "get_alternatives",
+  "render_chart",
 ];
 
 export function inputSchema(schema: z.ZodType): ToolDef["input_schema"] {
@@ -69,6 +72,12 @@ export const TOOLS: ToolDef[] = [
     description:
       "Read-only. Returns facts for 'what can I do instead of X': the exercise, its movement tags, where it is planned, other catalog exercises with the same movement pattern, and the user's saved limitations and preferences. Give exercise.said and slug only when sure; 'want' is what the user asked for in their words (e.g. 'machine version').",
     input_schema: inputSchema(getAlternativesInputSchema),
+  },
+  {
+    name: "render_chart",
+    description:
+      "Read-only. Renders a progress chart image for an exercise (load = e1RM per session, reps = most reps in one set) or weekly volume per muscle group (hard sets); the image is sent after your reply. Returns the chart's key numbers. Call it when the user asks about trends, progress or a chart.",
+    input_schema: inputSchema(renderChartInputSchema),
   },
   {
     name: "log_sets",
@@ -175,6 +184,11 @@ export async function executeTool(
       const p = getAlternativesInputSchema.safeParse(rawInput);
       if (!p.success) return invalid(p.error);
       return fromRead(await backend.getAlternatives(p.data));
+    }
+    case "render_chart": {
+      const p = renderChartInputSchema.safeParse(rawInput);
+      if (!p.success) return invalid(p.error);
+      return fromRead(await backend.renderChart(p.data));
     }
     case "save_memory": {
       const p = saveMemoryInputSchema.safeParse(rawInput);

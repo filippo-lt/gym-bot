@@ -4,7 +4,7 @@
  * All numbers in replies are formatted by log-format.ts from DB or parsed values.
  */
 import { eq } from "drizzle-orm";
-import type { Context } from "grammy";
+import { type Context, InputFile } from "grammy";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
 import { overTokenBudget } from "../ai/budget.js";
 import { runIntent } from "../ai/loop.js";
@@ -644,12 +644,13 @@ export function createFlow(deps: FlowDeps): Flow {
     const context = await buildPromptContext(db, chatId, now);
     await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
+    const backend = createLoggingBackend(db, now, { openPending: context.pending });
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
         text: voice ? `[voice] ${body}` : body,
         model: ai.model,
-        backend: createLoggingBackend(db, now, { openPending: context.pending }),
+        backend,
         usage: createUsageStore(db),
         promptStatic: staticBlock,
         promptContext: context,
@@ -674,6 +675,15 @@ export function createFlow(deps: FlowDeps): Flow {
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
     if (staged.length === 0) {
+      // The chart (if any) follows the reply, also when the number guard swapped the text.
+      const chart = backend.takeChart();
+      const sendChart = async () => {
+        if (!chart) return;
+        await ctx.replyWithPhoto(new InputFile(chart.png, "chart.png"), {
+          caption: chart.caption,
+          ...HTML,
+        });
+      };
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
         await send(ctx, {
@@ -686,6 +696,7 @@ export function createFlow(deps: FlowDeps): Flow {
           "assistant",
           html ? htmlToPlain(html) : NUMBER_GUARD_FALLBACK,
         );
+        await sendChart();
       };
       if (result.replyText && !result.truncated) {
         // Number guard (SPEC 3): a number the model wrote must come from this run's facts.
@@ -702,6 +713,7 @@ export function createFlow(deps: FlowDeps): Flow {
         }
         await send(ctx, { text: heard + esc(guardLength(reply, 3000)), keyboard: [] });
         await appendMessage(db, chatId, "assistant", reply);
+        await sendChart();
         return;
       }
       if (!result.truncated && fallback?.fallbackHtml) {
@@ -714,6 +726,7 @@ export function createFlow(deps: FlowDeps): Flow {
         : DIDNT_GET_IT;
       await send(ctx, { text: heard + esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
+      await sendChart();
       return;
     }
 
