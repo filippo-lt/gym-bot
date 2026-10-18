@@ -40,6 +40,7 @@ try {
     { command: "class", description: "Log Thursday's class" },
     { command: "plan", description: "Plan overview" },
     { command: "history", description: "Last sessions of an exercise" },
+    { command: "chart", description: "Progress chart" },
     { command: "undo", description: "Remove my last log" },
     { command: "memory", description: "What I remember" },
     { command: "usage", description: "AI and voice usage" },

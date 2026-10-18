@@ -99,6 +99,32 @@ export function formatHistoryChoice(
   };
 }
 
+/** Ambiguous /chart: one button per candidate. */
+export function formatChartChoice(
+  said: string,
+  candidates: { id: number; name: string }[],
+): Message {
+  return {
+    text: `Which exercise is "${esc(said)}"?`,
+    keyboard: candidates.map((c) => [{ text: c.name, data: cb.chart(c.id) }]),
+  };
+}
+
+/** /chart with no argument: the usage line and one button per main lift plus Volume. */
+export function formatChartMenu(mainLifts: { id: number; name: string }[]): Message {
+  return {
+    text: CHART_USAGE,
+    keyboard: [
+      ...mainLifts.map((l) => [{ text: l.name, data: cb.chart(l.id) }]),
+      [{ text: "Volume", data: cb.chart("v") }],
+    ],
+  };
+}
+
+export const CHART_USAGE =
+  "Which chart? For example: /chart squat · /chart pull-up · /chart volume";
+export const CHART_FAILED = "Sorry, I couldn't draw that chart right now.";
+export const CHART_UNKNOWN = "I don't know that exercise. Try /chart squat.";
 export const HISTORY_USAGE = "Which exercise? For example: /history squat";
 export const HISTORY_UNKNOWN = "I don't know that exercise. Try /history squat.";
 export const SESSION_USAGE =

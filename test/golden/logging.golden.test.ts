@@ -17,6 +17,7 @@ import type {
   LogSetsInput,
   PromptContext,
   PromptStatic,
+  RenderChartInput,
   SaveMemoryInput,
   SetBandKgInput,
   SkipItemsInput,
@@ -37,6 +38,7 @@ type Call =
   | { tool: "save_memory"; input: SaveMemoryInput }
   | { tool: "log_readiness"; input: LogReadinessInput }
   | { tool: "log_bodyweight"; input: LogBodyweightInput }
+  | { tool: "render_chart"; input: RenderChartInput }
   | { tool: "log_class"; input: LogClassInput }
   | { tool: "set_band_kg"; input: SetBandKgInput }
   | { tool: "skip_items"; input: SkipItemsInput };
@@ -135,6 +137,23 @@ function recordingBackend() {
           current_e1rm: { value: "81.7 kg", label: "estimate" },
         },
         fallbackHtml: "<b>History</b>",
+      };
+    },
+    async renderChart(input) {
+      calls.push({ tool: "render_chart", input });
+      return {
+        facts: {
+          found: true,
+          chart: "will be sent after your reply",
+          exercise: input.exercise ?? "volume",
+          metric: "e1rm",
+          unit: "kg",
+          first: 80,
+          last: 92.5,
+          best: 92.5,
+          sessions: 6,
+        },
+        fallbackHtml: "<b>Chart</b>",
       };
     },
     async getAlternatives(input) {
@@ -522,6 +541,23 @@ describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
       expect(h && "input" in h && h.input.exercise.slug).toBe("squat");
       expect(h && "input" in h && h.input.period).toBe("last_week");
       expect(calls.some((c) => WRITE_TOOLS.includes(c.tool))).toBe(false);
+      guardOk(text, res);
+    });
+
+    it("how is my squat going?", async () => {
+      const { calls, res, text } = await ask("how is my squat going?");
+      const c = calls.find((x) => x.tool === "render_chart");
+      expect(c && "input" in c && c.input.metric).toBe("load");
+      expect(c && "input" in c && c.input.exercise?.toLowerCase()).toContain("squat");
+      expect(calls.some((x) => WRITE_TOOLS.includes(x.tool))).toBe(false);
+      guardOk(text, res);
+    });
+
+    it("show me my weekly volume", async () => {
+      const { calls, res, text } = await ask("show me my weekly volume");
+      const c = calls.find((x) => x.tool === "render_chart");
+      expect(c && "input" in c && c.input.metric).toBe("volume");
+      expect(calls.some((x) => WRITE_TOOLS.includes(x.tool))).toBe(false);
       guardOk(text, res);
     });
 

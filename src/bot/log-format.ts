@@ -59,6 +59,7 @@ export const HELP_TEXT = [
   "/class — log Thursday's class",
   "/plan — week, phases and next deload",
   "/history — last sessions of an exercise, e.g. /history squat",
+  "/chart — progress chart, e.g. /chart squat or /chart volume",
   "/undo — remove your last log",
   "/memory — what I remember about you",
   "/usage — AI and voice usage",

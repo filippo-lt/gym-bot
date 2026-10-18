@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildSystem } from "../../src/ai/prompt.js";
-import { executeTool, TOOLS } from "../../src/ai/tools.js";
+import { executeTool, READ_TOOLS, TOOLS } from "../../src/ai/tools.js";
 import { fakeBackend, promptContext, promptStatic } from "./helpers.js";
 
 describe("tool schemas", () => {
-  it("has twelve tools, each a top-level object schema without $schema", () => {
+  it("has thirteen tools, each a top-level object schema without $schema", () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       "get_session",
       "get_exercise_history",
       "get_alternatives",
+      "render_chart",
       "log_sets",
       "edit_last_entry",
       "undo_last_entry",
@@ -105,6 +106,23 @@ describe("read tools", () => {
     ).toBe(true);
     expect((await ok({})).isError).toBe(true);
     expect(b.calls).toEqual(["history:squat", "history:squat", "history:squat"]);
+  });
+
+  it("render_chart is a read tool and validates its input", async () => {
+    expect(READ_TOOLS).toContain("render_chart");
+    const b = fakeBackend();
+    const run = (input: unknown) => executeTool("render_chart", input, b);
+    expect((await run({ metric: "load", exercise: "squat" })).isError).toBe(false);
+    expect((await run({ metric: "volume", weeks: 8 })).isError).toBe(false);
+    expect((await run({ metric: "e1rm" })).isError).toBe(true);
+    expect((await run({})).isError).toBe(true);
+    expect((await run({ metric: "volume", weeks: 0 })).isError).toBe(true);
+    expect((await run({ metric: "volume", weeks: 53 })).isError).toBe(true);
+    expect((await run({ metric: "reps", exercise: "" })).isError).toBe(true);
+    expect(b.calls).toEqual(["chart:load:squat", "chart:volume:-"]);
+    expect((await run({ metric: "load", exercise: "squat" })).read).toEqual({
+      fallbackHtml: "<b>Chart</b>",
+    });
   });
 
   it("get_alternatives caps want at 100 characters", async () => {

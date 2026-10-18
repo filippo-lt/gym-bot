@@ -4,7 +4,7 @@
  * All numbers in replies are formatted by log-format.ts from DB or parsed values.
  */
 import { eq } from "drizzle-orm";
-import type { Context } from "grammy";
+import { type Context, InputFile } from "grammy";
 import { DateTime } from "luxon";
 import { BOARD_TIMEOUT_MS, readBoard } from "../ai/board.js";
 import { type BudgetCap, overTokenBudget } from "../ai/budget.js";
@@ -65,6 +65,7 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import type { ChartBuilder } from "../queries/chart-tool.js";
 import { clampTimeout } from "../runtime/deadline.js";
 import {
   MAX_VOICE_SECONDS,
@@ -73,6 +74,7 @@ import {
   sttVocabularyPrompt,
 } from "../stt/stt.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
+import { trySendFallback } from "./chart-fallback.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
@@ -116,6 +118,7 @@ import {
   voiceBudgetText,
 } from "./log-format.js";
 import { pickPhoto } from "./pick-photo.js";
+import { CHART_FAILED } from "./query-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
 import { formatUsage } from "./usage-format.js";
@@ -139,6 +142,8 @@ export interface FlowDeps {
   now: () => Date;
   ai?: AiSource;
   media?: MediaSource;
+  /** Test seam: replace the chart builder used by the render_chart tool. */
+  buildChart?: ChartBuilder;
 }
 
 const VOICE_MAX_BYTES = 20 * 1024 * 1024;
@@ -655,12 +660,16 @@ export function createFlow(deps: FlowDeps): Flow {
     const context = await buildPromptContext(db, chatId, now);
     await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
+    const backend = createLoggingBackend(db, now, {
+      openPending: context.pending,
+      buildChart: deps.buildChart,
+    });
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
       result = await runIntent({
         text: voice ? `[voice] ${body}` : body,
         model: ai.model,
-        backend: createLoggingBackend(db, now, { openPending: context.pending }),
+        backend,
         usage: createUsageStore(db),
         promptStatic: staticBlock,
         promptContext: context,
@@ -687,6 +696,30 @@ export function createFlow(deps: FlowDeps): Flow {
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
     if (staged.length === 0) {
+      // The chart (if any) follows the reply, also when the number guard swapped the text.
+      const chart = backend.takeChart();
+      // A failed upload must not fail the update after the text went out (inbox retry).
+      const sendChart = async (prefix = "") => {
+        if (!chart) return;
+        try {
+          await ctx.replyWithPhoto(new InputFile(chart.png, "chart.png"), {
+            caption: prefix + chart.caption,
+            ...HTML,
+          });
+        } catch (error) {
+          console.error("chart: photo failed", error instanceof Error ? error.name : "");
+          await trySendFallback(() => send(ctx, CHART_FAILED));
+        }
+      };
+      // Nothing else to say: the photo and its caption are the whole answer.
+      const sendPhotoOnly = async () => {
+        if (!chart) return false;
+        const fits = heard.length + chart.caption.length <= 1000;
+        if (heard && !fits) await send(ctx, { text: heard.trimEnd(), keyboard: [] });
+        await sendChart(fits ? heard : "");
+        await appendMessage(db, chatId, "assistant", htmlToPlain(chart.caption));
+        return true;
+      };
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
         await send(ctx, {
@@ -699,6 +732,7 @@ export function createFlow(deps: FlowDeps): Flow {
           "assistant",
           html ? htmlToPlain(html) : NUMBER_GUARD_FALLBACK,
         );
+        await sendChart();
       };
       if (result.replyText && !result.truncated) {
         // Number guard (SPEC 3): a number the model wrote must come from this run's facts.
@@ -710,11 +744,13 @@ export function createFlow(deps: FlowDeps): Flow {
         ]);
         if (!checked.ok) {
           console.warn(`ai: reply rejected, ${checked.unknown.length} unknown number(s)`);
+          if (!fallback?.fallbackHtml && (await sendPhotoOnly())) return;
           await sendFallback(fallback?.fallbackHtml ?? null);
           return;
         }
         await send(ctx, { text: heard + esc(guardLength(reply, 3000)), keyboard: [] });
         await appendMessage(db, chatId, "assistant", reply);
+        await sendChart();
         return;
       }
       if (!result.truncated && fallback?.fallbackHtml) {
@@ -722,11 +758,13 @@ export function createFlow(deps: FlowDeps): Flow {
         await sendFallback(fallback.fallbackHtml);
         return;
       }
+      if (!result.truncated && (await sendPhotoOnly())) return;
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
         : DIDNT_GET_IT;
       await send(ctx, { text: heard + esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
+      await sendChart();
       return;
     }
 
