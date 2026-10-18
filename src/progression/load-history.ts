@@ -12,22 +12,18 @@ import {
   logGroups,
   weeklyMetrics,
 } from "../db/schema/log.js";
-import {
-  equipment,
-  exercises,
-  hspuLadder,
-  plannedItemOptions,
-  plannedItems,
-  plans,
-  planVersions,
-  planWeeks,
-} from "../db/schema/plan.js";
+import { equipment, exercises, hspuLadder } from "../db/schema/plan.js";
 import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
-import { trainingDate, weekdayOf } from "../domain/calendar.js";
+import { trainingDate } from "../domain/calendar.js";
 import type { Q } from "../logging/db.js";
-import type { Modifier, Priority, Tag, Weekday } from "../plan-import/types.js";
+import {
+  loadVersionIndex,
+  planDayFromIndex,
+  planDaysFromIndex,
+  type VersionIndex,
+} from "../plan/effective.js";
 import { gateEventsFrom } from "./pullup.js";
-import { driftFor } from "./readiness.js";
+import { driftFor, RECOVERY_LOW_MAX } from "./readiness.js";
 import type {
   ExerciseInfo,
   GateEvent,
@@ -46,10 +42,7 @@ import type {
 export const DERIVED_KIND = "button_ok";
 export const PULLUP_METRIC = "pullups";
 export const RECOVERY_METRIC = "recovery";
-/** Recovery at or below this score is a readiness signal (SPEC 5.6b/c). */
-export const RECOVERY_LOW_MAX = 2;
 
-const WEEKDAY_OFFSET: Record<Weekday, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4 };
 /** Signals that can still matter: recovery lives 3 days, chat/button 24 h. */
 const SIGNAL_LOOKBACK_DAYS = 4;
 
@@ -68,87 +61,17 @@ function romeAt(date: string, time: string): string {
 // Plan environment
 // ---------------------------------------------------------------------------
 
-export interface WeekRow {
-  versionId: number;
-  week: number;
-  isDeload: boolean;
-  isTest: boolean;
-  startDate: string;
-}
+/** The version index of src/plan/effective.ts is the plan environment (M7). */
+export type PlanEnv = VersionIndex;
 
-export interface PlanEnv {
-  startDate: string;
-  versions: { id: number; version: number; effectiveFrom: string }[];
-  weeksByVersion: Map<number, WeekRow[]>;
-}
-
+/** The version index, or null when no plan is seeded. */
 export async function loadPlanEnv(q: Q): Promise<PlanEnv | null> {
-  const [plan] = await q.select().from(plans).orderBy(desc(plans.id)).limit(1);
-  if (!plan) return null;
-  const versions = await q
-    .select({
-      id: planVersions.id,
-      version: planVersions.version,
-      effectiveFrom: planVersions.effectiveFrom,
-    })
-    .from(planVersions)
-    .where(eq(planVersions.planId, plan.id))
-    .orderBy(asc(planVersions.version));
-  if (versions.length === 0) return null;
-  const weekRows = await q
-    .select()
-    .from(planWeeks)
-    .where(
-      inArray(
-        planWeeks.planVersionId,
-        versions.map((v) => v.id),
-      ),
-    )
-    .orderBy(asc(planWeeks.week));
-  const weeksByVersion = new Map<number, WeekRow[]>();
-  for (const w of weekRows) {
-    const list = weeksByVersion.get(w.planVersionId) ?? [];
-    list.push({
-      versionId: w.planVersionId,
-      week: w.week,
-      isDeload: w.isDeload,
-      isTest: w.isTest,
-      startDate: w.startDate,
-    });
-    weeksByVersion.set(w.planVersionId, list);
-  }
-  return { startDate: plan.startDate, versions, weeksByVersion };
+  const index = await loadVersionIndex(q);
+  return index.versions.length > 0 ? index : null;
 }
 
-/** Version rule shared with src/logging/plan-context.ts: latest version effective on `date`, else the first. */
-export function versionIdFor(env: PlanEnv, date: string): number {
-  const effective = env.versions.filter((v) => v.effectiveFrom <= date);
-  const pick = effective.length > 0 ? effective[effective.length - 1] : env.versions[0];
-  return (pick as { id: number }).id;
-}
-
-/** The plan week containing `date` (version effective on that date); null outside the plan. */
-export function weekFor(env: PlanEnv, date: string): WeekRow | null {
-  const rows = env.weeksByVersion.get(versionIdFor(env, date)) ?? [];
-  for (const w of rows) if (w.startDate <= date && date <= addDays(w.startDate, 6)) return w;
-  return null;
-}
-
-function weekDate(row: WeekRow, weekday: Weekday): string {
-  return addDays(row.startDate, WEEKDAY_OFFSET[weekday]);
-}
-
-/** Friday of a plan week (weekly metrics are dated there). Latest version that has the week. */
-function fridayOfWeek(env: PlanEnv, week: number): string {
-  for (let i = env.versions.length - 1; i >= 0; i--) {
-    const v = env.versions[i];
-    const row = (env.weeksByVersion.get((v as { id: number }).id) ?? []).find(
-      (w) => w.week === week,
-    );
-    if (row) return weekDate(row, "fri");
-  }
-  return addDays(env.startDate, (week - 1) * 7 + 4);
-}
+/** Far enough ahead that `fridayOf` uses the newest version. */
+const LATEST = "9999-12-31";
 
 // ---------------------------------------------------------------------------
 // Exercises
@@ -281,7 +204,7 @@ export async function loadSessionRecs(
     const key = `${g.exerciseId}|${g.sessionDate}`;
     let rec = byKey.get(key);
     if (!rec) {
-      const wk = weekFor(env, g.sessionDate);
+      const wk = env.weekOf(g.sessionDate);
       rec = {
         date: g.sessionDate,
         exerciseId: g.exerciseId,
@@ -363,7 +286,7 @@ export async function loadSessionRecs(
       plannedItemIds: [],
       source: "bot",
       bwKg: null,
-      week: weekFor(env, date)?.week ?? null,
+      week: env.weekOf(date)?.week ?? null,
       isDeload: false,
       isTest: false,
       readiness: null,
@@ -401,7 +324,10 @@ export async function loadGateEvents(
     .where(eq(weeklyMetrics.metric, PULLUP_METRIC));
   const metrics = metricRows
     .filter((m) => m.value != null)
-    .map((m) => ({ date: fridayOfWeek(env, m.week), maxCleanReps: m.value as number }))
+    .map((m) => ({
+      date: env.fridayOf(m.week, beforeDate ?? LATEST),
+      maxCleanReps: m.value as number,
+    }))
     .filter((m) => beforeDate == null || m.date < beforeDate);
   return gateEventsFrom(sessions, metrics, pullup);
 }
@@ -479,7 +405,7 @@ export async function loadReadinessSignals(
     .where(eq(weeklyMetrics.metric, RECOVERY_METRIC));
   for (const r of recovery) {
     if (r.value == null || r.value > RECOVERY_LOW_MAX) continue;
-    const friday = fridayOfWeek(env, r.week);
+    const friday = env.fridayOf(r.week, date);
     if (friday > date || friday < addDays(date, -SIGNAL_LOOKBACK_DAYS)) continue;
     out.push({ at: romeAt(friday, "20:00:00"), kind: "recovery_low" });
   }
@@ -509,55 +435,34 @@ async function lastTrainingBefore(q: Q, date: string): Promise<string | null> {
   return days.length ? (days.sort().at(-1) ?? null) : null;
 }
 
-/** Same slot in earlier non-deload weeks (same weekday, sub item and option set); logged = a group on that day. */
+/**
+ * Same slot on earlier non-deload weeks (same weekday, sub item and identical option set). Each earlier date is read
+ * through the version effective on that date, one-off overrides applied (M7), so a persistent swap starts a fresh
+ * history instead of reading as missed sessions. Logged = a group on that day for the planned item or any option.
+ */
 async function loadOccurrences(
   q: Q,
   env: PlanEnv,
-  versionId: number,
-  weekday: Weekday,
-  week: number,
   date: string,
   today: { id: number; subItem: number; optionIds: number[] }[],
 ): Promise<ItemOccurrence[]> {
   if (today.length === 0) return [];
-  const weeks = (env.weeksByVersion.get(versionId) ?? []).filter(
-    (w) => w.week < week && !w.isDeload && weekDate(w, weekday) < date,
-  );
-  if (weeks.length === 0) return today.map((t) => ({ plannedItemId: t.id, occurrences: [] }));
-  const weekByNumber = new Map(weeks.map((w) => [w.week, w]));
-  const items = await q
-    .select({ id: plannedItems.id, week: plannedItems.week, subItem: plannedItems.subItem })
-    .from(plannedItems)
-    .where(
-      and(
-        eq(plannedItems.planVersionId, versionId),
-        eq(plannedItems.weekday, weekday),
-        inArray(
-          plannedItems.week,
-          weeks.map((w) => w.week),
-        ),
-      ),
-    );
-  const itemIds = items.map((i) => i.id);
-  const optionRows = itemIds.length
-    ? await q
-        .select({
-          itemId: plannedItemOptions.plannedItemId,
-          exerciseId: plannedItemOptions.exerciseId,
-        })
-        .from(plannedItemOptions)
-        .where(inArray(plannedItemOptions.plannedItemId, itemIds))
-    : [];
-  const optionsOf = new Map<number, number[]>();
-  for (const o of optionRows) {
-    const list = optionsOf.get(o.itemId) ?? [];
-    list.push(o.exerciseId);
-    optionsOf.set(o.itemId, list);
+  const dates: string[] = [];
+  for (let d = addDays(date, -7); env.weekOf(d); d = addDays(d, -7)) {
+    if (!env.weekOf(d)?.isDeload) dates.push(d);
   }
-  const dates = weeks.map((w) => weekDate(w, weekday));
-  const allOptionIds = [...new Set(optionRows.map((o) => o.exerciseId))];
+  const days = (await planDaysFromIndex(q, env, dates)).filter(
+    (day): day is Extract<typeof day, { kind: "day" }> => day.kind === "day",
+  );
+  const empty = () => today.map((t) => ({ plannedItemId: t.id, occurrences: [] }));
+  if (days.length === 0) return empty();
+
+  const itemIds = days.flatMap((day) => day.items.map((i) => i.plannedItemId));
+  const optionIds = [
+    ...new Set(days.flatMap((day) => day.items.flatMap((i) => i.options.map((o) => o.id)))),
+  ];
   const groupRows =
-    dates.length && itemIds.length
+    itemIds.length > 0
       ? await q
           .select({
             d: logGroups.sessionDate,
@@ -567,30 +472,29 @@ async function loadOccurrences(
           .from(logGroups)
           .where(
             and(
-              inArray(logGroups.sessionDate, dates),
-              sql`(${inArray(logGroups.plannedItemId, itemIds)} or ${inArray(logGroups.exerciseId, allOptionIds)})`,
+              inArray(
+                logGroups.sessionDate,
+                days.map((day) => day.date),
+              ),
+              sql`(${inArray(logGroups.plannedItemId, itemIds)} or ${inArray(logGroups.exerciseId, optionIds)})`,
             ),
           )
       : [];
   const plannedLogged = new Set(groupRows.filter((g) => g.p != null).map((g) => g.p as number));
   const exLogged = new Set(groupRows.map((g) => `${g.d}|${g.e}`));
 
-  const sameSet = (a: number[], b: number[]) => {
-    const x = [...a].sort((m, n) => m - n).join(",");
-    const y = [...b].sort((m, n) => m - n).join(",");
-    return x === y;
-  };
+  const key = (ids: number[]) => [...ids].sort((m, n) => m - n).join(",");
   return today.map((t) => {
     const occurrences: ItemOccurrence["occurrences"] = [];
-    for (const it of items) {
-      if (it.subItem !== t.subItem) continue;
-      const opts = optionsOf.get(it.id) ?? [];
-      if (!sameSet(opts, t.optionIds)) continue;
-      const wk = weekByNumber.get(it.week);
-      if (!wk) continue;
-      const d = weekDate(wk, weekday);
-      const logged = plannedLogged.has(it.id) || opts.some((o) => exLogged.has(`${d}|${o}`));
-      occurrences.push({ date: d, logged });
+    for (const day of days) {
+      for (const it of day.items) {
+        if (it.subItem !== t.subItem) continue;
+        const opts = it.options.map((o) => o.id);
+        if (key(opts) !== key(t.optionIds)) continue;
+        const logged =
+          plannedLogged.has(it.plannedItemId) || opts.some((o) => exLogged.has(`${day.date}|${o}`));
+        occurrences.push({ date: day.date, logged });
+      }
     }
     occurrences.sort((a, b) => (a.date < b.date ? -1 : 1));
     return { plannedItemId: t.id, occurrences };
@@ -608,51 +512,33 @@ export async function loadSessionInput(
 ): Promise<SessionInput | null> {
   const env = await loadPlanEnv(q);
   if (!env) return null;
-  const weekday = weekdayOf(date);
-  const wk = weekFor(env, date);
-  if (!weekday || !wk) return null;
+  const day = await planDayFromIndex(q, env, date);
+  if (day.kind !== "day") return null;
+  const weekday = day.weekday;
 
-  const rows = await q
-    .select({ item: plannedItems, stepOrder: hspuLadder.stepOrder })
-    .from(plannedItems)
-    .leftJoin(hspuLadder, eq(hspuLadder.id, plannedItems.hspuStepId))
-    .where(
-      and(
-        eq(plannedItems.planVersionId, wk.versionId),
-        eq(plannedItems.week, wk.week),
-        eq(plannedItems.weekday, weekday),
-      ),
-    )
-    .orderBy(asc(plannedItems.itemOrder), asc(plannedItems.subItem));
-  const ids = rows.map((r) => r.item.id);
-  const optionRows = ids.length
-    ? await q
-        .select()
-        .from(plannedItemOptions)
-        .where(inArray(plannedItemOptions.plannedItemId, ids))
-        .orderBy(asc(plannedItemOptions.plannedItemId), asc(plannedItemOptions.optionIndex))
-    : [];
-  const optionIds = [...new Set(optionRows.map((o) => o.exerciseId))];
+  const ladder = await loadHspuLadder(q);
+  const stepOrderOf = new Map(ladder.map((l) => [l.id, l.stepOrder]));
+  const optionIds = [...new Set(day.items.flatMap((i) => i.options.map((o) => o.id)))];
   const infos = await loadExerciseInfos(q, optionIds);
 
-  const items: ItemTarget[] = rows.map(({ item: r, stepOrder }) => ({
-    plannedItemId: r.id,
+  const items: ItemTarget[] = day.items.map((r) => ({
+    plannedItemId: r.plannedItemId,
     subItem: r.subItem,
-    exerciseIds: optionRows.filter((o) => o.plannedItemId === r.id).map((o) => o.exerciseId),
+    exerciseIds: r.options.map((o) => o.id),
     setsMin: r.setsMin,
     setsMax: r.setsMax,
     repsMin: r.repsMin,
     repsMax: r.repsMax,
     rirMin: r.rirMin,
     rirMax: r.rirMax,
-    modifiers: r.modifiers as Modifier[],
-    tags: r.tags as Tag[],
-    priority: r.priority as Priority,
-    isDeload: wk.isDeload,
-    isTest: (r.modifiers as string[]).includes("test"),
+    modifiers: r.modifiers,
+    tags: r.tags,
+    priority: r.priority,
+    isDeload: day.isDeload,
+    isTest: r.modifiers.includes("test"),
     hiit: r.hiit,
-    fallback: r.fallbackPrescription,
-    hspuStepOrder: stepOrder ?? null,
+    fallback: r.fallback,
+    hspuStepOrder: r.hspuStepId != null ? (stepOrderOf.get(r.hspuStepId) ?? null) : null,
     order: r.itemOrder,
     planName: r.planName,
   }));
@@ -671,8 +557,6 @@ export async function loadSessionInput(
   const pullup = Object.values(infos).find((e) => e.type === "bodyweight_plus") ?? null;
   const gateEvents = pullup ? await loadGateEvents(q, env, pullup, date, history[pullup.id]) : [];
 
-  const ladder = await loadHspuLadder(q);
-
   let heavyGroups: HeavyGroup[] = [];
   let classReported = true;
   if (weekday === "fri") {
@@ -690,9 +574,6 @@ export async function loadSessionInput(
   const occurrences = await loadOccurrences(
     q,
     env,
-    wk.versionId,
-    weekday,
-    wk.week,
     date,
     items.map((i) => ({ id: i.plannedItemId, subItem: i.subItem, optionIds: i.exerciseIds })),
   );
@@ -700,9 +581,9 @@ export async function loadSessionInput(
   return {
     date,
     weekday,
-    week: wk.week,
-    isDeload: wk.isDeload,
-    isTest: wk.isTest,
+    week: day.week,
+    isDeload: day.isDeload,
+    isTest: day.isTest,
     items,
     history,
     exercises: infos,

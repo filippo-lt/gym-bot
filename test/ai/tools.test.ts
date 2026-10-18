@@ -19,6 +19,7 @@ describe("tool schemas", () => {
       "log_bodyweight",
       "log_class",
       "set_band_kg",
+      "swap_exercise",
     ]);
     for (const t of TOOLS) {
       expect(t.input_schema.type).toBe("object");
@@ -96,10 +97,10 @@ describe("read tools", () => {
     expect(
       (await ok({ exercise: { said: "squat" }, last_n: 10, period: "last_week" })).isError,
     ).toBe(false);
-    expect((await ok({ exercise: { said: "squat" }, plan_week: 12 })).isError).toBe(false);
+    expect((await ok({ exercise: { said: "squat" }, plan_week: 13 })).isError).toBe(false);
     expect((await ok({ exercise: { said: "squat" }, last_n: 11 })).isError).toBe(true);
     expect((await ok({ exercise: { said: "squat" }, last_n: 0 })).isError).toBe(true);
-    expect((await ok({ exercise: { said: "squat" }, plan_week: 13 })).isError).toBe(true);
+    expect((await ok({ exercise: { said: "squat" }, plan_week: 53 })).isError).toBe(true);
     expect((await ok({ exercise: { said: "squat" }, period: "next_week" })).isError).toBe(true);
     expect(
       (await ok({ exercise: { said: "squat" }, period: "this_week", plan_week: 2 })).isError,
@@ -234,5 +235,64 @@ describe("skip_items input", () => {
       const r = await run(bad);
       expect(r.toolResultContent, JSON.stringify(bad)).toContain("Invalid input for skip_items");
     }
+  });
+});
+
+describe("swap_exercise input", () => {
+  const base = { exercise: { said: "face pull" }, replacement: { said: "band pull-apart" } };
+  const run = (input: unknown) => executeTool("swap_exercise", input, fakeBackend());
+
+  it("stages through the backend with a minimal input", async () => {
+    const backend = fakeBackend();
+    await executeTool("swap_exercise", base, backend);
+    expect(backend.calls).toEqual(["swap:face pull>band pull-apart"]);
+  });
+
+  it("accepts scope, days, day and a new exercise", async () => {
+    const backend = fakeBackend();
+    const r = await executeTool(
+      "swap_exercise",
+      {
+        ...base,
+        scope: "rest",
+        days: "every_day",
+        day: "mon",
+        replacement: {
+          said: "band pull-apart",
+          new: { name: "Band pull-apart", type: "bodyweight_reps", muscle_group: "back" },
+        },
+      },
+      backend,
+    );
+    // The fake backend refuses, but the input itself was valid and reached it.
+    expect(r.toolResultContent).not.toContain("Invalid input");
+    expect(backend.calls).toEqual(["swap:face pull>band pull-apart"]);
+  });
+
+  it("rejects unknown type, load_basis, scope and extra keys", async () => {
+    const withNew = (n: Record<string, unknown>) => ({
+      ...base,
+      replacement: {
+        said: "x",
+        new: { name: "X", type: "bodyweight_reps", muscle_group: "back", ...n },
+      },
+    });
+    for (const bad of [
+      withNew({ type: "magic" }),
+      withNew({ load_basis: "cloud" }),
+      withNew({ muscle_group: "" }),
+      { ...base, scope: "forever" },
+      { ...base, extra: 1 },
+    ]) {
+      const r = await run(bad);
+      expect(r.isError, JSON.stringify(bad)).toBe(true);
+      expect(r.toolResultContent, JSON.stringify(bad)).toContain("Invalid input for swap_exercise");
+    }
+  });
+
+  it("the prompt tells the model when to call it", () => {
+    const rules = buildSystem(promptStatic, promptContext)[0]?.text ?? "";
+    expect(rules).toContain("swap_exercise");
+    expect(rules).toContain("never right after you listed alternatives");
   });
 });

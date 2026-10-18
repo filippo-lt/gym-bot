@@ -7,6 +7,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { logGroups } from "../db/schema/log.js";
 import { equipment, exercises as exercisesTable, plannedItems } from "../db/schema/plan.js";
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
+import { resolveSwap } from "../plan/swap-stage.js";
 import { acceptedHspuStep } from "../progression/load-history.js";
 import { ensureSuggestions } from "../progression/store.js";
 import { type ChartBuilder, type ChartSlot, readRenderChart } from "../queries/chart-tool.js";
@@ -55,6 +56,7 @@ import type {
   SetBandKgInput,
   StagedAction,
   StageResult,
+  SwapExerciseInput,
   UndoLastInput,
 } from "./types.js";
 import { buildEntries, convertLoad, expandSets, missingFields, normalizeBand } from "./units.js";
@@ -768,6 +770,17 @@ export async function stageBandKg(db: Q, input: SetBandKgInput): Promise<StageRe
   };
 }
 
+/** A swap is only staged: the card (and the scope/days questions) come from the flow. */
+export async function stageSwap(db: Q, input: SwapExerciseInput, now: Date): Promise<StageResult> {
+  const r = await resolveSwap(db, input, trainingDate(now));
+  if (!r.ok) return fail(r.reply);
+  return {
+    ok: true,
+    action: { kind: "swap", input, resolved: r.resolved },
+    preview: `Staged a plan change: swap ${r.resolved.from.name} for ${r.resolved.to.name}. The bot will ask the user to confirm, and which sessions if they did not say. Do not repeat it or any numbers.`,
+  };
+}
+
 export interface BackendOptions {
   /** The chat's unsaved request, if any: edits and undo then act on nothing but saved logs. */
   openPending?: { summary: string } | null;
@@ -791,7 +804,7 @@ export function createLoggingBackend(
   return {
     getSession: (input: GetSessionInput) => readSession(db, clock(), input),
     getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
-    getAlternatives: (input) => readAlternatives(db, input),
+    getAlternatives: (input) => readAlternatives(db, input, clock()),
     renderChart: (input) => readRenderChart(db, clock(), input, slot, options.buildChart),
     takeChart: () => slot.chart,
     stageSaveMemory: async (input) => stageSaveMemory(input),
@@ -803,5 +816,6 @@ export function createLoggingBackend(
     stageEdit: async (input) => blocked() ?? stageEdit(db, input, clock()),
     stageUndoLast: async (_input: UndoLastInput) => blocked() ?? stageUndoLast(db, clock()),
     stageSkip: (input) => stageSkip(db, input, clock()),
+    stageSwap: (input) => stageSwap(db, input, clock()),
   };
 }

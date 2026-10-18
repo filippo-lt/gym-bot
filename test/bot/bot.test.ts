@@ -96,6 +96,23 @@ describe("createBot", () => {
     expect(String(calls[0]?.payload.text)).toContain(expected);
   });
 
+  it("/swap alone lists today's exercises", async () => {
+    const { calls, send } = setup();
+    await send("/swap");
+    expect(calls).toHaveLength(1);
+    const out = String(calls[0]?.payload.text);
+    expect(out).toMatch(
+      /^Tell me what to swap, e\.g\. "swap face pulls for band pull-aparts only today"\. Today: .+\.$/,
+    );
+  });
+
+  it("/swap with text goes through the AI pipeline (no key: says so)", async () => {
+    const { calls, send } = setup();
+    await send("/swap face pulls for rows");
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0]?.payload.text)).toContain(NO_AI_KEY);
+  });
+
   it("/export replies first with the preparing message", async () => {
     // No database here: the export itself fails and logs; only the first reply matters.
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -318,6 +335,7 @@ describe("query commands", () => {
     phases: [{ fromWeek: 1, toWeek: 12, phase: "All" }],
     nextDeload: { week: 8, startDate: "2026-11-16" },
     nextTrainingDay: { date: "2026-10-26", weekday: "mon", focus: "Pull + hinge" },
+    changes: [],
   };
 
   function reads(lookup: Awaited<ReturnType<NonNullable<BotDeps["reads"]>["lookupExercise"]>>) {

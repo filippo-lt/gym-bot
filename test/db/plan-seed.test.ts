@@ -393,7 +393,10 @@ describe("row level security", () => {
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'`;
     expect(rows.length).toBeGreaterThanOrEqual(8);
+    expect(rows.map((r) => r.relname)).toContain("session_overrides");
     expect(rows.filter((r) => !r.relrowsecurity).map((r) => r.relname)).toEqual([]);
+    const policies = await sql`select 1 from pg_policies where tablename = 'session_overrides'`;
+    expect(policies).toHaveLength(0);
   });
 });
 
@@ -456,6 +459,10 @@ describe("real plan pipeline", () => {
       items: 323,
       exercises: plan.exercises.length,
     });
+
+    const versionRows = await sql`select change from plan_versions`;
+    expect(versionRows).toHaveLength(1);
+    expect(versionRows[0]?.change).toBeNull();
 
     const orNames = new Set<string>(OR_PLAN_NAMES);
     const optionCounts = await sql`

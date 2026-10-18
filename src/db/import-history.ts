@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, min, ne } from "drizzle-orm";
 import type { HistoryImport, HistoryIssue } from "../history-import/types.js";
 import type { Equipment } from "../plan-import/types.js";
 import { refreshUserState } from "../progression/store.js";
@@ -77,6 +77,29 @@ export async function importHistory(
         if (dbEquipment.get(e.slug) !== e.base_kg)
           throw new Error(
             `Equipment "${e.slug}" base_kg in the DB (${dbEquipment.get(e.slug) ?? "missing"}) differs from seed/equipment.json (${e.base_kg}). Run pnpm plan:seed first.`,
+          );
+      }
+
+      // Rows map to version 1 by item_key. Dates from the first later version on may render a
+      // different plan, so those rows are refused rather than attached to the wrong items.
+      const [later] = await tx
+        .select({ firstFrom: min(schema.planVersions.effectiveFrom) })
+        .from(schema.planVersions)
+        .innerJoin(schema.plans, eq(schema.plans.id, schema.planVersions.planId))
+        .where(and(gt(schema.planVersions.version, 1), eq(schema.plans.name, opts.planName)));
+      if (later?.firstFrom) {
+        const from = later.firstFrom;
+        const dates = [
+          ...result.session_items.map((r) => r.session_date),
+          ...result.log_groups.map((r) => r.session_date),
+          ...result.class_logs.map((r) => r.date),
+          ...(result.bodyweight ? [result.bodyweight.date] : []),
+        ]
+          .filter((d) => d >= from)
+          .sort();
+        if (dates[0] !== undefined)
+          throw new Error(
+            `Refusing to import: a row is dated ${dates[0]}, on or after ${from}, when plan version 2 or later takes over. History import only maps to plan version 1.`,
           );
       }
 

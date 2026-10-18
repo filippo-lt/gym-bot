@@ -24,6 +24,7 @@ import type {
 import type { ExerciseType, LoadBasis, Weekday } from "../plan-import/types.js";
 import { cb } from "./callbacks.js";
 import { day, esc } from "./format.js";
+import { swapCardText } from "./plan-change-format.js";
 
 export interface Button {
   text: string;
@@ -57,6 +58,7 @@ export const HELP_TEXT = [
   "/readiness — how you feel today",
   "/bw — log your bodyweight, e.g. /bw 78.5",
   "/class — log Thursday's class",
+  "/swap — swap an exercise, e.g. /swap face pulls for band pull-aparts",
   "/plan — week, phases and next deload",
   "/history — last sessions of an exercise, e.g. /history squat",
   "/chart — progress chart, e.g. /chart squat or /chart volume",
@@ -423,6 +425,11 @@ export function editEchoMessage(a: EditAction, sourceKey: string, index: number)
 // ---------------------------------------------------------------------------
 // Confirm and clarify cards
 
+/** Prefix of a pending reason that carries the text of a refused swap. */
+export const SWAP_REFUSED = "swap_refused:";
+export const refusalTexts = (reasons: string[]): string[] =>
+  reasons.filter((r) => r.startsWith(SWAP_REFUSED)).map((r) => r.slice(SWAP_REFUSED.length));
+
 const humanField = (f: string) => f.replace(/_kg$/, "").replaceAll("_", " ");
 const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
 
@@ -432,6 +439,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
     (a): a is Extract<StagedAction, { kind: "log_sets" }> => a.kind === "log_sets",
   );
   const out: string[] = [];
+  const refusals = refusalTexts(reasons);
   for (const r of reasons) {
     switch (r) {
       case "multiple_writes":
@@ -469,7 +477,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         out.push("from a voice note");
         break;
       case "partly_understood":
-        out.push("part of your message couldn't be saved");
+        out.push(
+          ["part of your message couldn't be saved", ...refusals].join(refusals.length ? ": " : ""),
+        );
         break;
       case "model_flag":
         out.push("I wasn't sure");
@@ -498,6 +508,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
       case "equipment":
         out.push("this changes your equipment");
         break;
+      case "plan_change":
+        out.push("this changes your plan");
+        break;
       case "skip_primary":
         out.push("skipping a PRIMARY item");
         break;
@@ -515,7 +528,7 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
 }
 
 /** Under a "Remove this?" header a removal needs no "Remove" of its own. */
-function actionLine(a: StagedAction, underRemoveHeader = false): string {
+function actionLine(a: StagedAction, underRemoveHeader = false, today?: string): string {
   switch (a.kind) {
     case "log_sets":
       return lineText(viewFromResolved(a.resolved));
@@ -527,6 +540,8 @@ function actionLine(a: StagedAction, underRemoveHeader = false): string {
       return `Unclear exercise "${esc(a.said)}"`;
     case "save_memory":
       return `Remember (${a.input.kind}): ${esc(a.input.content)}`;
+    case "swap":
+      return swapCardText(a.resolved, today);
     case "set_band_kg":
       return `Set the ${esc(a.input.colour)} band to ${fmt(a.input.kg)} kg of assistance${
         a.previousKg !== null ? ` (was ${fmt(a.previousKg)} kg)` : ""
@@ -604,6 +619,8 @@ export function confirmCard(args: {
   replacedSummary?: string | null;
   /** Voice transcript or photo read-out, shown first. */
   heard?: string | null;
+  /** Training date for relative wording in plan-change lines; defaults to the real clock. */
+  today?: string;
 }): Message {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
@@ -613,7 +630,7 @@ export function confirmCard(args: {
   }
   const isSkip = args.actions.every((a) => a.kind === "skip_items");
   lines.push(isDelete ? "Remove this?" : isSkip ? "Skip this?" : "Save this?");
-  for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete)}`);
+  for (const a of args.actions) lines.push(`• ${actionLine(a, isDelete, args.today)}`);
   const why = reasonPhrases(args.actions, args.reasons);
   if (why.length) lines.push("", `Why I'm asking: ${esc(why.join("; "))}`);
   const keyboard: Button[] = [{ text: "✅", data: cb.pending(args.id, "ok") }];
@@ -693,6 +710,8 @@ export function clarifyCard(args: {
   candidates: Candidate[];
   replacedSummary?: string | null;
   partlyUnderstood?: boolean;
+  /** Texts of swaps refused at staging, shown after the "couldn't be saved" line. */
+  refusals?: string[];
   heard?: string | null;
 }): Message {
   const lines: string[] = [];
@@ -705,7 +724,11 @@ export function clarifyCard(args: {
       ? `Which exercise is "${esc(args.said)}"?`
       : `I couldn't find an exercise called "${esc(args.said)}".`,
   );
-  if (args.partlyUnderstood) lines.push("Part of your message couldn't be saved.");
+  if (args.partlyUnderstood) {
+    lines.push(
+      ["Part of your message couldn't be saved.", ...(args.refusals ?? []).map(esc)].join(" "),
+    );
+  }
   const keyboard: Keyboard = args.candidates.map((c, i) => [
     { text: c.name, data: cb.exercise(args.id, i, args.actionIndex) },
   ]);

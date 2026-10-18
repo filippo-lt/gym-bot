@@ -1,8 +1,8 @@
 /** Read-only plan facts for /plan and /next. */
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import type { Session, SessionItem } from "../bot/session.js";
 import { DAY_FOCUS } from "../bot/session.js";
-import { planWeeks } from "../db/schema/plan.js";
+import { exercises, plans, planVersions, planWeeks } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { planWeekFor, weekdayOf } from "../domain/calendar.js";
 import { addDays, loadPlanContext } from "../logging/plan-context.js";
@@ -12,6 +12,14 @@ export interface PlanPhase {
   fromWeek: number;
   toWeek: number;
   phase: string;
+}
+
+/** One saved plan change (version > 1 of the newest plan), names resolved. */
+export interface PlanChangeLine {
+  effectiveFrom: string;
+  change:
+    | { kind: "swap"; from: string; to: string; weekdays: Weekday[] | "all" }
+    | { kind: "deload_earlier"; insertedWeek: number; droppedWeek: number | null };
 }
 
 export interface PlanOverview {
@@ -25,6 +33,45 @@ export interface PlanOverview {
   phases: PlanPhase[];
   nextDeload: { week: number; startDate: string } | null;
   nextTrainingDay: { date: string; weekday: Weekday; focus: string } | null;
+  /** Oldest first. */
+  changes: PlanChangeLine[];
+}
+
+async function loadChanges(db: Db): Promise<PlanChangeLine[]> {
+  const [plan] = await db.select({ id: plans.id }).from(plans).orderBy(desc(plans.id)).limit(1);
+  if (!plan) return [];
+  const rows = await db
+    .select({ effectiveFrom: planVersions.effectiveFrom, change: planVersions.change })
+    .from(planVersions)
+    .where(and(eq(planVersions.planId, plan.id), gt(planVersions.version, 1)))
+    .orderBy(asc(planVersions.version));
+  const ids = rows.flatMap((r) => (r.change?.kind === "swap" ? [r.change.from, r.change.to] : []));
+  const named = ids.length
+    ? await db
+        .select({ id: exercises.id, name: exercises.name })
+        .from(exercises)
+        .where(inArray(exercises.id, ids))
+    : [];
+  const names = new Map(named.map((e) => [e.id, e.name]));
+  const out: PlanChangeLine[] = [];
+  for (const r of rows) {
+    const c = r.change;
+    if (!c) continue;
+    if (c.kind === "swap") {
+      out.push({
+        effectiveFrom: r.effectiveFrom,
+        change: {
+          kind: "swap",
+          from: names.get(c.from) ?? "?",
+          to: names.get(c.to) ?? "?",
+          weekdays: c.weekdays,
+        },
+      });
+    } else {
+      out.push({ effectiveFrom: r.effectiveFrom, change: c });
+    }
+  }
+  return out;
 }
 
 /** Consecutive weeks with the same phase name become one range. */
@@ -62,7 +109,8 @@ export async function getPlanOverview(db: Db, today: string): Promise<PlanOvervi
     for (let i = 0; i < 10; i += 1) {
       const date = addDays(first, i);
       const weekday = weekdayOf(date);
-      const s = planWeekFor(date, ctx.startDate, ctx.weeks);
+      const version = ctx.index.versionFor(date) ?? ctx.index.versions[0];
+      const s = planWeekFor(date, ctx.startDate, version?.weeks ?? ctx.weeks);
       if (s.status === "finished") break;
       if (weekday && s.status === "active") {
         nextTrainingDay = { date, weekday, focus: DAY_FOCUS[weekday] };
@@ -81,6 +129,7 @@ export async function getPlanOverview(db: Db, today: string): Promise<PlanOvervi
     phases,
     nextDeload: deload ? { week: deload.week, startDate: deload.startDate } : null,
     nextTrainingDay,
+    changes: await loadChanges(db),
   };
 }
 

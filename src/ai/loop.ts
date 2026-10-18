@@ -73,6 +73,19 @@ export function stagedEvent(a: StagedAction, turn: number): IntentEvent {
   return { type: "staged", turn, said: null, slug: null, kind: a.kind };
 }
 
+/** Shown when the model's swap input does not parse. */
+export const SWAP_UNREADABLE = "I couldn't read that swap. Tell me the two exercise names again.";
+
+/** Code-built refusal texts of swaps that no later swap fixed (they are shown to the user as they are). */
+export function unresolvedSwapRefusals(
+  errors: { turn: number; reply: string }[],
+  events: IntentEvent[],
+): string[] {
+  return errors
+    .filter((e) => !events.some((x) => x.type === "staged" && x.kind === "swap" && x.turn > e.turn))
+    .map((e) => e.reply);
+}
+
 /**
  * Tool errors that nothing fixed. A fix has to come in a LATER turn (the model saw the error
  * and tried again): a log_sets error is fixed by a later log_sets/clarify with the same words
@@ -95,6 +108,7 @@ export function countUnresolvedErrors(events: IntentEvent[]): number {
         return x.kind === "edit_group" || x.kind === "delete_group";
       }
       if (e.tool === "save_memory") return x.kind === "save_memory";
+      if (e.tool === "swap_exercise") return x.kind === "swap";
       // Unknown tool name (a typo): any later staged action is the retry.
       return true;
     });
@@ -177,6 +191,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const events: IntentEvent[] = [];
   const metas: StagedMeta[] = [];
   const reads: ReadRecord[] = [];
+  const swapErrors: { turn: number; reply: string }[] = [];
 
   try {
     let turns = 0;
@@ -202,6 +217,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           replyText: null,
           turns,
           toolErrors: countUnresolvedErrors(events),
+          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
           truncated: true,
           reads,
         };
@@ -220,6 +236,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           replyText,
           turns,
           toolErrors: countUnresolvedErrors(events),
+          swapRefusals: unresolvedSwapRefusals(swapErrors, events),
           truncated: false,
           reads,
         };
@@ -238,6 +255,14 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           addStaged(staged, metas, events, exec.staged, turns, tu.input);
         } else if (exec.isError && !READ_TOOLS.includes(tu.name)) {
           events.push({ type: "error", turn: turns, tool: tu.name, ...exerciseOf(tu.input) });
+          if (tu.name === "swap_exercise") {
+            // A zod-invalid swap has no code-built refusal: the user gets a fixed sentence.
+            const invalid = exec.toolResultContent.startsWith("Invalid input");
+            swapErrors.push({
+              turn: turns,
+              reply: invalid ? SWAP_UNREADABLE : exec.toolResultContent,
+            });
+          }
         }
         if (exec.read && !exec.isError) {
           reads.push({
@@ -264,6 +289,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
       replyText: null,
       turns,
       toolErrors: countUnresolvedErrors(events),
+      swapRefusals: unresolvedSwapRefusals(swapErrors, events),
       truncated: false,
       reads,
     };

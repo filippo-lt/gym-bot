@@ -6,6 +6,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { seedPlan } from "../../src/db/seed-plan.js";
 import { executeActions } from "../../src/logging/execute.js";
 import { skipAction } from "../../src/logging/skip.js";
+import { planDayOn } from "../../src/plan/effective.js";
+import { applySwap } from "../../src/plan/swap-transform.js";
+import { createVersion, loadLatestContent } from "../../src/plan/versions.js";
 import type { CatalogExercise, ParsedItem } from "../../src/plan-import/types.js";
 import { systemLoadOf } from "../../src/progression/e1rm.js";
 import {
@@ -15,6 +18,7 @@ import {
   loadSessionInput,
   loadSessionRecs,
 } from "../../src/progression/load-history.js";
+import { loadSessionAdvice } from "../../src/progression/session-advice.js";
 import {
   ensureSuggestions,
   freezeReadiness,
@@ -29,6 +33,8 @@ afterAll(async () => {
   await sql.end({ timeout: 5 });
 });
 
+const addDaysIso = (d: string, n: number) =>
+  new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const pad = (n: number) => String(n).padStart(2, "0");
 const MONDAYS = [
   "2026-09-28",
@@ -583,5 +589,158 @@ describe("history loading", () => {
     await sql`insert into class_logs (date, heavy_groups, source) values ('2026-10-08', ${sql.array([])}, 'import')`;
     const input = await loadSessionInput(db, "2026-10-12");
     expect(input?.lastTrainingDate).toBe("2026-10-08");
+  });
+});
+
+describe("plan versions and one-off overrides (M7)", () => {
+  const labelsOf = (r: NonNullable<Awaited<ReturnType<typeof ensureSuggestions>>>) =>
+    benchItem(r).suggestions
+      ? Object.values(benchItem(r).suggestions).flatMap((x) => x?.labels ?? [])
+      : [];
+
+  async function swapFrom(
+    fromDate: string,
+    fromSlug: string,
+    toSlug: string,
+    weekdays: ("mon" | "tue")[] | "all" = "all",
+  ) {
+    const [plan] = await sql`select id from plans`;
+    const planId = plan?.id as number;
+    const base = await db.transaction((tx) => loadLatestContent(tx, planId));
+    const from = await exId(sql, fromSlug);
+    const to = await exId(sql, toSlug);
+    const { content } = applySwap(base.content, {
+      fromExerciseId: from,
+      toExerciseId: to,
+      fromDate,
+      weekdays,
+      clearHspuStep: false,
+      rirFor: (i) => ({ rirMin: i.rirMin, rirMax: i.rirMax }),
+    });
+    await db.transaction((tx) =>
+      createVersion(tx, {
+        planId,
+        baseVersionId: base.versionId,
+        content,
+        effectiveFrom: fromDate,
+        reason: "swap",
+        change: { kind: "swap", from, to, weekdays, fromDate },
+      }),
+    );
+  }
+
+  /** Recent class days keep the 10-day rule out of the way, so only the miss streak is under test. */
+  async function recentClasses(dates: string[]) {
+    for (const d of dates) {
+      await sql`insert into class_logs (date, heavy_groups, source) values (${d}, ${sql.array([])}, 'import')`;
+    }
+  }
+
+  async function hackHistory() {
+    await logGroup({ slug: "hack_squat", date: MONDAYS[0] as string, sets: bench(60) });
+  }
+
+  it("a persistent swap from W6 starts a fresh history: no break label on the replacement", async () => {
+    await logMondays([1]);
+    await hackHistory();
+    await recentClasses(["2026-10-29", "2026-11-05"]);
+    await swapFrom("2026-11-02", "bench_press", "hack_squat");
+    for (const date of ["2026-11-02", "2026-11-09"]) {
+      const r = await ensureSuggestions(db, date);
+      const bench = benchItem(r as NonNullable<typeof r>);
+      expect(bench.target.exerciseIds).toEqual([await exId(sql, "hack_squat")]);
+      expect(bench.suggestions[await exId(sql, "hack_squat")]).toBeTruthy();
+      expect(labelsOf(r as NonNullable<typeof r>)).not.toContain("back_after_break");
+    }
+  });
+
+  it("control: without the swap the same history gives the break label on W6", async () => {
+    await logMondays([1]);
+    await recentClasses(["2026-10-29"]);
+    const r = await ensureSuggestions(db, "2026-11-02");
+    expect(labelsOf(r as NonNullable<typeof r>)).toContain("back_after_break");
+  });
+
+  it("a one-off override stores the suggestion for the replacement and past /today shows it", async () => {
+    await logMondays([1]);
+    await hackHistory();
+    await recentClasses(["2026-10-22"]);
+    const date = "2026-10-26";
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values (${date}, ${await itemId("w05-mon-03-0")}, ${await exId(sql, "bench_press")}, ${await exId(sql, "hack_squat")})`;
+    const r = await ensureSuggestions(db, date);
+    const item = benchItem(r as NonNullable<typeof r>);
+    expect(item.target.exerciseIds).toEqual([await exId(sql, "hack_squat")]);
+    // The override's options differ from the earlier benches: no misses are counted against it.
+    expect(item.suggestions[await exId(sql, "hack_squat")]).toBeTruthy();
+    expect(labelsOf(r as NonNullable<typeof r>)).not.toContain("back_after_break");
+    const rows =
+      await sql`select exercise_id from suggestions where session_date = ${date} and planned_item_id = ${await itemId("w05-mon-03-0")}`;
+    expect(rows.map((x) => x.exercise_id)).toEqual([await exId(sql, "hack_squat")]);
+
+    // A stale row for the replaced exercise (stored before the override) is not shown.
+    await sql`insert into suggestions (session_date, planned_item_id, sub_item, exercise_id, sets, reps_min, reps_max, rir_min, rir_max, rir_mid, load_kg, labels, readiness_level)
+      values (${date}, ${await itemId("w05-mon-03-0")}, 0, ${await exId(sql, "bench_press")}, 2, 8, 8, 2, 2, 2, 50, '{}', 'GREEN')`;
+    const adv = await loadSessionAdvice(db, date, new Date("2026-10-27T08:00:00Z"));
+    const shown = adv?.items.get(await itemId("w05-mon-03-0"));
+    expect(Object.keys(shown?.suggestions ?? {})).toEqual([String(await exId(sql, "hack_squat"))]);
+  });
+
+  it("live path: an override today shows the replacement's suggestion in the session view", async () => {
+    await logMondays([1]);
+    await hackHistory();
+    await recentClasses(["2026-10-22"]);
+    const date = "2026-10-26";
+    const id = await itemId("w05-mon-03-0");
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values (${date}, ${id}, ${await exId(sql, "bench_press")}, ${await exId(sql, "hack_squat")})`;
+    const adv = await loadSessionAdvice(db, date, new Date(`${date}T08:00:00Z`));
+    expect(adv?.mode).toBe("live");
+    const hackId = await exId(sql, "hack_squat");
+    const shown = adv?.items.get(id);
+    expect(Object.keys(shown?.suggestions ?? {})).toEqual([String(hackId)]);
+    expect(shown?.suggestions[hackId]).toBeTruthy();
+    const rows =
+      await sql`select exercise_id from suggestions where session_date = ${date} and planned_item_id = ${id}`;
+    expect(rows.map((x) => x.exercise_id)).toEqual([hackId]);
+  });
+
+  it("a Monday-only swap leaves the Tuesday item with its full history: no break label across the boundary", async () => {
+    const hack = await exId(sql, "hack_squat");
+    for (const w of [1, 2, 3, 5]) {
+      await logGroup({
+        slug: "hack_squat",
+        date: addDaysIso(MONDAYS[w - 1] as string, 1),
+        itemKey: `w${pad(w)}-tue-00-0`,
+        sets: bench(60),
+      });
+    }
+    await recentClasses(["2026-10-30"]);
+    await swapFrom("2026-11-02", "hack_squat", "squat", ["mon"]);
+    const monday = await planDayOn(db, "2026-11-02");
+    if (monday.kind !== "day") throw new Error("x");
+    expect(
+      monday.items.find((i) => i.planName.startsWith("Squat"))?.options.map((o) => o.id),
+    ).not.toContain(hack);
+    const r = await ensureSuggestions(db, "2026-11-03");
+    const tue = r?.session.items.find((i) => i.target.planName === "Hack squat solo");
+    expect(tue?.target.exerciseIds).toEqual([hack]);
+    expect(tue?.suggestions[hack]).toBeTruthy();
+    expect(tue?.suggestions[hack]?.labels).not.toContain("back_after_break");
+  });
+
+  it("control: a Monday-only swap does not hide real misses on the Tuesday item", async () => {
+    const hack = await exId(sql, "hack_squat");
+    for (const w of [1, 2]) {
+      await logGroup({
+        slug: "hack_squat",
+        date: addDaysIso(MONDAYS[w - 1] as string, 1),
+        itemKey: `w${pad(w)}-tue-00-0`,
+        sets: bench(60),
+      });
+    }
+    await recentClasses(["2026-10-30"]);
+    await swapFrom("2026-11-02", "hack_squat", "squat", ["mon"]);
+    const r = await ensureSuggestions(db, "2026-11-03");
+    const tue = r?.session.items.find((i) => i.target.planName === "Hack squat solo");
+    expect(tue?.suggestions[hack]?.labels).toContain("back_after_break");
   });
 });

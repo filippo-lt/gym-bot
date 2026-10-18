@@ -316,14 +316,15 @@ describe("applyReadiness", () => {
 
 describe("earlierDeloadHint", () => {
   it("RED twice in a row", () => {
-    expect(earlierDeloadHint(["GREEN", "RED", "RED"], [])).toBe(true);
-    expect(earlierDeloadHint(["RED", "YELLOW", "RED"], [])).toBe(false);
-    expect(earlierDeloadHint(["RED"], [])).toBe(false);
+    expect(earlierDeloadHint(["GREEN", "RED", "RED"], [])).toBe("sessions");
+    expect(earlierDeloadHint(["RED", "YELLOW", "RED"], [])).toBeNull();
+    expect(earlierDeloadHint(["RED"], [])).toBeNull();
   });
   it("recovery <= 2 for 2 weeks", () => {
-    expect(earlierDeloadHint([], [4, 2, 1])).toBe(true);
-    expect(earlierDeloadHint([], [2, 3, 2])).toBe(false);
-    expect(earlierDeloadHint([], [2, null])).toBe(false);
-    expect(earlierDeloadHint([], [2])).toBe(false);
+    expect(earlierDeloadHint([], [4, 2, 1])).toBe("recovery");
+    expect(earlierDeloadHint(["RED", "RED"], [1, 1])).toBe("sessions");
+    expect(earlierDeloadHint([], [2, 3, 2])).toBeNull();
+    expect(earlierDeloadHint([], [2, null])).toBeNull();
+    expect(earlierDeloadHint([], [2])).toBeNull();
   });
 });

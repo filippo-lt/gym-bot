@@ -50,6 +50,13 @@
       "when": 1792341590084,
       "tag": "0006_slimy_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792351265926,
+      "tag": "0007_keen_sabra",
+      "breakpoints": true
     }
   ]
 }

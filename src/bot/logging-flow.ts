@@ -65,6 +65,9 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import { applySwapAnswer, swapQuestion } from "../plan/swap-stage.js";
+import { undoPlanChange } from "../plan/undo.js";
+import { refreshUserState } from "../progression/store.js";
 import type { ChartBuilder } from "../queries/chart-tool.js";
 import { clampTimeout } from "../runtime/deadline.js";
 import {
@@ -73,7 +76,7 @@ import {
   STT_TIMEOUT_MS,
   sttVocabularyPrompt,
 } from "../stt/stt.js";
-import { type CallbackAction, parseCallback } from "./callbacks.js";
+import { type CallbackAction, cb, parseCallback } from "./callbacks.js";
 import { trySendFallback } from "./chart-fallback.js";
 import { esc, guardLength } from "./format.js";
 import {
@@ -106,9 +109,11 @@ import {
   NO_AI_KEY,
   NUMBER_GUARD_FALLBACK,
   type Place,
+  refusalTexts,
   removedText,
   replacedText,
   STALE,
+  SWAP_REFUSED,
   stripMarkdown,
   summarize,
   VOICE_BLANK,
@@ -118,6 +123,12 @@ import {
   voiceBudgetText,
 } from "./log-format.js";
 import { pickPhoto } from "./pick-photo.js";
+import {
+  droppedOverridesText,
+  swapCardText,
+  swapDaysQuestion,
+  swapScopeQuestion,
+} from "./plan-change-format.js";
 import { CHART_FAILED } from "./query-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
@@ -151,7 +162,8 @@ const VOICE_MAX_BYTES = 20 * 1024 * 1024;
 const PHOTO_MAX_BYTES = 3.5 * 1024 * 1024;
 
 export interface Flow {
-  text(ctx: Context): Promise<void>;
+  /** `body` replaces the message text (a command's argument, e.g. /swap <text>). */
+  text(ctx: Context, body?: string): Promise<void>;
   voice(ctx: Context): Promise<void>;
   photo(ctx: Context): Promise<void>;
   callback(ctx: Context): Promise<void>;
@@ -166,6 +178,10 @@ function capValue(ai: AiConfig, cap: BudgetCap): number {
 }
 
 const PARTLY = "partly_understood";
+/** Reasons that carry the text of a swap refused at staging (shown on the card). */
+const refusalReasons = (texts: string[]) => texts.map((t) => `${SWAP_REFUSED}${t}`);
+const keptRefusals = (reasons: string[]) => reasons.filter((r) => r.startsWith(SWAP_REFUSED));
+const UNDONE_PLAN = "Undone. The plan is back as it was.";
 /** Marks, in pending.reasons, which action a clarify tap resolved (for late retried taps). */
 const HTML = { parse_mode: "HTML" as const };
 
@@ -354,6 +370,16 @@ export function createFlow(deps: FlowDeps): Flow {
         add(directWriteSaved(r, sourceKey, i));
       } else if (r.kind === "skip") {
         add(skipEcho(r, sourceKey, i));
+      } else if (r.kind === "plan_change") {
+        const swap = a?.kind === "swap" ? a : undefined;
+        const lost = droppedOverridesText(r.droppedOverrides);
+        const saved = swap
+          ? `Saved. ${swapCardText(swap.resolved, trainingDate(deps.now()))}`
+          : "Saved.";
+        add({
+          text: lost ? `${saved}\n${lost}` : saved,
+          keyboard: [[{ text: "Undo", data: cb.undoPlan(sourceKey, i) }]],
+        });
       } else {
         add({ text: removedText(r.snapshot), keyboard: [] });
       }
@@ -478,6 +504,7 @@ export function createFlow(deps: FlowDeps): Flow {
           candidates: a.candidates,
           replacedSummary,
           partlyUnderstood: p.reasons.includes(PARTLY),
+          refusals: refusalTexts(p.reasons),
           heard: p.transcript,
         });
       }
@@ -492,6 +519,14 @@ export function createFlow(deps: FlowDeps): Flow {
         heard: p.transcript,
       });
     }
+    const question = swapQuestionCard(p);
+    if (question) {
+      const head = [
+        p.transcript ? `${heardLine(p.transcript)}\n` : "",
+        replacedSummary ? `Replaces: ${esc(replacedSummary)}\n` : "",
+      ].join("");
+      return { ...question, text: `${head}${question.text}` };
+    }
     return confirmCard({
       id: p.id,
       kind: p.kind,
@@ -499,7 +534,29 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: p.reasons,
       replacedSummary,
       heard: p.transcript,
+      today: trainingDate(deps.now()),
     });
+  }
+
+  /** The scope / days question of the first staged swap that still needs one, as a card. */
+  function swapQuestionCard(p: Pending): Message | null {
+    for (const a of p.actions) {
+      if (a.kind !== "swap") continue;
+      const which = swapQuestion(a.resolved);
+      if (!which) continue;
+      const q =
+        which === "scope"
+          ? swapScopeQuestion(a.resolved, p.id, trainingDate(deps.now()))
+          : swapDaysQuestion(a.resolved, p.id);
+      return {
+        text: q.text,
+        keyboard: [
+          q.buttons.map(([label, data]) => ({ text: label, data })),
+          [{ text: "Cancel", data: cb.pending(p.id, "no") }],
+        ],
+      };
+    }
+    return null;
   }
 
   async function presentPending(
@@ -624,8 +681,8 @@ export function createFlow(deps: FlowDeps): Flow {
     return false;
   }
 
-  async function text(ctx: Context): Promise<void> {
-    const body = ctx.message?.text;
+  async function text(ctx: Context, bodyOverride?: string): Promise<void> {
+    const body = bodyOverride ?? ctx.message?.text;
     const chatId = ctx.chat?.id;
     if (body === undefined || chatId === undefined) return;
     if (!aiConfig()) {
@@ -695,6 +752,13 @@ export function createFlow(deps: FlowDeps): Flow {
 
     const staged = result.staged;
     const partly = result.toolErrors > 0 || result.truncated;
+    if (staged.length === 0 && result.swapRefusals.length > 0) {
+      // A refused swap is code-built text: show it as it is, not the model's wording.
+      const reply = result.swapRefusals.join("\n");
+      await send(ctx, { text: heard + esc(reply), keyboard: [] });
+      await appendMessage(db, chatId, "assistant", reply);
+      return;
+    }
     if (staged.length === 0) {
       // The chart (if any) follows the reply, also when the number guard swapped the text.
       const chart = backend.takeChart();
@@ -799,7 +863,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await presentPending(ctx, {
         kind: "clarify_exercise",
         actions: staged,
-        reasons: partly ? [PARTLY] : [],
+        reasons: partly ? [PARTLY, ...refusalReasons(result.swapRefusals)] : [],
         updateId,
         now,
         inputSource: cardSource,
@@ -819,7 +883,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await presentPending(ctx, {
         kind,
         actions: staged,
-        reasons: decision.reasons,
+        reasons: [...decision.reasons, ...refusalReasons(result.swapRefusals)],
         updateId,
         now,
         inputSource: cardSource,
@@ -1162,6 +1226,10 @@ export function createFlow(deps: FlowDeps): Flow {
         await remember(chatOf(ctx), undone.text);
         return;
       }
+      case "sw":
+        return swapButton(ctx, a.id, a.ans, answer, now);
+      case "up":
+        return undoPlanTap(ctx, a.key, a.index, answer);
       case "sk":
         return skip.skipTap(ctx, a, answer);
       case "us":
@@ -1257,6 +1325,10 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("Pick an exercise first.");
       return;
     }
+    if (swapQuestionCard(pending)) {
+      await answer("Answer the question first.");
+      return;
+    }
     const doneText =
       pending.kind === "delete"
         ? "Removed ✓"
@@ -1278,6 +1350,12 @@ export function createFlow(deps: FlowDeps): Flow {
       );
       return;
     }
+    if (r.status === "refused") {
+      await answer(r.reply);
+      await editQuietly(ctx, r.reply);
+      await remember(chatId, `${r.reply} (nothing saved)`);
+      return;
+    }
     if (r.status === "expired") {
       await answer(EXPIRED);
       await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
@@ -1296,6 +1374,94 @@ export function createFlow(deps: FlowDeps): Flow {
       nothingSkipped
         ? "Nothing skipped (user confirmed): already done or skipped."
         : `${pending.kind === "delete" ? "Removed" : "Saved"} (user confirmed): ${plainSummary(pending.actions)}`,
+    );
+  }
+
+  /** `sw:` taps: the scope / days answer of a staged swap; the same message becomes the next question or the card. */
+  async function swapButton(
+    ctx: Context,
+    id: number,
+    ans: "t" | "r" | "d" | "a",
+    answer: Answer,
+    now: Date,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const pending = await getPending(db, id);
+    if (!pending) {
+      await answer(EXPIRED);
+      await remember(chatId, "A tapped request was not found (expired); nothing changed.");
+      return;
+    }
+    if (pending.status === "executed") {
+      await answer("Already saved.");
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped button was too late: the request was already saved.");
+      return;
+    }
+    if (pending.status !== "open" || pending.expiresAt.getTime() <= now.getTime()) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, pending);
+      await remember(chatId, "A tapped swap button found the request expired; nothing changed.");
+      return;
+    }
+    const index = pending.actions.findIndex((a) => a.kind === "swap" && swapQuestion(a.resolved));
+    const target = pending.actions[index];
+    const asked = target?.kind === "swap" ? swapQuestion(target.resolved) : null;
+    if (
+      target?.kind !== "swap" ||
+      asked === null ||
+      (asked === "scope") !== (ans === "t" || ans === "r")
+    ) {
+      await answer("Already answered.");
+      return;
+    }
+    if (ans === "r" && target.resolved.futureWeekdays.length === 0) {
+      const reply = `${target.resolved.from.name} isn't in a later session; use only today.`;
+      await cancelPending(db, id);
+      await edit(ctx, { text: esc(reply), keyboard: [] });
+      await answer();
+      await remember(chatId, `${reply} (nothing saved)`);
+      return;
+    }
+    const actions = pending.actions.map((a, i) =>
+      i === index && a.kind === "swap" ? { ...a, resolved: applySwapAnswer(a.resolved, ans) } : a,
+    );
+    const row = await replacePendingActions(db, id, actions);
+    if (!row) {
+      await answer(EXPIRED);
+      await closeStaleCard(ctx, (await getPending(db, id)) ?? pending);
+      await remember(chatId, "A tapped swap button found the request expired; nothing changed.");
+      return;
+    }
+    await edit(ctx, renderPending(row, null));
+    await answer();
+    await remember(chatId, `Swap question answered (${ans}): ${plainSummary(row.actions)}`);
+  }
+
+  /** `up:` taps: undo a saved plan change while it is still unused. */
+  async function undoPlanTap(
+    ctx: Context,
+    key: string,
+    index: number,
+    answer: Answer,
+  ): Promise<void> {
+    const chatId = chatOf(ctx);
+    const outcome = await db.transaction(async (tx) => {
+      const out = await undoPlanChange(tx, key, index);
+      if (out.ok) await refreshUserState(tx);
+      return out;
+    });
+    if (!outcome.ok) {
+      await answer(outcome.reply);
+      await remember(chatId, `Plan change not undone: ${outcome.reply}`);
+      return;
+    }
+    const lost = droppedOverridesText(outcome.dropped);
+    await editQuietly(ctx, lost ? `${UNDONE_PLAN}\n${lost}` : UNDONE_PLAN);
+    await answer("Undone.");
+    await remember(
+      chatId,
+      `Plan change undone (Undo button): the plan is back as it was.${lost ? ` ${htmlToPlain(lost)}` : ""}`,
     );
   }
 
@@ -1516,6 +1682,7 @@ export function createFlow(deps: FlowDeps): Flow {
             said: q.said,
             candidates: q.candidates,
             partlyUnderstood: partly,
+            refusals: refusalTexts(pending.reasons),
             heard: pending.transcript,
           }),
         );
@@ -1532,23 +1699,14 @@ export function createFlow(deps: FlowDeps): Flow {
         : "confirm";
       const row = await replacePendingActions(db, pendingId, actions, {
         kind,
-        reasons: next.reasons,
+        reasons: [...next.reasons, ...keptRefusals(pending.reasons)],
       });
       if (!row) {
         await answer(EXPIRED);
         await remember(chatOf(ctx), "The request had expired; nothing saved.");
         return;
       }
-      await edit(
-        ctx,
-        confirmCard({
-          id: pendingId,
-          kind,
-          actions,
-          reasons: next.reasons,
-          heard: pending.transcript,
-        }),
-      );
+      await edit(ctx, renderPending(row, null));
       await remember(chatId, `${chose} Asked to confirm: ${plainSummary(actions)}`);
       const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);

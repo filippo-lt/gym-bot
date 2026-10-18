@@ -38,6 +38,7 @@ try {
     { command: "readiness", description: "How I feel today" },
     { command: "bw", description: "Log my bodyweight" },
     { command: "class", description: "Log Thursday's class" },
+    { command: "swap", description: "Swap an exercise" },
     { command: "plan", description: "Plan overview" },
     { command: "history", description: "Last sessions of an exercise" },
     { command: "chart", description: "Progress chart" },
