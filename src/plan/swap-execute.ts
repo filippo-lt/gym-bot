@@ -3,6 +3,7 @@
  * on the clock or on the latest plan version is decided here, not when the card was built.
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { esc } from "../bot/format.js";
 import { logGroups } from "../db/schema/log.js";
 import { equipment, exercises, plans, sessionOverrides } from "../db/schema/plan.js";
 import type { Q } from "../logging/db.js";
@@ -11,6 +12,8 @@ import type { ResolvedSwap } from "../logging/types.js";
 import { addDays } from "../plan-import/build-plan.js";
 import { computeRir } from "../plan-import/rir.js";
 import type { Modifier } from "../plan-import/types.js";
+import { planDayOn } from "./effective.js";
+import type { DroppedOverride } from "./override-repoint.js";
 import { applySwap } from "./swap-transform.js";
 import { createVersion, loadLatestContent, StaleBaseVersionError } from "./versions.js";
 
@@ -19,6 +22,8 @@ export interface PlanChangeResult {
   overrideIds: number[];
   versionId: number | null;
   createdExerciseId: number | null;
+  /** One-off swaps of later days that the new version could not keep. */
+  droppedOverrides?: DroppedOverride[];
   /** Set by Undo; a second Undo then answers "Already undone." */
   undone?: boolean;
 }
@@ -92,8 +97,8 @@ async function insertOverrides(
   return ids;
 }
 
-async function existingOverride(tx: Q, r: ResolvedSwap): Promise<boolean> {
-  if (r.todayItemIds.length === 0) return false;
+async function existingOverride(tx: Q, r: ResolvedSwap, itemIds: number[]): Promise<boolean> {
+  if (itemIds.length === 0) return false;
   const [o] = await tx
     .select({ id: sessionOverrides.id })
     .from(sessionOverrides)
@@ -101,7 +106,7 @@ async function existingOverride(tx: Q, r: ResolvedSwap): Promise<boolean> {
       and(
         eq(sessionOverrides.sessionDate, r.referenceDate),
         eq(sessionOverrides.replacedExerciseId, r.from.id),
-        inArray(sessionOverrides.plannedItemId, r.todayItemIds),
+        inArray(sessionOverrides.plannedItemId, itemIds),
       ),
     )
     .limit(1);
@@ -125,20 +130,39 @@ export async function executeSwap(
 ): Promise<SwapOutcome> {
   if (r.scope === null) throw new Error("A swap without a scope cannot be saved.");
   const logged = await loggedFrom(tx, r);
-  const loggedReply = `You already logged ${r.from.name} ${dateWords(r.referenceDate, today)}; nothing changed.`;
+  const fromName = esc(r.from.name);
+  const loggedReply = `You already logged ${fromName} ${dateWords(r.referenceDate, today)}; nothing changed.`;
 
   if (r.scope === "today") {
-    if (logged) return { refused: loggedReply };
-    if (r.todayItemIds.length === 0) {
-      return { refused: `${r.from.name} isn't in the plan for that day; nothing changed.` };
-    }
-    if (await existingOverride(tx, r)) {
+    if (r.referenceDate < today) {
       return {
-        refused: `${r.from.name} is already swapped ${dateWords(r.referenceDate, today)}; nothing changed.`,
+        refused: `This card is for ${dateLabel(r.referenceDate)}, which has passed; nothing changed.`,
       };
     }
+    if (logged) return { refused: loggedReply };
+    if (r.todayItemIds.length === 0) {
+      return { refused: `${fromName} isn't in the plan for that day; nothing changed.` };
+    }
+    // The card's item ids may belong to an older plan version: read the day again.
+    const day = await planDayOn(tx, r.referenceDate);
+    const dayItems = day.kind === "day" ? day.items : [];
+    if (
+      await existingOverride(
+        tx,
+        r,
+        dayItems.map((i) => i.plannedItemId),
+      )
+    ) {
+      return {
+        refused: `${fromName} is already swapped ${dateWords(r.referenceDate, today)}; nothing changed.`,
+      };
+    }
+    const itemIds = dayItems
+      .filter((i) => i.options.some((o) => o.id === r.from.id))
+      .map((i) => i.plannedItemId);
+    if (itemIds.length === 0) return { refused: "The plan changed since the card; ask again." };
     const to = await ensureExercise(tx, r, alias);
-    const overrideIds = await insertOverrides(tx, r, to.id, r.todayItemIds);
+    const overrideIds = await insertOverrides(tx, r, to.id, itemIds);
     return {
       kind: "plan_change",
       overrideIds,
@@ -148,6 +172,9 @@ export async function executeSwap(
   }
 
   // Rest of the plan.
+  if (r.futureWeekdays.length === 0) {
+    return { refused: `${fromName} isn't in a later session; use only today.` };
+  }
   let weekdays: ResolvedSwap["referenceWeekday"][] | "all";
   if (r.days === "this_day") weekdays = [r.referenceWeekday];
   else if (r.days === "every_day" || (r.days === null && r.futureWeekdays.length <= 1)) {
@@ -162,9 +189,9 @@ export async function executeSwap(
   if (!plan) throw new Error("No plan found in the database.");
 
   const todayOverride = r.referenceDate === today && !logged && r.todayItemIds.length > 0;
-  if (todayOverride && (await existingOverride(tx, r))) {
+  if (todayOverride && (await existingOverride(tx, r, r.todayItemIds))) {
     return {
-      refused: `${r.from.name} is already swapped today; nothing changed.`,
+      refused: `${fromName} is already swapped today; nothing changed.`,
     };
   }
   const latest = await loadLatestContent(tx, plan.id);
@@ -208,6 +235,7 @@ export async function executeSwap(
   });
 
   let versionId: number;
+  let droppedOverrides: DroppedOverride[];
   try {
     const v = await createVersion(tx, {
       planId: plan.id,
@@ -224,6 +252,7 @@ export async function executeSwap(
       },
     });
     versionId = v.versionId;
+    droppedOverrides = v.droppedOverrides;
   } catch (e) {
     if (e instanceof StaleBaseVersionError) {
       return { refused: "The plan changed meanwhile, try again." };
@@ -240,5 +269,6 @@ export async function executeSwap(
     overrideIds,
     versionId,
     createdExerciseId: to.created ? to.id : null,
+    droppedOverrides,
   };
 }

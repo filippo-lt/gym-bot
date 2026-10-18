@@ -6,6 +6,7 @@
 import { trainingDate } from "../domain/calendar.js";
 import type { ResolvedSwap } from "../logging/types.js";
 import type { DeloadPreview } from "../plan/deload-proposal.js";
+import type { DroppedOverride } from "../plan/override-repoint.js";
 import { addDays } from "../plan-import/build-plan.js";
 import type { LoadBasis, Weekday } from "../plan-import/types.js";
 import { type DeloadTrigger, RECOVERY_LOW_MAX } from "../progression/readiness.js";
@@ -171,12 +172,25 @@ export function deloadProposalText(p: DeloadPreview, trigger: DeloadTrigger = "s
   return lines.join(" ");
 }
 
+/** One line per one-off swap that a plan change could not keep (Telegram HTML). */
+export function droppedOverridesText(dropped: DroppedOverride[] | undefined): string {
+  return (dropped ?? [])
+    .map(
+      (d) =>
+        `Your one-off swap on ${dateText(d.sessionDate)} (${esc(d.replacedName)} → ${esc(d.replacementName)}) no longer applies.`,
+    )
+    .join("\n");
+}
+
 /** Reply after ✅. */
 export function deloadAppliedText(c: {
   insertedWeek: number;
   droppedWeek: number | null;
   mondayDate: string;
+  droppedOverrides?: DroppedOverride[];
 }): string {
   const dropped = c.droppedWeek === null ? "" : ` (W${c.droppedWeek} deload dropped)`;
-  return `Done. From ${day(c.mondayDate, "ccc d LLL")} the deload is W${c.insertedWeek}${dropped}.`;
+  const head = `Done. From ${day(c.mondayDate, "ccc d LLL")} the deload is W${c.insertedWeek}${dropped}.`;
+  const lost = droppedOverridesText(c.droppedOverrides);
+  return lost ? `${head}\n${lost}` : head;
 }

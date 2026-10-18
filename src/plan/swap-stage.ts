@@ -234,6 +234,10 @@ export async function resolveSwap(
     days = "every_day";
   }
 
+  if (scope === "rest" && futureWeekdays.length === 0) {
+    return refuse(`${from.name} isn't in a later session; use only today.`);
+  }
+
   const resolved: ResolvedSwap = {
     from: { id: from.id, name: from.name },
     to,

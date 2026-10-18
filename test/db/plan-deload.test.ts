@@ -267,6 +267,7 @@ describe("applyDeloadProposal", () => {
       overrideIds: [],
       versionId: r.ok ? r.versionId : -1,
       createdExerciseId: null,
+      droppedOverrides: [],
     });
     const idx = await loadVersionIndex(db);
     expect(idx.weekOf("2026-11-09")?.isDeload).toBe(true);
@@ -277,7 +278,7 @@ describe("applyDeloadProposal", () => {
     const id = await propose();
     await apply(id, W6_TUE);
     const out = await db.transaction((tx) => undoPlanChange(tx, `r:${id}`, 0));
-    expect(out).toEqual({ ok: true });
+    expect(out).toEqual({ ok: true, dropped: [] });
     expect(await sql`select id from plan_versions`).toHaveLength(1);
     expect((await proposalRows())[0]?.status).toBe("declined");
   });

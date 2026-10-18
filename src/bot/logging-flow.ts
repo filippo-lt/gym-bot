@@ -67,6 +67,7 @@ import type {
 import { createUsageStore } from "../logging/usage.js";
 import { applySwapAnswer, swapQuestion } from "../plan/swap-stage.js";
 import { undoPlanChange } from "../plan/undo.js";
+import { refreshUserState } from "../progression/store.js";
 import type { ChartBuilder } from "../queries/chart-tool.js";
 import { clampTimeout } from "../runtime/deadline.js";
 import {
@@ -120,7 +121,12 @@ import {
   voiceBudgetText,
 } from "./log-format.js";
 import { pickPhoto } from "./pick-photo.js";
-import { swapCardText, swapDaysQuestion, swapScopeQuestion } from "./plan-change-format.js";
+import {
+  droppedOverridesText,
+  swapCardText,
+  swapDaysQuestion,
+  swapScopeQuestion,
+} from "./plan-change-format.js";
 import { CHART_FAILED } from "./query-format.js";
 import { createSkipFlow } from "./skip-flow.js";
 import { NOTHING_SKIPPED_DONE, SKIPPED_DONE, skipEcho } from "./skip-format.js";
@@ -361,8 +367,12 @@ export function createFlow(deps: FlowDeps): Flow {
         add(skipEcho(r, sourceKey, i));
       } else if (r.kind === "plan_change") {
         const swap = a?.kind === "swap" ? a : undefined;
+        const lost = droppedOverridesText(r.droppedOverrides);
+        const saved = swap
+          ? `Saved. ${swapCardText(swap.resolved, trainingDate(deps.now()))}`
+          : "Saved.";
         add({
-          text: swap ? `Saved. ${swapCardText(swap.resolved, trainingDate(deps.now()))}` : "Saved.",
+          text: lost ? `${saved}\n${lost}` : saved,
           keyboard: [[{ text: "Undo", data: cb.undoPlan(sourceKey, i) }]],
         });
       } else {
@@ -1396,6 +1406,14 @@ export function createFlow(deps: FlowDeps): Flow {
       await answer("Already answered.");
       return;
     }
+    if (ans === "r" && target.resolved.futureWeekdays.length === 0) {
+      const reply = `${target.resolved.from.name} isn't in a later session; use only today.`;
+      await cancelPending(db, id);
+      await edit(ctx, { text: esc(reply), keyboard: [] });
+      await answer();
+      await remember(chatId, `${reply} (nothing saved)`);
+      return;
+    }
     const actions = pending.actions.map((a, i) =>
       i === index && a.kind === "swap" ? { ...a, resolved: applySwapAnswer(a.resolved, ans) } : a,
     );
@@ -1419,15 +1437,23 @@ export function createFlow(deps: FlowDeps): Flow {
     answer: Answer,
   ): Promise<void> {
     const chatId = chatOf(ctx);
-    const outcome = await db.transaction((tx) => undoPlanChange(tx, key, index));
+    const outcome = await db.transaction(async (tx) => {
+      const out = await undoPlanChange(tx, key, index);
+      if (out.ok) await refreshUserState(tx);
+      return out;
+    });
     if (!outcome.ok) {
       await answer(outcome.reply);
       await remember(chatId, `Plan change not undone: ${outcome.reply}`);
       return;
     }
-    await editQuietly(ctx, UNDONE_PLAN);
+    const lost = droppedOverridesText(outcome.dropped);
+    await editQuietly(ctx, lost ? `${UNDONE_PLAN}\n${lost}` : UNDONE_PLAN);
     await answer("Undone.");
-    await remember(chatId, "Plan change undone (Undo button): the plan is back as it was.");
+    await remember(
+      chatId,
+      `Plan change undone (Undo button): the plan is back as it was.${lost ? ` ${htmlToPlain(lost)}` : ""}`,
+    );
   }
 
   /** Toggles and Save of a class-with-moves card: the heavy mask rides in the button, the pending holds the moves. */

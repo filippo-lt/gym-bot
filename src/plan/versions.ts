@@ -1,6 +1,13 @@
-import { asc, desc, eq, inArray } from "drizzle-orm";
-import { plannedItemOptions, plannedItems, planVersions, planWeeks } from "../db/schema/index.js";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import {
+  plannedItemOptions,
+  plannedItems,
+  planVersions,
+  planWeeks,
+  sessionOverrides,
+} from "../db/schema/index.js";
 import type { Q } from "../logging/db.js";
+import { type DroppedOverride, repointOverrides } from "./override-repoint.js";
 import type { ItemSpec, PlanChange, PlanContent } from "./types.js";
 
 const BATCH = 100;
@@ -80,7 +87,11 @@ export async function loadLatestContent(
   };
 }
 
-/** Insert a full copy of the plan as the next version. Runs in the caller's transaction. */
+/**
+ * Insert a full copy of the plan as the next version. Runs in the caller's transaction. One-off
+ * swaps dated on/after `effectiveFrom` are moved to the new version's items (or dropped and
+ * returned when that day no longer has the exercise).
+ */
 export async function createVersion(
   tx: Q,
   args: {
@@ -91,7 +102,7 @@ export async function createVersion(
     reason: string;
     change: PlanChange;
   },
-): Promise<{ versionId: number; version: number }> {
+): Promise<{ versionId: number; version: number; droppedOverrides: DroppedOverride[] }> {
   const [latest] = await tx
     .select({
       id: planVersions.id,
@@ -159,5 +170,25 @@ export async function createVersion(
     await tx.insert(plannedItemOptions).values(part);
   }
 
-  return { versionId, version };
+  const onBase = await tx
+    .select({
+      id: sessionOverrides.id,
+      sessionDate: sessionOverrides.sessionDate,
+      plannedItemId: sessionOverrides.plannedItemId,
+      replacedExerciseId: sessionOverrides.replacedExerciseId,
+      replacementExerciseId: sessionOverrides.replacementExerciseId,
+      itemKey: plannedItems.itemKey,
+    })
+    .from(sessionOverrides)
+    .innerJoin(plannedItems, eq(plannedItems.id, sessionOverrides.plannedItemId))
+    .where(
+      and(
+        eq(plannedItems.planVersionId, args.baseVersionId),
+        gte(sessionOverrides.sessionDate, args.effectiveFrom),
+      ),
+    )
+    .orderBy(asc(sessionOverrides.id));
+  const droppedOverrides = await repointOverrides(tx, onBase, versionId);
+
+  return { versionId, version, droppedOverrides };
 }

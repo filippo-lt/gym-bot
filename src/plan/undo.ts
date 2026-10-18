@@ -1,5 +1,5 @@
 /** Undo of a plan change (M7): removes the version, overrides and created exercise while unused. */
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { pendingActions, writeLedger } from "../db/schema/agent.js";
 import { logGroups, sessionItems } from "../db/schema/log.js";
 import {
@@ -12,12 +12,14 @@ import {
 } from "../db/schema/plan.js";
 import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
 import type { Q } from "../logging/db.js";
+import { type DroppedOverride, repointOverrides } from "./override-repoint.js";
 import type { PlanChangeResult } from "./swap-execute.js";
 
 const TOO_LATE = "Too late to undo: it's already in use. Swap back instead.";
-type UndoOutcome = { ok: true } | { ok: false; reply: string };
+/** `dropped`: one-off swaps that could not move back to the old version's items. */
+type UndoOutcome = { ok: true; dropped: DroppedOverride[] } | { ok: false; reply: string };
 
-async function versionInUse(tx: Q, versionId: number, ownOverrideIds: number[]): Promise<boolean> {
+async function versionInUse(tx: Q, versionId: number): Promise<boolean> {
   const [v] = await tx
     .select({ planId: planVersions.planId })
     .from(planVersions)
@@ -57,13 +59,6 @@ async function versionInUse(tx: Q, versionId: number, ownOverrideIds: number[]):
     .limit(1);
   if (sg) return true;
 
-  // A later one-off swap on one of these items would break the delete.
-  const overrideRows = await tx
-    .select({ id: sessionOverrides.id })
-    .from(sessionOverrides)
-    .where(inArray(sessionOverrides.plannedItemId, ids));
-  if (overrideRows.some((o) => !ownOverrideIds.includes(o.id))) return true;
-
   // An open card may still point at one of these items (text search on the jsonb).
   const open = await tx
     .select({ actions: sql<string>`${pendingActions.actions}::text` })
@@ -92,7 +87,7 @@ export async function undoPlanChange(
   if (r?.kind !== "plan_change") return { ok: false, reply: "Nothing to undo." };
   if (r.undone) return { ok: false, reply: "Already undone." };
 
-  if (r.versionId !== null && (await versionInUse(tx, r.versionId, r.overrideIds))) {
+  if (r.versionId !== null && (await versionInUse(tx, r.versionId))) {
     return { ok: false, reply: TOO_LATE };
   }
 
@@ -117,12 +112,45 @@ export async function undoPlanChange(
   if (r.overrideIds.length > 0) {
     await tx.delete(sessionOverrides).where(inArray(sessionOverrides.id, r.overrideIds));
   }
+  let dropped: DroppedOverride[] = [];
   if (r.versionId !== null) {
     const items = await tx
       .select({ id: plannedItems.id })
       .from(plannedItems)
       .where(eq(plannedItems.planVersionId, r.versionId));
     const ids = items.map((i) => i.id);
+    // One-off swaps made later on this version's items move back to the previous version.
+    const [mine] = await tx
+      .select({ planId: planVersions.planId, version: planVersions.version })
+      .from(planVersions)
+      .where(eq(planVersions.id, r.versionId));
+    const [base] = mine
+      ? await tx
+          .select({ id: planVersions.id })
+          .from(planVersions)
+          .where(and(eq(planVersions.planId, mine.planId), lt(planVersions.version, mine.version)))
+          .orderBy(desc(planVersions.version))
+          .limit(1)
+      : [];
+    const foreign =
+      ids.length > 0
+        ? await tx
+            .select({
+              id: sessionOverrides.id,
+              sessionDate: sessionOverrides.sessionDate,
+              plannedItemId: sessionOverrides.plannedItemId,
+              replacedExerciseId: sessionOverrides.replacedExerciseId,
+              replacementExerciseId: sessionOverrides.replacementExerciseId,
+              itemKey: plannedItems.itemKey,
+            })
+            .from(sessionOverrides)
+            .innerJoin(plannedItems, eq(plannedItems.id, sessionOverrides.plannedItemId))
+            .where(inArray(sessionOverrides.plannedItemId, ids))
+        : [];
+    if (foreign.length > 0) {
+      if (!base) return { ok: false, reply: TOO_LATE };
+      dropped = await repointOverrides(tx, foreign, base.id);
+    }
     if (ids.length > 0) {
       await tx.delete(plannedItemOptions).where(inArray(plannedItemOptions.plannedItemId, ids));
     }
@@ -184,5 +212,5 @@ export async function undoPlanChange(
         .where(eq(proposals.id, proposalId));
     }
   }
-  return { ok: true };
+  return { ok: true, dropped };
 }

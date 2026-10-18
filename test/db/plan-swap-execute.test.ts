@@ -4,14 +4,17 @@ import postgres from "postgres";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "../../src/db/schema/index.js";
 import { seedPlan } from "../../src/db/seed-plan.js";
+import { dateLabel } from "../../src/logging/describe.js";
 import { executeActions } from "../../src/logging/execute.js";
 import { createPending } from "../../src/logging/pending.js";
 import { stageSwap } from "../../src/logging/resolve.js";
 import type { ResolvedSwap, StagedAction } from "../../src/logging/types.js";
+import { insertDeload } from "../../src/plan/deload.js";
 import { planDayOn } from "../../src/plan/effective.js";
 import { executeSwap } from "../../src/plan/swap-execute.js";
 import { resolveSwap } from "../../src/plan/swap-stage.js";
 import { undoPlanChange } from "../../src/plan/undo.js";
+import { createVersion, loadLatestContent } from "../../src/plan/versions.js";
 import { addDays } from "../../src/plan-import/build-plan.js";
 import type { ParsedItem, ResolvedPlan } from "../../src/plan-import/types.js";
 import { testDatabaseUrl } from "./constants.js";
@@ -499,7 +502,7 @@ describe("undoPlanChange", () => {
     await saved();
     expect(await num("select count(*)::int as n from plan_versions")).toBe(2);
     const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
-    expect(u).toEqual({ ok: true });
+    expect(u).toEqual({ ok: true, dropped: [] });
     expect(await num("select count(*)::int as n from plan_versions")).toBe(1);
     expect(await num("select count(*)::int as n from session_overrides")).toBe(0);
     expect(
@@ -559,19 +562,6 @@ describe("undoPlanChange", () => {
     expect(u.ok).toBe(false);
   });
 
-  it("is refused when a later one-off swap sits on the version's items", async () => {
-    await saved();
-    const [it5] = await sql`
-      select pi.id from planned_items pi join plan_versions v on v.id = pi.plan_version_id
-      where v.version = 2 and pi.week = 5 and pi.weekday = 'mon' and pi.item_order = 0`;
-    const [a] = await sql`select id from exercises where slug = 'leg_press'`;
-    const [b] = await sql`select id from exercises where slug = 'push_up'`;
-    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values ('2026-10-26', ${it5?.id}, ${a?.id}, ${b?.id})`;
-    const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
-    expect(u.ok).toBe(false);
-    expect(await num("select count(*)::int as n from plan_versions")).toBe(2);
-  });
-
   it("is refused when a suggestion references the version's items", async () => {
     await saved();
     const [it5] = await sql`
@@ -595,8 +585,169 @@ describe("undoPlanChange", () => {
     await sql`update write_ledger set source_key = 'r:1'`;
     await sql`insert into proposals (kind, payload, status) values ('earlier_deload', '{}'::jsonb, 'accepted')`;
     const u = await db.transaction((tx) => undoPlanChange(tx, "r:1", 0));
-    expect(u).toEqual({ ok: true });
+    expect(u).toEqual({ ok: true, dropped: [] });
     const [p] = await sql`select status from proposals where id = 1`;
     expect(p?.status).toBe("declined");
+  });
+});
+
+describe("one-off swaps across new versions", () => {
+  const NEXT_MON = "2026-10-26";
+
+  /** A one-off swap of the pike (HSPU) item on `date`, written straight into the table. */
+  async function pikeOverride(date: string, version = 1, week = 4): Promise<void> {
+    const [it] = await sql`
+      select pi.id from planned_items pi join plan_versions v on v.id = pi.plan_version_id
+      where v.version = ${version} and pi.week = ${week} and pi.weekday = 'mon' and pi.item_order = 1`;
+    const [a] = await sql`select id from exercises where slug = 'pike_push_up_ex'`;
+    const [b] = await sql`select id from exercises where slug = 'push_up'`;
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values (${date}, ${it?.id}, ${a?.id}, ${b?.id})`;
+  }
+
+  async function insertDeloadVersion(insertAt: number, effectiveFrom: string) {
+    const [plan] = await sql`select id from plans limit 1`;
+    const latest = await loadLatestContent(db, plan?.id);
+    return db.transaction((tx) =>
+      createVersion(tx, {
+        planId: plan?.id,
+        baseVersionId: latest.versionId,
+        content: insertDeload(latest.content, insertAt).content,
+        effectiveFrom,
+        reason: "deload",
+        change: { kind: "deload_earlier", insertedWeek: insertAt, droppedWeek: null },
+      }),
+    );
+  }
+
+  const swappedOn = async (date: string) => {
+    const day = await planDayOn(db, date);
+    if (day.kind !== "day") throw new Error(day.kind);
+    return day.items.find((i) => i.swappedToday)?.swappedToday?.to.name ?? null;
+  };
+
+  it("a rest swap effective on the override's date keeps it rendering", async () => {
+    await pikeOverride(TODAY);
+    const r = await resolved(swapInput({ scope: "rest" }), "2026-10-18");
+    expect(r.referenceDate).toBe(TODAY);
+    const out = await run(r, "leg press", "2026-10-18");
+    if ("refused" in out) throw new Error(out.refused);
+    const [v] = await sql`select effective_from from plan_versions where version = 2`;
+    expect(v?.effective_from).toBe(TODAY);
+    expect(await swappedOn(TODAY)).toBe("Push-up");
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(1);
+  });
+
+  it("a deload insert re-points an override on a shifted date", async () => {
+    await pikeOverride("2026-11-09", 1, 7);
+    const v = await insertDeloadVersion(5, NEXT_MON);
+    expect(v.droppedOverrides).toEqual([]);
+    expect(await swappedOn("2026-11-09")).toBe("Push-up");
+  });
+
+  it("drops an override whose day no longer has the exercise, and says so", async () => {
+    await pikeOverride("2026-11-09", 1, 7);
+    const [plan] = await sql`select id from plans limit 1`;
+    const latest = await loadLatestContent(db, plan?.id);
+    const [pike] = await sql`select id from exercises where slug = 'pike_push_up_ex'`;
+    const content = {
+      weeks: latest.content.weeks,
+      items: latest.content.items.filter(
+        (i) => !(i.week === 7 && i.optionExerciseIds.includes(pike?.id)),
+      ),
+    };
+    const v = await db.transaction((tx) =>
+      createVersion(tx, {
+        planId: plan?.id,
+        baseVersionId: latest.versionId,
+        content,
+        effectiveFrom: NEXT_MON,
+        reason: "x",
+        change: { kind: "deload_earlier", insertedWeek: 5, droppedWeek: null },
+      }),
+    );
+    expect(v.droppedOverrides).toEqual([
+      { sessionDate: "2026-11-09", replacedName: "HSPU", replacementName: "Push-up" },
+    ]);
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(0);
+  });
+
+  it("an override dated before the new version stays on the old items", async () => {
+    await pikeOverride(TODAY);
+    const v = await insertDeloadVersion(5, NEXT_MON);
+    expect(v.droppedOverrides).toEqual([]);
+    expect(await swappedOn(TODAY)).toBe("Push-up");
+  });
+
+  it("a future today-card still applies after a deload insert", async () => {
+    const r = await resolved(swapInput({ scope: "today", day: "mon" }), "2026-10-20");
+    expect(r.referenceDate).toBe(NEXT_MON);
+    await insertDeloadVersion(5, NEXT_MON);
+    const out = await run(r, "leg press", "2026-10-20");
+    if ("refused" in out) throw new Error(out.refused);
+    expect(await swappedOn(NEXT_MON)).toBe("Leg press");
+  });
+
+  it("refuses a today-card whose day no longer has the exercise", async () => {
+    const r = await resolved(swapInput({ scope: "today", day: "mon" }), "2026-10-20");
+    await sql`delete from session_overrides`;
+    await sql`delete from planned_item_options where planned_item_id in (select id from planned_items where week = 5 and weekday = 'mon' and item_order = 0)`;
+    const out = await run(r, "leg press", "2026-10-20");
+    expect(out).toEqual({ refused: "The plan changed since the card; ask again." });
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(0);
+  });
+
+  it("refuses a today-card for a date that has passed", async () => {
+    const r = await resolved(swapInput({ scope: "today" }), TODAY);
+    const out = await run(r, "leg press", "2026-10-20");
+    expect(out).toEqual({
+      refused: `This card is for ${dateLabel(TODAY)}, which has passed; nothing changed.`,
+    });
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(0);
+  });
+
+  it("refuses a rest swap with no later session", async () => {
+    const r = await resolved(swapInput({ scope: "rest" }));
+    const out = await run({ ...r, futureWeekdays: [], affectedSessions: 0 });
+    expect(out).toEqual({
+      refused: "Face pull isn't in a later session; use only today.",
+    });
+    expect(await num("select count(*)::int as n from plan_versions")).toBe(1);
+  });
+
+  it("undoing a version keeps a one-off swap that sits on its items", async () => {
+    const r = await stageSwap(
+      db,
+      swapInput({ scope: "rest" }) as never,
+      new Date("2026-10-19T09:00:00Z"),
+    );
+    if (!r.ok) throw new Error(r.error);
+    await executeActions(db, "p:7", [r.action], { now: new Date("2026-10-19T09:01:00Z") });
+    await pikeOverride(NEXT_MON, 2, 5);
+    const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
+    expect(u).toEqual({ ok: true, dropped: [] });
+    expect(await num("select count(*)::int as n from plan_versions")).toBe(1);
+    expect(await swappedOn(NEXT_MON)).toBe("Push-up");
+  });
+
+  it("undo drops a one-off swap whose exercise the old version lacks, and says so", async () => {
+    const r = await stageSwap(
+      db,
+      swapInput({ scope: "rest" }) as never,
+      new Date("2026-10-19T09:00:00Z"),
+    );
+    if (!r.ok) throw new Error(r.error);
+    await executeActions(db, "p:7", [r.action], { now: new Date("2026-10-19T09:01:00Z") });
+    const [it5] = await sql`
+      select pi.id from planned_items pi join plan_versions v on v.id = pi.plan_version_id
+      where v.version = 2 and pi.week = 5 and pi.weekday = 'mon' and pi.item_order = 0`;
+    const [a] = await sql`select id from exercises where slug = 'leg_press'`;
+    const [b] = await sql`select id from exercises where slug = 'push_up'`;
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values (${NEXT_MON}, ${it5?.id}, ${a?.id}, ${b?.id})`;
+    const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
+    expect(u).toEqual({
+      ok: true,
+      dropped: [{ sessionDate: NEXT_MON, replacedName: "Leg press", replacementName: "Push-up" }],
+    });
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(0);
   });
 });

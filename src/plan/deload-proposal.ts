@@ -14,6 +14,7 @@ import { type DeloadTrigger, RECOVERY_LOW_MAX } from "../progression/readiness.j
 import { refreshUserState } from "../progression/store.js";
 import { insertDeload } from "./deload.js";
 import { loadVersionIndex } from "./effective.js";
+import type { DroppedOverride } from "./override-repoint.js";
 import type { PlanChangeResult } from "./swap-execute.js";
 import type { PlanContent, WeekSpec } from "./types.js";
 import { createVersion, loadLatestContent } from "./versions.js";
@@ -180,6 +181,7 @@ export type DeloadApplyResult =
       insertedWeek: number;
       droppedWeek: number | null;
       mondayDate: string;
+      droppedOverrides: DroppedOverride[];
     }
   | { ok: false; reason: "decided" | "closed"; reply: string };
 
@@ -247,6 +249,7 @@ export async function applyDeloadProposal(
     overrideIds: [],
     versionId: created.versionId,
     createdExerciseId: null,
+    droppedOverrides: created.droppedOverrides,
   };
   await tx
     .insert(writeLedger)
@@ -259,6 +262,7 @@ export async function applyDeloadProposal(
     insertedWeek: preview.insertedWeek,
     droppedWeek: out.droppedWeek,
     mondayDate: p.mondayDate,
+    droppedOverrides: created.droppedOverrides,
   };
 }
 
