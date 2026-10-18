@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../../src/db/schema/index.js";
 import { seedPlan } from "../../src/db/seed-plan.js";
 import { insertDeload } from "../../src/plan/deload.js";
+import type { PlanDay } from "../../src/plan/effective.js";
 import {
   loadVersionIndex,
   planDayOn,
@@ -283,15 +284,67 @@ describe("planDayOn", () => {
       await sql`insert into hspu_ladder (slug, name, step_order) values ('wall', 'Wall HSPU', 1) returning id`;
     const id = await itemId("w04-mon-00-0");
     await sql`update planned_items set hspu_step_id = ${step?.id as number} where id = ${id}`;
-    expect(
-      (await planDayOn(db, "2026-10-19")).kind === "day" && (await planDayOn(db, "2026-10-19")),
-    ).toMatchObject({
-      items: [{ hspuStepId: step?.id }],
-    });
+    const before = await planDayOn(db, "2026-10-19");
+    if (before.kind !== "day") throw new Error("x");
+    expect(before.items[0]?.hspuStepId).toBe(step?.id);
     await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values ('2026-10-19', ${id}, ${await exId("hack_squat")}, ${await exId("leg_press")})`;
     const day = await planDayOn(db, "2026-10-19");
     if (day.kind !== "day") throw new Error("x");
     expect(day.items[0]?.hspuStepId).toBeNull();
     expect([day.items[0]?.rirMin, day.items[0]?.rirMax]).toEqual([3, 4]);
+  });
+
+  it("RIR follows the resulting option list and the week flag", async () => {
+    const { exId } = await setup();
+    const squat = await exId("squat");
+    const hack = await exId("hack_squat");
+    const press = await exId("leg_press");
+    const pullup = await exId("pullup");
+    await sql`update exercises set is_main_lift = true where id = ${squat}`;
+    const ov = (date: string, id: number, from: number, to: number) =>
+      sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values (${date}, ${id}, ${from}, ${to})`;
+    const rir = async (date: string) => {
+      const d = await planDayOn(db, date);
+      if (d.kind !== "day") throw new Error("x");
+      return [d.items[0]?.rirMin, d.items[0]?.rirMax];
+    };
+    // (a) single-option main lift replaced by a non-main weighted exercise
+    const a = await itemId("w05-tue-00-0");
+    await sql`update planned_item_options set exercise_id = ${squat} where planned_item_id = ${a}`;
+    await ov("2026-10-27", a, squat, press);
+    expect(await rir("2026-10-27")).toEqual([1, 3]);
+    // (b) OR item keeps the main lift: stays 1-2
+    const b = await itemId("w05-mon-00-0");
+    await ov("2026-10-26", b, hack, press);
+    expect(await rir("2026-10-26")).toEqual([1, 2]);
+    // (c) deload week, no deload modifier: the week flag alone gives 3-4
+    const c = await itemId("w04-tue-00-0");
+    await sql`update planned_items set modifiers = '{}' where id = ${c}`;
+    await ov("2026-10-20", c, pullup, press);
+    expect(await rir("2026-10-20")).toEqual([3, 4]);
+  });
+
+  it("an override clears the fallback prescription for that date", async () => {
+    const { exId } = await setup();
+    const id = await itemId("w05-tue-00-0");
+    await sql`update planned_items set fallback_prescription = '{"x":1}'::jsonb where id = ${id}`;
+    const before = await planDayOn(db, "2026-10-27");
+    if (before.kind !== "day") throw new Error("x");
+    expect(before.items[0]?.fallback).not.toBeNull();
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values ('2026-10-27', ${id}, ${await exId("pullup")}, ${await exId("ring_row")})`;
+    const after = await planDayOn(db, "2026-10-27");
+    if (after.kind !== "day") throw new Error("x");
+    expect(after.items[0]?.fallback).toBeNull();
+  });
+
+  it("a week straddling two versions renders each day under its own version", async () => {
+    const { planId, exId } = await setup();
+    await addSwapVersion(planId, await exId("pullup"), await exId("ring_row"), "2026-10-21");
+    const days = await planDaysBetween(db, "2026-10-19", "2026-10-23");
+    const v1 = (await versionOn(db, "2026-10-19"))?.versionId;
+    const v2 = (await versionOn(db, "2026-10-21"))?.versionId;
+    expect(v1).not.toBe(v2);
+    expect(days.map((d) => (d.kind === "day" ? d.versionId : null))).toEqual([v1, v1, v2, v2, v2]);
+    expect(slugs(days[1] as PlanDay)).toEqual(["pullup"]);
   });
 });

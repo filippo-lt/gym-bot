@@ -18,7 +18,6 @@ import type { Q } from "../logging/db.js";
 import { addDays } from "../plan-import/build-plan.js";
 import { computeRir } from "../plan-import/rir.js";
 import type {
-  CatalogExercise,
   FallbackPrescription,
   HiitSpec,
   Modifier,
@@ -304,6 +303,8 @@ async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<Pl
   }
 
   const items: PlanDayItem[] = rows.map((r) => {
+    // An override whose replaced exercise is not an option of the item is ignored; with several
+    // overrides on one item, swappedToday shows the last one applied.
     let options = optionsById.get(r.id) ?? [];
     let swappedToday: PlanDayItem["swappedToday"] = null;
     for (const ov of overridesById.get(r.id) ?? []) {
@@ -321,28 +322,17 @@ async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<Pl
     let rirMin = r.rirMin;
     let rirMax = r.rirMax;
     let hspuStepId = r.hspuStepId;
+    let fallback = r.fallbackPrescription;
     if (swappedToday) {
       const rir = computeRir({
-        options: options.map(
-          (o) =>
-            ({
-              slug: o.slug,
-              name: o.name,
-              aliases: [],
-              muscle_group: "",
-              type: o.type,
-              load_basis: o.loadBasis,
-              equipment_slug: null,
-              is_main_lift: o.isMainLift,
-              review_note: null,
-            }) satisfies CatalogExercise,
-        ),
+        options: options.map((o) => ({ type: o.type, is_main_lift: o.isMainLift })),
         modifiers: r.modifiers as Modifier[],
         weekIsDeload: week.isDeload,
       });
       rirMin = rir.rir_min;
       rirMax = rir.rir_max;
       hspuStepId = null;
+      fallback = null;
     }
     return {
       plannedItemId: r.id,
@@ -372,7 +362,7 @@ async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<Pl
       note: r.note,
       timeMinMin: r.timeMinMin,
       timeMinMax: r.timeMinMax,
-      fallback: r.fallbackPrescription,
+      fallback,
       options,
       swappedToday,
     };
