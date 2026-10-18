@@ -8,6 +8,7 @@ import { logGroups, weeklyMetrics } from "../db/schema/log.js";
 import { readinessLogs, suggestions } from "../db/schema/progression.js";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
+import { planDayOn } from "../plan/effective.js";
 import type { HiitSpec } from "../plan-import/types.js";
 import { hspuState } from "./hspu.js";
 import { loadExerciseInfos, loadFrozenLevel, RECOVERY_METRIC } from "./load-history.js";
@@ -213,7 +214,17 @@ async function liveAdvice(
 }
 
 async function storedAdvice(db: Db, date: string): Promise<SessionAdvice | null> {
-  const rows = await db.select().from(suggestions).where(eq(suggestions.sessionDate, date));
+  const all = await db.select().from(suggestions).where(eq(suggestions.sessionDate, date));
+  // Only the exercise shown on that date counts: a one-off swap leaves the replaced exercise's row behind.
+  const day = await planDayOn(db, date);
+  const shown = new Map<number, Set<number>>();
+  if (day.kind === "day") {
+    for (const it of day.items) shown.set(it.plannedItemId, new Set(it.options.map((o) => o.id)));
+  }
+  const rows = all.filter((r) => {
+    const opts = shown.get(r.plannedItemId);
+    return !opts || opts.has(r.exerciseId);
+  });
   const row = await derivedRow(db, date);
   if (rows.length === 0 && !row) return null;
   const exerciseIds = [...new Set(rows.map((r) => r.exerciseId))];

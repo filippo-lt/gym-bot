@@ -205,7 +205,8 @@ function lastDateOf(version: VersionInfo): string {
   return addDays(version.startDate, version.weeks * 7 - 1);
 }
 
-async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<PlanDay> {
+/** One date through an already loaded index (use when reading several dates). */
+export async function planDayFromIndex(q: Q, index: VersionIndex, date: string): Promise<PlanDay> {
   const version = index.versionFor(date);
   if (!version) return { kind: "no_plan" };
   const status = planWeekFor(date, version.startDate, version.weeks);
@@ -372,13 +373,13 @@ async function dayFromIndex(q: Q, index: VersionIndex, date: string): Promise<Pl
 
 /** Everything needed to render or reason about one date. */
 export async function planDayOn(q: Q, date: string): Promise<PlanDay> {
-  return dayFromIndex(q, await loadVersionIndex(q), date);
+  return planDayFromIndex(q, await loadVersionIndex(q), date);
 }
 
 /** Inclusive range of dates, one version index load, then per-day items. */
 export async function planDaysBetween(q: Q, from: string, to: string): Promise<PlanDay[]> {
   const index = await loadVersionIndex(q);
   const days: PlanDay[] = [];
-  for (let d = from; d <= to; d = addDays(d, 1)) days.push(await dayFromIndex(q, index, d));
+  for (let d = from; d <= to; d = addDays(d, 1)) days.push(await planDayFromIndex(q, index, d));
   return days;
 }

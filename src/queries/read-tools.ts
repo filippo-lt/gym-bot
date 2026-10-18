@@ -37,8 +37,9 @@ import {
   HISTORY_DEFAULT_LAST_N,
   type ReadResult,
 } from "../logging/types.js";
+import { loadVersionIndex } from "../plan/effective.js";
 import { currentE1rm } from "../progression/e1rm.js";
-import { loadExerciseInfos, loadPlanEnv, loadSessionRecs } from "../progression/load-history.js";
+import { loadExerciseInfos, loadSessionRecs } from "../progression/load-history.js";
 import {
   type AdviceItem,
   loadSessionAdvice,
@@ -283,8 +284,8 @@ export async function readExerciseHistory(
 /** Current e1RM of an exercise, formatted in code; null when there is none yet (SPEC 5.2). */
 async function e1rmFact(db: Db, exerciseId: number) {
   try {
-    const env = await loadPlanEnv(db);
-    if (!env) return null;
+    const env = await loadVersionIndex(db);
+    if (env.versions.length === 0) return null;
     const infos = await loadExerciseInfos(db, [exerciseId]);
     const info = infos[exerciseId];
     if (!info) return null;
