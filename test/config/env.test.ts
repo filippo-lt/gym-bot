@@ -44,10 +44,20 @@ describe("env", () => {
 
   it("coerces the Telegram user id to a number", async () => {
     process.env.TELEGRAM_BOT_TOKEN = "t";
-    process.env.TELEGRAM_WEBHOOK_SECRET = "s";
     process.env.ALLOWED_TELEGRAM_USER_ID = "12345";
     const { telegramEnv } = await load();
     expect(telegramEnv().ALLOWED_TELEGRAM_USER_ID).toBe(12345);
+  });
+
+  it("webhookEnv requires a 32+ character secret", async () => {
+    const { webhookEnv } = await load();
+    expect(() => webhookEnv()).toThrowError(/TELEGRAM_WEBHOOK_SECRET: missing/);
+    process.env.TELEGRAM_WEBHOOK_SECRET = "short";
+    const again = await load();
+    expect(() => again.webhookEnv()).toThrowError(/at least 32/);
+    process.env.TELEGRAM_WEBHOOK_SECRET = "w".repeat(32);
+    const ok = await load();
+    expect(ok.webhookEnv().TELEGRAM_WEBHOOK_SECRET).toHaveLength(32);
   });
 
   it("rejects a CRON_SECRET that is too short", async () => {
@@ -89,7 +99,6 @@ describe("env", () => {
 
   it("rejects invalid Telegram user ids", async () => {
     process.env.TELEGRAM_BOT_TOKEN = "t";
-    process.env.TELEGRAM_WEBHOOK_SECRET = "s";
     for (const bad of ["0x1A", "1e3", "12.0", " 12", "0", "-5", "abc"]) {
       process.env.ALLOWED_TELEGRAM_USER_ID = bad;
       const { telegramEnv } = await load();

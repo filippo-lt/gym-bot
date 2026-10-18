@@ -1,0 +1,64 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`formatToday > Friday with heavy pull + push 1`] = `
+"<b>Week 1 · Base</b> · Fri 2 Oct — Full-body strength
+Thursday class: heavy PULL, PUSH
+
+1. <b>Full-body warm-up</b> — 5 min easy bike + squat/press/row ramp-up sets
+2. <b>Squat or hack squat</b> — 3 × 6 · RIR 1–2
+3. <b>Incline DB bench</b> — 3 × 8–10 · RIR 1–3
+   ⚠️ If Thursday push was heavy: reduce to 1–2 easy sets or skip.
+4. <b>Cable row or machine row</b> — 3 × 8–10 · RIR 1–3
+   ⚠️ If Thursday pull was heavy: reduce to 1–2 easy sets or skip.
+5. <b>Bulgarian split squat</b> — 2 × 8/leg · RIR 1–3
+6. <b>Face pull</b> — 2 × 12–15 · RIR 1–3
+7. <b>Triceps extension</b> — 2 × 8–12 · RIR 1–3
+
+≈ 43–44 min"
+`;
+
+exports[`formatToday > W4 Tuesday deload 1`] = `
+"<b>Week 4 · Deload</b> · Tue 20 Oct — HSPU + push + squat
+🟢 Deload week: keep it easy.
+
+1. <b>Push + handstand warm-up</b> — Wrist rocks · scap push-ups · wall slides · shoulder CARs
+2. <b>Handstand</b> — 4–5 min easy
+3. <b>HSPU — your current step</b> — 2 × 3 · easy
+4. <b>Overhead press</b> — 2 × 6 · RIR 3–4 · light
+5. <b>Bench press</b> — 2 × 6 · RIR 3–4 · light
+6. <b>Squat or hack squat</b> — 2 × 6 · RIR 3–4 · easy
+7. <b>Lateral raise</b> — 1 × 12–15 · RIR 3–4 (optional)
+
+≈ 40–42 min"
+`;
+
+exports[`formatToday > W5 Monday 1`] = `
+"<b>Week 5 · Strength</b> · Mon 26 Oct — Pull + hinge
+
+1. <b>Pull warm-up</b> — Dead hang 2×25s · scapular pull-up 2×8…
+2. <b>Pull-up (weighted)</b> — 4 × 3 · RIR 1–2
+   <i>Not at 6 clean reps yet → bodyweight 4 × 4–6 (or assisted 4 × 6)</i>
+3. <b>Ring row (Australian pull-up)</b> — 3 × 6–8
+4. <b>Romanian deadlift</b> — 3 × 6 · RIR 1–2
+5. <b>Lat pulldown</b> — 2 × 8–12 · RIR 1–3
+6. <b>Hanging leg raise or hanging knee raise</b> — 2–3 × 8–12
+
+≈ 40–48 min"
+`;
+
+exports[`formatWeek > W1 with mixed statuses 1`] = `
+"<b>Week 1 · Base</b> · 28 Sep – 4 Oct
+
+Mon · Pull + hinge — 6/6 done
+Tue · HSPU + push + squat — 5/7 done · 1 skipped
+Wed · HIIT + mobility — 2/6 done · 1 changed
+Thu · Calisthenics class — 0/2 done
+Fri · Full-body strength — 0/7 done
+Sat · rest
+Sun · rest"
+`;
+
+exports[`other states > rest day (Sunday) 1`] = `
+"<b>Week 4 · Deload</b> · Sun 25 Oct
+Rest day. Enjoy it. 😌"
+`;

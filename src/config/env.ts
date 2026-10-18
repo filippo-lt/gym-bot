@@ -52,12 +52,19 @@ const dbSchema = z.object({
 
 const telegramSchema = z.object({
   TELEGRAM_BOT_TOKEN: requiredString("TELEGRAM_BOT_TOKEN"),
-  TELEGRAM_WEBHOOK_SECRET: requiredString("TELEGRAM_WEBHOOK_SECRET"),
   ALLOWED_TELEGRAM_USER_ID: z
     .string({ error: "missing" })
     .regex(/^\d+$/, "must be a positive whole number")
     .transform(Number)
     .pipe(z.number().int().positive("must be a positive whole number")),
+});
+
+const botTokenSchema = z.object({ TELEGRAM_BOT_TOKEN: requiredString("TELEGRAM_BOT_TOKEN") });
+
+const webhookSchema = z.object({
+  TELEGRAM_WEBHOOK_SECRET: z
+    .string({ error: "missing" })
+    .min(32, "TELEGRAM_WEBHOOK_SECRET must be at least 32 characters"),
 });
 
 const aiSchema = z.object({
@@ -92,6 +99,8 @@ const cronSchema = z.object({
 
 export const dbEnv = memoize("database", dbSchema);
 export const telegramEnv = memoize("telegram", telegramSchema);
+export const botTokenEnv = memoize("telegram token", botTokenSchema);
+export const webhookEnv = memoize("webhook", webhookSchema);
 export const aiEnv = memoize("ai", aiSchema);
 export const sttEnv = memoize("speech-to-text", sttSchema);
 export const cronEnv = memoize("cron", cronSchema);
