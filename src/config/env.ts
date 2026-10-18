@@ -46,7 +46,12 @@ const requiredString = (name: string) =>
   z.string({ error: "missing" }).min(1, `${name} must not be empty`);
 
 const dbSchema = z.object({
-  DATABASE_URL: requiredString("DATABASE_URL"),
+  // Supabase's transaction pooler (6543) hangs when postgres-js pipelines concurrent queries on
+  // one connection, so the runtime uses the session pooler (5432). Fail loudly instead of hanging.
+  DATABASE_URL: requiredString("DATABASE_URL").refine(
+    (url) => !/:6543(\/|$|\?)/.test(url),
+    "must not use the Supabase transaction pooler (port 6543); use the session pooler (5432)",
+  ),
   MIGRATION_DATABASE_URL: optionalString,
 });
 

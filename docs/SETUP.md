@@ -10,17 +10,17 @@ Do these steps once. Copy `.env.example` to `.env.local` if you work without Ver
 ## 2. Supabase
 1. Create a new project. Choose an EU region (this project is in eu-west-1, Ireland; keep `regions` in vercel.json next to it: `dub1`).
 2. Go to Connect, then Connection string.
-3. Copy the **Transaction pooler** URI (port 6543) to `DATABASE_URL`.
-4. Copy the **Session pooler** URI (port 5432) to `MIGRATION_DATABASE_URL`.
+3. Copy the **Session pooler** URI (port 5432) to both `DATABASE_URL` and `MIGRATION_DATABASE_URL`.
+   Do not use the transaction pooler (6543): postgres-js pipelines concurrent queries and it hangs.
    The direct host is IPv6 by default (IPv4 is a paid add-on), so use the session pooler.
-5. In both URIs, replace `[YOUR-PASSWORD]` with your database password. Percent-encode special
+4. In both URIs, replace `[YOUR-PASSWORD]` with your database password. Percent-encode special
    characters in the password (for example `@` becomes `%40`, `#` becomes `%23`).
    The pooler user is `postgres.<project-ref>`, not plain `postgres`.
 
 Examples (host depends on your region):
 
 ```
-DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
 MIGRATION_DATABASE_URL=postgresql://postgres.abcdefghij:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
 ```
 
