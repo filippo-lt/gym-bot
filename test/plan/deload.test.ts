@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { insertDeload } from "../../src/plan/deload.js";
 import type { PlanContent } from "../../src/plan/types.js";
-import { addDaysIso, buildContent } from "./helpers.js";
+import { addDays } from "../../src/plan-import/build-plan.js";
+import { buildContent } from "./helpers.js";
 
 function invariants(c: PlanContent) {
   expect(c.weeks.map((w) => w.week)).toEqual(c.weeks.map((_, i) => i + 1));
-  for (const w of c.weeks) expect(w.startDate).toBe(addDaysIso("2026-09-28", 7 * (w.week - 1)));
+  for (const w of c.weeks) expect(w.startDate).toBe(addDays("2026-09-28", 7 * (w.week - 1)));
   const keys = c.items.map((i) => i.itemKey);
   expect(new Set(keys).size).toBe(keys.length);
   for (const i of c.items) expect(c.weeks.some((w) => w.week === i.week)).toBe(true);
@@ -84,6 +85,16 @@ describe("insertDeload", () => {
     expect(droppedWeek).toBeNull();
     expect(c.weeks).toHaveLength(13);
     expect(c.weeks[8]?.isTest).toBe(true);
+  });
+
+  it("keeps keys unique over repeated inserts", () => {
+    let c = buildContent();
+    for (const at of [7, 5, 6, 7]) {
+      c = insertDeload(c, at).content;
+      invariants(c);
+    }
+    const keys = c.items.map((i) => i.itemKey);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("throws without any deload", () => {

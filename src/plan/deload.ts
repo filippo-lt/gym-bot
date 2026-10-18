@@ -65,12 +65,19 @@ export function insertDeload(
 
   const insertedWeek = kept.indexOf(null) + 1;
   const items: ItemSpec[] = [];
+  const usedKeys = new Set(content.items.map((i) => i.itemKey));
+  const uniqueKey = (insertedWeek: number, rest: string): string => {
+    let key = `d${pad2(insertedWeek)}-${rest}`;
+    for (let n = 2; usedKeys.has(key); n++) key = `d${pad2(insertedWeek)}.${n}-${rest}`;
+    usedKeys.add(key);
+    return key;
+  };
   const copies: ItemSpec[] = content.items
     .filter((i) => i.week === template.week)
     .map((i) => ({
       ...i,
       week: insertedWeek,
-      itemKey: `d${pad2(insertedWeek)}-${i.weekday}-${pad2(i.itemOrder)}-${i.subItem}`,
+      itemKey: uniqueKey(insertedWeek, `${i.weekday}-${pad2(i.itemOrder)}-${i.subItem}`),
       modifiers: [...i.modifiers],
       tags: [...i.tags],
       optionExerciseIds: [...i.optionExerciseIds],

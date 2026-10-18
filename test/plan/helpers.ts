@@ -1,5 +1,5 @@
 import type { ItemSpec, PlanContent, WeekSpec } from "../../src/plan/types.js";
-import { addDays as addDaysIso } from "../../src/plan-import/build-plan.js";
+import { addDays } from "../../src/plan-import/build-plan.js";
 import type { Weekday } from "../../src/plan-import/types.js";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -58,7 +58,7 @@ export function buildContent(): PlanContent {
       phase: isDeload ? "Deload" : isTest ? "Test" : "Build",
       isDeload,
       isTest,
-      startDate: addDaysIso("2026-09-28", 7 * (w - 1)),
+      startDate: addDays("2026-09-28", 7 * (w - 1)),
     });
     for (const wd of ["mon", "tue", "fri"] as const) {
       items.push(makeItem(w, wd, 1), makeItem(w, wd, 2));
@@ -66,5 +66,3 @@ export function buildContent(): PlanContent {
   }
   return { weeks, items };
 }
-
-export { addDaysIso };
