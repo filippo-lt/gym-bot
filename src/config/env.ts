@@ -45,15 +45,21 @@ const optionalString = z.preprocess(emptyToUndefined, z.string().min(1).optional
 const requiredString = (name: string) =>
   z.string({ error: "missing" }).min(1, `${name} must not be empty`);
 
+const sessionPoolerUrl = (name: string) =>
+  requiredString(name).refine(
+    (url) => !/:6543(\/|$|\?)/.test(url),
+    "must not use the Supabase transaction pooler (port 6543); use the session pooler (5432)",
+  );
+
 const dbSchema = z.object({
   // Supabase's transaction pooler (6543) hangs when postgres-js pipelines concurrent queries on
   // one connection, so the runtime uses the session pooler (5432). Fail loudly instead of hanging.
-  DATABASE_URL: requiredString("DATABASE_URL").refine(
-    (url) => !/:6543(\/|$|\?)/.test(url),
-    "must not use the Supabase transaction pooler (port 6543); use the session pooler (5432)",
-  ),
+  DATABASE_URL: sessionPoolerUrl("DATABASE_URL"),
   MIGRATION_DATABASE_URL: optionalString,
 });
+
+// Where `pnpm backup:restore` writes. Required, no fallback: `.env.local` holds the production DATABASE_URL.
+const restoreSchema = z.object({ RESTORE_DATABASE_URL: sessionPoolerUrl("RESTORE_DATABASE_URL") });
 
 const telegramSchema = z.object({
   TELEGRAM_BOT_TOKEN: requiredString("TELEGRAM_BOT_TOKEN"),
@@ -104,6 +110,7 @@ const cronSchema = z.object({
 });
 
 export const dbEnv = memoize("database", dbSchema);
+export const restoreEnv = memoize("restore", restoreSchema);
 export const telegramEnv = memoize("telegram", telegramSchema);
 export const botTokenEnv = memoize("telegram token", botTokenSchema);
 export const webhookEnv = memoize("webhook", webhookSchema);

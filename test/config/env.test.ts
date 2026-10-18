@@ -9,7 +9,9 @@ async function load() {
 
 beforeEach(() => {
   for (const key of Object.keys(process.env)) {
-    if (/^(DATABASE|MIGRATION|TELEGRAM|ALLOWED|CRON|ANTHROPIC|AI_|STT|GROQ|OPENAI)/.test(key)) {
+    if (
+      /^(DATABASE|MIGRATION|RESTORE|TELEGRAM|ALLOWED|CRON|ANTHROPIC|AI_|STT|GROQ|OPENAI)/.test(key)
+    ) {
       delete process.env[key];
     }
   }
@@ -128,6 +130,26 @@ describe("env", () => {
     process.env.DATABASE_URL = "postgres://x";
     const { dbEnv } = await load();
     expect(dbEnv()).toEqual({ DATABASE_URL: "postgres://x", MIGRATION_DATABASE_URL: undefined });
+  });
+
+  it("requires RESTORE_DATABASE_URL and ignores DATABASE_URL", async () => {
+    process.env.DATABASE_URL = "postgres://prod";
+    const { restoreEnv } = await load();
+    expect(() => restoreEnv()).toThrowError(/RESTORE_DATABASE_URL: missing/);
+  });
+
+  it("rejects the transaction pooler for RESTORE_DATABASE_URL", async () => {
+    process.env.RESTORE_DATABASE_URL = "postgresql://u:p@host.pooler.supabase.com:6543/postgres";
+    const { restoreEnv } = await load();
+    expect(() => restoreEnv()).toThrowError(
+      /RESTORE_DATABASE_URL: must not use the Supabase transaction pooler/,
+    );
+  });
+
+  it("parses restoreEnv", async () => {
+    process.env.RESTORE_DATABASE_URL = "postgres://x";
+    const { restoreEnv } = await load();
+    expect(restoreEnv()).toEqual({ RESTORE_DATABASE_URL: "postgres://x" });
   });
 
   it("parses sttEnv and reports a missing provider as missing", async () => {
