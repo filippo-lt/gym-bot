@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
+import { AI_BUDGET_S } from "../../src/ai/constants.js";
 import { LEASE_S, MAX_DURATION_S, STOP_TAKING_AT_S } from "../../src/runtime/constants.js";
 
 const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as {
@@ -9,6 +10,10 @@ const vercel = JSON.parse(readFileSync("vercel.json", "utf8")) as {
 it("lease is maxDuration + 60 s", () => {
   expect(LEASE_S).toBe(MAX_DURATION_S + 60);
   expect(STOP_TAKING_AT_S).toBeLessThan(MAX_DURATION_S);
+});
+
+it("the AI budget fits after the last claim", () => {
+  expect(STOP_TAKING_AT_S + AI_BUDGET_S + 5).toBeLessThanOrEqual(MAX_DURATION_S);
 });
 
 it("vercel.json maxDuration matches the constants", () => {

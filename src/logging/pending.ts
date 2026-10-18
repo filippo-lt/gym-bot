@@ -18,8 +18,13 @@ export async function createPending(
     sourceUpdateId: number | null;
     now: Date;
   },
-): Promise<{ pending: Pending; replaced: Pending | null }> {
+): Promise<{ pending: Pending; replaced: Pending | null; reused: boolean }> {
   return db.transaction(async (tx) => {
+    // The handler can run twice for one update: the second run reuses the first run's request.
+    if (args.sourceUpdateId !== null) {
+      const existing = await getPendingBySourceUpdate(tx, args.chatId, args.sourceUpdateId);
+      if (existing) return { pending: existing, replaced: null, reused: true };
+    }
     const older = await tx
       .update(pendingActions)
       .set({ status: "replaced" })
@@ -42,8 +47,22 @@ export async function createPending(
       older
         .filter((p) => p.expiresAt.getTime() > args.now.getTime())
         .sort((a, b) => b.id - a.id)[0] ?? null;
-    return { pending: pending as Pending, replaced };
+    return { pending: pending as Pending, replaced, reused: false };
   });
+}
+
+export async function getPendingBySourceUpdate(
+  db: Q,
+  chatId: number,
+  updateId: number,
+): Promise<Pending | null> {
+  const [row] = await db
+    .select()
+    .from(pendingActions)
+    .where(and(eq(pendingActions.chatId, chatId), eq(pendingActions.sourceUpdateId, updateId)))
+    .orderBy(desc(pendingActions.id))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function getPending(db: Q, id: number): Promise<Pending | null> {

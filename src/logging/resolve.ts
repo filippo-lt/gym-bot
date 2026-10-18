@@ -483,6 +483,7 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
       name: exercise.name,
       type: exercise.type,
       loadBasis: exercise.loadBasis,
+      equipment: exercise.equipment,
     },
     plannedItemId,
     hspuStep,

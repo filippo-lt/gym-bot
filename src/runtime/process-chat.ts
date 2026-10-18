@@ -108,8 +108,7 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
         continue;
       }
 
-      // Window: if markDone fails the handler runs again on retry.
-      // TODO(M3): make domain writes idempotent through write_ledger (SPEC §3).
+      // Window: if markDone fails the handler runs again on retry; domain writes go through write_ledger.
       try {
         await markDone(db, claimed.id);
         summary.processed += 1;

@@ -25,6 +25,39 @@ export function isRepsFarOff(newReps: number | null, refReps: number | null): bo
   return newReps >= FAR_OFF_REPS_FACTOR * refReps;
 }
 
+/** The load (kg) that made the action "far from last time", or null when it did not. */
+export function farOffLoad(a: StagedAction): number | null {
+  if (a.kind === "log_sets") {
+    const r = a.resolved;
+    const load = maxSystemLoad(r.entries, r.exercise, r.bwKg);
+    const ref = r.lastSession?.maxSystemLoad ?? null;
+    return isLoadFarOff(load, ref, r.exercise.equipment?.stepKg ?? null) ? load : null;
+  }
+  if (a.kind === "edit_group") {
+    const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
+    const load = maxSystemLoad(changed, a.after.exercise, a.after.bwKg);
+    const ref = a.lastSession?.maxSystemLoad ?? null;
+    return isLoadFarOff(load, ref, a.after.exercise.equipment?.stepKg ?? null) ? load : null;
+  }
+  return null;
+}
+
+/** The best reps that made the action "look high", or null when they did not. */
+export function farOffReps(a: StagedAction): number | null {
+  if (a.kind === "log_sets") {
+    const r = a.resolved;
+    const reps = maxReps(r.entries);
+    const ref = r.lastSession?.bestReps ?? r.plannedItem?.repsMax ?? null;
+    return isRepsFarOff(reps, ref) ? reps : null;
+  }
+  if (a.kind === "edit_group") {
+    const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
+    const reps = maxReps(changed);
+    return isRepsFarOff(reps, a.lastSession?.bestReps ?? null) ? reps : null;
+  }
+  return null;
+}
+
 function actionReasons(a: StagedAction): ConfirmReason[] {
   const out: ConfirmReason[] = [];
   switch (a.kind) {
@@ -35,36 +68,20 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
       if (r.missingFields.length > 0) out.push("missing_field");
       if (r.guessedFields.length > 0) out.push("guessed");
       if (r.needsConfirmation) out.push("model_flag");
-      const load = maxSystemLoad(r.entries, r.exercise, r.bwKg);
-      if (
-        isLoadFarOff(
-          load,
-          r.lastSession?.maxSystemLoad ?? null,
-          r.exercise.equipment?.stepKg ?? null,
-        )
-      ) {
-        out.push("load_far_off");
-      }
-      const refReps = r.lastSession?.bestReps ?? r.plannedItem?.repsMax ?? null;
-      if (isRepsFarOff(maxReps(r.entries), refReps)) out.push("reps_far_off");
       break;
     }
-    case "edit_group": {
+    case "edit_group":
       if (a.input.guessed_fields.length > 0) out.push("guessed");
       if (a.input.needs_confirmation) out.push("model_flag");
-      const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
-      const load = maxSystemLoad(changed, a.after.exercise, a.after.bwKg);
-      // The snapshot carries no equipment step, so only the 20 % rule applies here.
-      if (isLoadFarOff(load, a.lastSession?.maxSystemLoad ?? null, null)) out.push("load_far_off");
-      if (isRepsFarOff(maxReps(changed), a.lastSession?.bestReps ?? null)) out.push("reps_far_off");
       break;
-    }
     case "delete_group":
       out.push("delete");
       break;
     case "clarify_exercise":
       break;
   }
+  if (farOffLoad(a) !== null) out.push("load_far_off");
+  if (farOffReps(a) !== null) out.push("reps_far_off");
   return out;
 }
 

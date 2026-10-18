@@ -1,6 +1,8 @@
 import type { Bot } from "grammy";
 import type { Update } from "grammy/types";
-import { telegramEnv } from "../config/env.js";
+import { createAnthropicModel } from "../ai/model.js";
+import type { AiConfig } from "../bot/logging-flow.js";
+import { aiEnv, telegramEnv } from "../config/env.js";
 import { getDb } from "../db/client.js";
 import type { ProcessChatDeps } from "./process-chat.js";
 
@@ -10,6 +12,20 @@ export const FAILED_MESSAGE =
 const INIT_TIMEOUT_MS = 10_000;
 
 let botPromise: Promise<Bot> | undefined;
+let aiConfig: AiConfig | undefined;
+
+/** Read lazily: commands keep working without the AI key. Throws when it is not configured. */
+function lazyAi(): AiConfig {
+  if (!aiConfig) {
+    const env = aiEnv();
+    aiConfig = {
+      model: createAnthropicModel(),
+      dailyTokenCap: env.AI_DAILY_TOKEN_CAP,
+      monthlyTokenCap: env.AI_MONTHLY_TOKEN_CAP,
+    };
+  }
+  return aiConfig;
+}
 
 /** One bot per cold start; getMe (bot.init) runs once, lazily. */
 export function getBot(): Promise<Bot> {
@@ -19,6 +35,7 @@ export function getBot(): Promise<Bot> {
       db: getDb(),
       now: () => new Date(),
       token: telegramEnv().TELEGRAM_BOT_TOKEN,
+      ai: lazyAi,
     });
     let timer: NodeJS.Timeout | undefined;
     try {

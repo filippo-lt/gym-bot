@@ -3,7 +3,7 @@
   "regions": ["dub1"],
   "functions": {
     "api/health.ts": { "maxDuration": 30 },
-    "api/telegram.ts": { "maxDuration": 60 },
-    "api/cron/tick.ts": { "maxDuration": 60 }
+    "api/telegram.ts": { "maxDuration": 90 },
+    "api/cron/tick.ts": { "maxDuration": 90 }
   }
 }

@@ -2,27 +2,23 @@
  * Executor: writes staged actions in one transaction, protected by write_ledger so a retry
  * never duplicates a write and never fails (SPEC 3).
  */
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { pendingActions, writeLedger } from "../db/schema/agent.js";
 import { logEntries, logGroups, sessionItems } from "../db/schema/log.js";
 import { hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db, Q, Tx } from "./db.js";
 import { groupSnapshot } from "./groups.js";
-import type { GroupSnapshot, LedgerResult, ResolvedEntry, StagedAction } from "./types.js";
+import type {
+  BeforeGroup,
+  GroupSnapshot,
+  LedgerResult,
+  ResolvedEntry,
+  StagedAction,
+} from "./types.js";
 
 export { groupSnapshot, lastBotGroup } from "./groups.js";
 
 export type ExecuteResult = { status: "done"; results: LedgerResult[] } | { status: "expired" };
-
-/** Extra data kept in an edit's ledger result so an undo can restore group-level fields too. */
-interface BeforeGroup {
-  exerciseId: number;
-  plannedItemId: number | null;
-  subItem: number;
-  hspuStepId: number | null;
-  note: string | null;
-}
-type EditLedger = Extract<LedgerResult, { kind: "edit" }> & { beforeGroup?: BeforeGroup };
 
 const entryValues = (groupId: number, e: ResolvedEntry) => ({
   groupId,
@@ -166,7 +162,7 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
       if (newPlanned !== null) {
         await markItemDone(tx, g.sessionDate, newPlanned, a.after.exercise.id);
       }
-      const result: EditLedger = {
+      const result: LedgerResult = {
         kind: "edit",
         groupId: gid,
         before: current.entries,
@@ -208,11 +204,26 @@ export async function executeActions(
           and(
             eq(pendingActions.id, opts.pendingId),
             eq(pendingActions.status, "open"),
-            sql`${pendingActions.expiresAt} > now()`,
+            gt(pendingActions.expiresAt, now),
           ),
         )
         .returning({ id: pendingActions.id });
-      if (claimed.length === 0) return { status: "expired" };
+      if (claimed.length === 0) {
+        // A retry after ✅ (the handler ran twice): the writes are in the ledger, report them.
+        const [p] = await tx
+          .select({ status: pendingActions.status })
+          .from(pendingActions)
+          .where(eq(pendingActions.id, opts.pendingId));
+        if (p?.status === "executed") {
+          const rows = await tx
+            .select({ result: writeLedger.result })
+            .from(writeLedger)
+            .where(eq(writeLedger.sourceKey, sourceKey))
+            .orderBy(asc(writeLedger.actionIndex));
+          if (rows.length > 0) return { status: "done", results: rows.map((r) => r.result) };
+        }
+        return { status: "expired" };
+      }
     }
     const results: LedgerResult[] = [];
     for (const [i, action] of actions.entries()) {
@@ -241,6 +252,16 @@ export async function executeActions(
   });
 }
 
+/** Results already stored for a source key, in action order (empty when none). */
+export async function ledgerResults(db: Q, sourceKey: string): Promise<LedgerResult[]> {
+  const rows = await db
+    .select({ result: writeLedger.result })
+    .from(writeLedger)
+    .where(eq(writeLedger.sourceKey, sourceKey))
+    .orderBy(asc(writeLedger.actionIndex));
+  return rows.map((r) => r.result);
+}
+
 /** Removes a group. Returns its snapshot, or null when it was already gone. */
 export async function undoGroup(db: Db, groupId: number): Promise<GroupSnapshot | null> {
   return db.transaction((tx) => deleteGroup(tx, groupId));
@@ -257,7 +278,7 @@ export async function undoEdit(
       .select({ result: writeLedger.result })
       .from(writeLedger)
       .where(and(eq(writeLedger.sourceKey, sourceKey), eq(writeLedger.actionIndex, actionIndex)));
-    const result = row?.result as EditLedger | undefined;
+    const result = row?.result;
     if (result?.kind !== "edit") return null;
     const gid = result.groupId;
     const [g] = await tx.select().from(logGroups).where(eq(logGroups.id, gid));

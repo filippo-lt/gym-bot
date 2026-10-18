@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { classLogs, sessionItems } from "../db/schema/log.js";
 import {
@@ -6,12 +6,11 @@ import {
   hspuLadder,
   plannedItemOptions,
   plannedItems,
-  plans,
-  planVersions,
   planWeeks,
 } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { planWeekFor, weekdayOf } from "../domain/calendar.js";
+import { loadPlanContext } from "../logging/plan-context.js";
 import type {
   FallbackPrescription,
   HiitSpec,
@@ -109,35 +108,10 @@ export type WeekOverview =
       days: WeekDay[];
     };
 
-interface PlanContext {
-  plan: { id: number; startDate: string; weeks: number };
-  versionId: number;
-}
-
-async function loadPlanContext(db: Db, date: string): Promise<PlanContext> {
-  const [plan] = await db.select().from(plans).orderBy(desc(plans.id)).limit(1);
-  if (!plan) throw new Error("No plan found in the database.");
-  const [effective] = await db
-    .select({ id: planVersions.id })
-    .from(planVersions)
-    .where(and(eq(planVersions.planId, plan.id), lte(planVersions.effectiveFrom, date)))
-    .orderBy(desc(planVersions.version))
-    .limit(1);
-  const version =
-    effective ??
-    (
-      await db
-        .select({ id: planVersions.id })
-        .from(planVersions)
-        .where(eq(planVersions.planId, plan.id))
-        .orderBy(asc(planVersions.version))
-        .limit(1)
-    )[0];
-  if (!version) throw new Error("The plan has no versions.");
-  return {
-    plan: { id: plan.id, startDate: plan.startDate, weeks: plan.weeks },
-    versionId: version.id,
-  };
+async function requirePlanContext(db: Db, date: string) {
+  const ctx = await loadPlanContext(db, date);
+  if (!ctx) throw new Error("No plan found in the database.");
+  return ctx;
 }
 
 async function loadWeekRow(db: Db, versionId: number, week: number) {
@@ -150,10 +124,10 @@ async function loadWeekRow(db: Db, versionId: number, week: number) {
 }
 
 export async function getSession(db: Db, date: string): Promise<Session> {
-  const ctx = await loadPlanContext(db, date);
-  const status = planWeekFor(date, ctx.plan.startDate, ctx.plan.weeks);
+  const ctx = await requirePlanContext(db, date);
+  const status = planWeekFor(date, ctx.startDate, ctx.weeks);
   if (status.status === "before_start") {
-    return { kind: "before_start", startDate: ctx.plan.startDate };
+    return { kind: "before_start", startDate: ctx.startDate };
   }
   if (status.status === "finished") return { kind: "finished" };
 
@@ -262,10 +236,10 @@ export async function getSession(db: Db, date: string): Promise<Session> {
 }
 
 export async function getWeek(db: Db, date: string): Promise<WeekOverview> {
-  const ctx = await loadPlanContext(db, date);
-  const status = planWeekFor(date, ctx.plan.startDate, ctx.plan.weeks);
+  const ctx = await requirePlanContext(db, date);
+  const status = planWeekFor(date, ctx.startDate, ctx.weeks);
   if (status.status === "before_start") {
-    return { kind: "before_start", startDate: ctx.plan.startDate };
+    return { kind: "before_start", startDate: ctx.startDate };
   }
   if (status.status === "finished") return { kind: "finished" };
 

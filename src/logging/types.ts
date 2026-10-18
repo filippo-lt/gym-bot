@@ -188,6 +188,7 @@ export interface GroupSnapshot {
     name: string;
     type: ExerciseType;
     loadBasis: LoadBasis | null;
+    equipment: EquipmentInfo | null;
   };
   plannedItemId: number | null;
   hspuStep: Candidate | null;
@@ -246,9 +247,18 @@ export type PolicyDecision =
 // ---------------------------------------------------------------------------
 // Ledger results (write_ledger.result jsonb)
 
+/** Group-level fields an edit may change, kept so Undo restores them too. */
+export interface BeforeGroup {
+  exerciseId: number;
+  plannedItemId: number | null;
+  subItem: number;
+  hspuStepId: number | null;
+  note: string | null;
+}
+
 export type LedgerResult =
   | { kind: "log"; groupId: number }
-  | { kind: "edit"; groupId: number; before: ResolvedEntry[] }
+  | { kind: "edit"; groupId: number; before: ResolvedEntry[]; beforeGroup?: BeforeGroup }
   | { kind: "delete"; snapshot: GroupSnapshot };
 
 // ---------------------------------------------------------------------------

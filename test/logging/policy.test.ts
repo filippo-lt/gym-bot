@@ -105,6 +105,30 @@ describe("decidePolicy", () => {
   });
 });
 
+describe("edit far-off uses the equipment step", () => {
+  it("needs 2 steps for an edit too", () => {
+    const wide = { slug: "stack", baseKg: null, stepKg: 5, discreteValues: null };
+    const mk = (equipment: typeof wide | null): StagedAction => {
+      const before = snapshot();
+      const after = snapshot({
+        entries: [entry({ setIndex: 1, loadKg: 37 }), entry({ setIndex: 2 })],
+      });
+      return {
+        kind: "edit_group",
+        input: editInput({ load_kg: 37 }),
+        before,
+        after: { ...after, exercise: { ...after.exercise, equipment } },
+        setIndexes: [1],
+        lastSession: { sessionDate: "2026-10-20", maxSystemLoad: 30, bestReps: 8 },
+      };
+    };
+    // 23 % away, but only 1.4 steps of 5 kg
+    expect(decidePolicy([mk(wide)])).toEqual({ mode: "direct" });
+    // unknown step: the 20 % rule alone applies
+    expect(decidePolicy([mk(null)])).toEqual({ mode: "confirm", reasons: ["load_far_off"] });
+  });
+});
+
 describe("isLoadFarOff", () => {
   it("needs more than 20 % and at least 2 steps", () => {
     // ref 60, step 2.5: 20 % = 12 kg, 2 steps = 5 kg

@@ -229,7 +229,7 @@ describe("recovery", () => {
     expect((await processChat(deps)).stoppedReason).toBe("busy");
     expect(handled).toEqual([]);
 
-    await main.sql`update inbox set claimed_at = now() - interval '121 seconds' where status = 'processing'`;
+    await main.sql`update inbox set claimed_at = now() - interval '151 seconds' where status = 'processing'`;
     await main.sql`update chat_lease set until = now() - interval '1 second'`;
     const summary = await processChat(deps);
     expect(handled).toEqual([1000, 1001]);
@@ -279,7 +279,7 @@ describe("failures and deadline", () => {
     const id = (await oldestOpen(main.db, CHAT))?.id ?? 0;
     const kill = async () => {
       expect(await claim(main.db, id, randomUUID())).not.toBeNull();
-      await main.sql`update inbox set claimed_at = now() - interval '121 seconds' where id = ${id}`;
+      await main.sql`update inbox set claimed_at = now() - interval '151 seconds' where id = ${id}`;
       await main.sql`update chat_lease set until = now() - interval '1 second'`;
     };
     // Attempts 1 and 2: reset to pending by the next holder (which then crashes).

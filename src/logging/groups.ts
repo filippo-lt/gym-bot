@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lte, ne } from "drizzle-orm";
 import { bodyweightLogs, logEntries, logGroups } from "../db/schema/log.js";
-import { exercises, hspuLadder } from "../db/schema/plan.js";
+import { equipment, exercises, hspuLadder } from "../db/schema/plan.js";
 import type { Q } from "./db.js";
 import type { GroupSnapshot, LastSessionRef, ResolvedEntry } from "./types.js";
 import { maxReps, maxSystemLoad } from "./units.js";
@@ -26,9 +26,10 @@ export function entryFromRow(e: EntryRow): ResolvedEntry {
 
 export async function groupSnapshot(db: Q, groupId: number): Promise<GroupSnapshot | null> {
   const [row] = await db
-    .select({ g: logGroups, ex: exercises, step: hspuLadder })
+    .select({ g: logGroups, ex: exercises, step: hspuLadder, eq: equipment })
     .from(logGroups)
     .innerJoin(exercises, eq(exercises.id, logGroups.exerciseId))
+    .leftJoin(equipment, eq(equipment.id, exercises.equipmentId))
     .leftJoin(hspuLadder, eq(hspuLadder.id, logGroups.hspuStepId))
     .where(eq(logGroups.id, groupId));
   if (!row) return null;
@@ -47,6 +48,14 @@ export async function groupSnapshot(db: Q, groupId: number): Promise<GroupSnapsh
       name: row.ex.name,
       type: row.ex.type,
       loadBasis: row.ex.loadBasis,
+      equipment: row.eq
+        ? {
+            slug: row.eq.slug,
+            baseKg: row.eq.baseKg,
+            stepKg: row.eq.stepKg,
+            discreteValues: row.eq.discreteValues,
+          }
+        : null,
     },
     plannedItemId: row.g.plannedItemId,
     hspuStep: row.step ? { slug: row.step.slug, name: row.step.name } : null,

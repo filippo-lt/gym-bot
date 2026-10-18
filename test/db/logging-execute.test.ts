@@ -7,6 +7,7 @@ import {
   createPending,
   getOpenPending,
   getPending,
+  getPendingBySourceUpdate,
   markAwaitingEdit,
   replacePendingActions,
 } from "../../src/logging/pending.js";
@@ -93,17 +94,18 @@ describe("write ledger", () => {
 });
 
 describe("pending actions", () => {
+  let updateIds = 0;
   const make = async (now = new Date(), actions?: StagedAction[]) =>
     createPending(db, {
       chatId: CHAT,
       kind: "confirm",
       actions: actions ?? [await stage("bench_press")],
       reasons: ["guessed"],
-      sourceUpdateId: 5,
+      sourceUpdateId: ++updateIds,
       now,
     });
 
-  it("executes once, then answers expired", async () => {
+  it("executes once; a repeat returns the stored results", async () => {
     const { pending } = await make();
     const r = await executeActions(db, `p:${pending.id}`, pending.actions, {
       pendingId: pending.id,
@@ -115,13 +117,65 @@ describe("pending actions", () => {
       pendingId: pending.id,
       now: MON,
     });
-    expect(again).toEqual({ status: "expired" });
+    expect(again).toEqual(r);
+    // no ledger rows under another key: nothing to report
+    const stranger = await executeActions(db, "p:other", pending.actions, {
+      pendingId: pending.id,
+      now: MON,
+    });
+    expect(stranger).toEqual({ status: "expired" });
     expect(await count("log_groups")).toBe(1);
+  });
+
+  it("a retry after ✅ gets the ledger results, not 'expired'", async () => {
+    const { pending } = await make();
+    const key = `p:${pending.id}`;
+    const first = await executeActions(db, key, pending.actions, {
+      pendingId: pending.id,
+      now: MON,
+    });
+    const again = await executeActions(db, key, pending.actions, {
+      pendingId: pending.id,
+      now: MON,
+    });
+    expect(again).toEqual(first);
+    expect(first.status).toBe("done");
+    expect(await count("log_groups")).toBe(1);
+    // a replaced or cancelled request is still expired
+    const other = await make();
+    await cancelPending(db, other.pending.id);
+    expect(
+      await executeActions(db, `p:${other.pending.id}`, other.pending.actions, {
+        pendingId: other.pending.id,
+        now: MON,
+      }),
+    ).toEqual({ status: "expired" });
+  });
+
+  it("reuses the pending request of the same update", async () => {
+    const args = {
+      chatId: CHAT,
+      kind: "confirm" as const,
+      actions: [await stage("bench_press")],
+      reasons: ["guessed"],
+      sourceUpdateId: 900,
+      now: new Date(),
+    };
+    const a = await createPending(db, args);
+    const b = await createPending(db, args);
+    expect(a.reused).toBe(false);
+    expect(b).toMatchObject({ reused: true, replaced: null });
+    expect(b.pending.id).toBe(a.pending.id);
+    expect((await getPendingBySourceUpdate(db, CHAT, 900))?.id).toBe(a.pending.id);
+    expect(await count("pending_actions")).toBe(1);
   });
 
   it("does nothing for an expired pending action", async () => {
     const { pending } = await make(new Date(Date.now() - 31 * 60_000));
-    const r = await executeActions(db, "p:x", pending.actions, { pendingId: pending.id, now: MON });
+    const r = await executeActions(db, "p:x", pending.actions, {
+      pendingId: pending.id,
+      now: new Date(),
+    });
     expect(r).toEqual({ status: "expired" });
     expect(await count("log_groups")).toBe(0);
     expect(await count("write_ledger")).toBe(0);

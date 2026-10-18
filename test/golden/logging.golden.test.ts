@@ -33,6 +33,7 @@ function recordingBackend() {
       name: "Bench press",
       type: "weighted" as const,
       loadBasis: "barbell_total" as const,
+      equipment: null,
     },
     plannedItemId: null,
     hspuStep: null,
