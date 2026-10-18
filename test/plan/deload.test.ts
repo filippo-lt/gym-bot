@@ -66,6 +66,26 @@ describe("insertDeload", () => {
     expect(c.weeks[11]?.isDeload).toBe(true);
   });
 
+  it("throws when the week at insertAt is already a deload", () => {
+    expect(() => insertDeload(buildContent(), 8)).toThrow(/already a deload/);
+  });
+
+  it("throws for insertAt out of range", () => {
+    for (const at of [0, 1, 13])
+      expect(() => insertDeload(buildContent(), at)).toThrow(/Cannot insert/);
+  });
+
+  it("keeps a nearby deload that is also the test week", () => {
+    const src = buildContent();
+    const w8 = src.weeks[7];
+    if (w8) w8.isTest = true;
+    const { content: c, droppedWeek } = insertDeload(src, 7);
+    invariants(c);
+    expect(droppedWeek).toBeNull();
+    expect(c.weeks).toHaveLength(13);
+    expect(c.weeks[8]?.isTest).toBe(true);
+  });
+
   it("throws without any deload", () => {
     const src = buildContent();
     src.weeks.forEach((w) => {

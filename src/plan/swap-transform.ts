@@ -1,13 +1,8 @@
+import { addDays } from "../plan-import/build-plan.js";
 import type { Weekday } from "../plan-import/types.js";
 import type { ItemSpec, PlanContent } from "./types.js";
 
 const WEEKDAY_OFFSET: Record<Weekday, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4 };
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 /** Calendar date (yyyy-mm-dd) of an item: its week's start date plus the weekday offset. */
 export function itemDate(content: PlanContent, item: ItemSpec): string {

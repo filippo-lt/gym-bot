@@ -1,15 +1,10 @@
+import { addDays } from "../plan-import/build-plan.js";
 import type { ItemSpec, PlanContent, WeekSpec } from "./types.js";
 
 const MIN_GAP_DAYS = 21;
 
 function dayDiff(a: string, b: string): number {
   return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000);
-}
-
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -24,6 +19,12 @@ export function insertDeload(
 ): { content: PlanContent; droppedWeek: number | null } {
   const weeks = [...content.weeks].sort((a, b) => a.week - b.week);
   if (weeks.length === 0) throw new Error("Empty plan");
+  if (!Number.isInteger(insertAt) || insertAt <= 1 || insertAt > weeks.length) {
+    throw new Error(`Cannot insert a deload at week ${insertAt}: must be 2..${weeks.length}`);
+  }
+  if (weeks.find((w) => w.week === insertAt)?.isDeload) {
+    throw new Error(`Week ${insertAt} is already a deload week`);
+  }
   const deloadWeeks = weeks.filter((w) => w.isDeload);
   const template =
     deloadWeeks.find((w) => w.week >= insertAt) ??
@@ -41,19 +42,14 @@ export function insertDeload(
   }
   if (insertAt > (weeks[weeks.length - 1] as WeekSpec).week) order.push(null);
 
-  let droppedWeek: number | null = null;
   const byOld = new Map(weeks.map((w) => [w.week, w]));
-  let slot = 0;
-  for (const old of order) {
-    slot++;
-    if (old === null || old < insertAt || droppedWeek !== null) continue;
-    const w = byOld.get(old) as WeekSpec;
-    if (!w.isDeload) continue;
-    const shiftedStart = addDays(planStart, 7 * (slot - 1));
-    if (!w.isTest && dayDiff(shiftedStart, insertedStart) < MIN_GAP_DAYS) droppedWeek = old;
-    else droppedWeek = -1; // first deload after the insert is kept: stop looking
-  }
-  const dropped = droppedWeek !== null && droppedWeek > 0 ? droppedWeek : null;
+  // First deload at or after insertAt (old numbering); it moves one week later.
+  const next = weeks.find((w) => w.week >= insertAt && w.isDeload);
+  const shiftedStart = next ? addDays(planStart, 7 * next.week) : null;
+  const dropped =
+    next && shiftedStart && !next.isTest && dayDiff(shiftedStart, insertedStart) < MIN_GAP_DAYS
+      ? next.week
+      : null;
 
   const kept = order.filter((o) => o === null || o !== dropped);
   const newNumber = new Map<number, number>();
