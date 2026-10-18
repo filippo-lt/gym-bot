@@ -6,6 +6,9 @@
 import { z } from "zod";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 
+/** Where a staged input came from (pending_actions.input_source). */
+export type InputSource = "text" | "voice" | "photo";
+
 export const DAY_VALUES = ["today", "mon", "tue", "wed", "thu", "fri"] as const;
 export type Day = (typeof DAY_VALUES)[number];
 
