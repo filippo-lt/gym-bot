@@ -376,8 +376,10 @@ beforeAll(() => {
 
 describe.skipIf(!hasKey)("golden: logging intents (real API)", () => {
   it("3x8 squat 60 rir 2", async () => {
-    const [l, ...rest] = logs((await run("3x8 squat 60 rir 2")).calls);
-    expect(rest).toHaveLength(0);
+    const { calls, res } = await run("3x8 squat 60 rir 2");
+    // The model sometimes re-sends the identical call; the loop stages it once.
+    expect(res.staged).toHaveLength(1);
+    const [l] = logs(calls);
     expect(l?.exercise.slug).toBe("squat");
     const u = l && uniform(l);
     expect(u).toMatchObject({ count: 3, reps: 8, load_kg: 60 });
