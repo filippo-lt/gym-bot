@@ -1,9 +1,8 @@
 /** Chart entry point (M8). Lazily imported by /chart and the render_chart tool. */
-import { desc } from "drizzle-orm";
 import { DateTime } from "luxon";
-import { plans } from "../db/schema/index.js";
-import { planWeekFor, trainingDate } from "../domain/calendar.js";
+import { trainingDate } from "../domain/calendar.js";
 import type { Db } from "../logging/db.js";
+import { loadPlanEnv, type PlanEnv, weekFor } from "../progression/load-history.js";
 import {
   distinctSessions,
   exerciseCaption,
@@ -76,13 +75,12 @@ export async function buildChart(db: Db, req: ChartRequest, now: Date): Promise<
 }
 
 async function buildVolume(db: Db, since: string | undefined, now: Date): Promise<ChartResult> {
-  const [plan] = await db.select().from(plans).orderBy(desc(plans.id)).limit(1);
-  const status = plan ? planWeekFor(trainingDate(now), plan.startDate, plan.weeks) : null;
-  if (!plan || !status || status.status === "before_start") {
+  const env = await loadPlanEnv(db);
+  const currentWeek = env ? volumeWeek(env, trainingDate(now)) : null;
+  if (!env || currentWeek === null) {
     return { ok: false, reason: "not_enough_data", text: "Not enough data to chart volume yet." };
   }
-  const currentWeek = status.status === "active" ? status.week : plan.weeks;
-  const cells = volumeSeries(await loadVolumeRows(db, since), currentWeek);
+  const cells = volumeSeries(await loadVolumeRows(db, since, env), currentWeek);
   if (cells.length === 0) {
     return { ok: false, reason: "not_enough_data", text: "Not enough data to chart volume yet." };
   }
@@ -90,4 +88,18 @@ async function buildVolume(db: Db, since: string | undefined, now: Date): Promis
   const cap = volumeCaption(thisWeekSets, { currentWeek });
   const png = await renderPng(volumeSpec(cells, currentWeek));
   return { ok: true, png, caption: cap.caption, facts: cap.facts };
+}
+
+/**
+ * Last plan week to chart: the current week while the plan runs, the last plan week once finished,
+ * null before the start. Version-aware (plan_weeks of every version), never `plans.weeks`.
+ */
+function volumeWeek(env: PlanEnv, date: string): number | null {
+  if (date < env.startDate) return null;
+  const current = weekFor(env, date);
+  if (current) return current.week;
+  let last = 0;
+  for (const rows of env.weeksByVersion.values())
+    for (const w of rows) last = Math.max(last, w.week);
+  return last > 0 ? last : null;
 }

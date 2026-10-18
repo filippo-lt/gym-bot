@@ -56,6 +56,7 @@ const CHAT_OBJ = { id: 42, type: "private" as const, first_name: "F" };
 interface SetupOpts {
   buildChart?: ChartBuilder;
   failPhoto?: boolean;
+  failFallback?: boolean;
   transcript?: string;
 }
 
@@ -64,6 +65,9 @@ function setup(script: ScriptedTurn[], opts: SetupOpts = {}) {
   const transformer: Transformer = async (_prev, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
     if (opts.failPhoto && method === "sendPhoto") throw new Error("photo refused");
+    if (opts.failFallback && String((payload as { text?: string }).text ?? "") === CHART_FAILED) {
+      throw new Error("fallback refused");
+    }
     return { ok: true, result: true } as never;
   };
   const model = createFakeModel(script);
@@ -165,6 +169,15 @@ describe("render_chart in chat", () => {
     await t.voice();
     expect(t.methods()).toEqual(["sendPhoto"]);
     expect(String(t.calls[0]?.payload.caption).startsWith("🎤 heard: chart my squat")).toBe(true);
+  });
+
+  it("a failing fallback send after the photo failure does not throw", async () => {
+    const t = setup(
+      [chart({ metric: "load", exercise: "squat" }), turn(text("Up over 2 sessions."))],
+      { failPhoto: true, failFallback: true },
+    );
+    await expect(t.say("how is my squat going?")).resolves.toBeUndefined();
+    expect(t.methods()).toEqual(["sendMessage", "sendPhoto", "sendMessage"]);
   });
 
   it("a photo upload failure after the text sends the chart-failed text and does not throw", async () => {

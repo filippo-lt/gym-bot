@@ -54,10 +54,13 @@ const botInfo = {
   supports_join_request_queries: false,
 } as unknown as UserFromGetMe;
 
-function setup() {
+function setup(opts: { failAll?: boolean } = {}) {
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
   const transformer: Transformer = async (_prev, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
+    if (opts.failAll && (method === "sendPhoto" || method === "sendMessage")) {
+      throw new Error("refused");
+    }
     return { ok: true, result: true } as never;
   };
   const bot = createBot({
@@ -90,6 +93,12 @@ describe("/chart (real DB and renderer)", () => {
     expect(calls[0]?.payload.parse_mode).toBe("HTML");
     expect(String(calls[0]?.payload.caption)).toContain("2 sessions");
     expect((await photoBytes(calls[0]?.payload ?? {})).subarray(0, 4).equals(PNG)).toBe(true);
+  });
+
+  it("/chart resolves when both the photo and the fallback message fail", async () => {
+    const { calls, send } = setup({ failAll: true });
+    await expect(send("/chart squat")).resolves.toBeUndefined();
+    expect(calls.map((c) => c.method)).toEqual(["sendPhoto", "sendMessage"]);
   });
 
   it("/chart with an exercise that has no history answers with text", async () => {

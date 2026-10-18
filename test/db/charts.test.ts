@@ -184,3 +184,16 @@ describe("buildChart", () => {
     expect(r.ok && r.caption).toContain("since 6 Oct 2025");
   });
 });
+
+describe("volume chart plan length", () => {
+  it("a 13th plan week extends the domain past the old end", async () => {
+    await sql`update plans set weeks = 12, start_date = '2026-09-28'`;
+    await sql`
+      insert into plan_weeks (plan_version_id, week, phase, is_deload, is_test, start_date)
+      select plan_version_id, g, phase, is_deload, is_test, date '2026-09-28' + (g - 1) * 7
+      from plan_weeks, generate_series(4, 13) g where week = 3`;
+    const r = await buildChart(db, { kind: "volume" }, new Date("2027-01-15T10:00:00Z"));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.facts.currentWeek).toBe(13);
+  });
+});

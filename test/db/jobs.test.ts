@@ -192,6 +192,14 @@ describe("morning job", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("Fri 18 Dec (last Friday of the 12-week plan) sends the normal morning message", async () => {
+    await sql`update plans set start_date = '2026-09-28'`;
+    await fillWeeks(12);
+    expect((await mtick("2026-12-18T05:00:00Z"))[0]?.outcome).toBe("sent");
+    expect(sent.some((m) => m.text === formatFinished())).toBe(false);
+    expect(sent.at(-1)?.text.startsWith(MORNING_GREETING)).toBe(true);
+  });
+
   it("a plan one week longer moves the finished message to the following Monday", async () => {
     await sql`update plans set start_date = '2026-09-28', weeks = 13`;
     await sql`update plan_weeks set start_date = (date '2026-09-28' + (week - 1) * 7)`;

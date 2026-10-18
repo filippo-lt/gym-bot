@@ -11,6 +11,7 @@ import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.
 import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
 import { parseChartCallback, parseHistoryCallback } from "./callbacks.js";
+import { trySendFallback } from "./chart-fallback.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
@@ -219,7 +220,7 @@ export function createBot(deps: BotDeps): Bot {
     } catch (error) {
       // A renderer that fails to load or draw must not turn into silence and an inbox retry.
       console.error("chart: render failed", error instanceof Error ? error.name : "");
-      await ctx.reply(CHART_FAILED, html);
+      await trySendFallback(() => ctx.reply(CHART_FAILED, html));
     }
   }
 

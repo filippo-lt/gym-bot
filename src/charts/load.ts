@@ -10,6 +10,7 @@ import {
   loadExerciseInfos,
   loadPlanEnv,
   loadSessionRecs,
+  type PlanEnv,
   weekFor,
 } from "../progression/load-history.js";
 import type { ExerciseInfo, SessionRec } from "../progression/types.js";
@@ -60,8 +61,9 @@ export async function loadExerciseChartData(
 export async function loadVolumeRows(
   db: Db,
   sinceDate?: string,
+  planEnv?: PlanEnv | null,
 ): Promise<Parameters<typeof volumeSeries>[0]> {
-  const env = await loadPlanEnv(db);
+  const env = planEnv === undefined ? await loadPlanEnv(db) : planEnv;
   const base = db
     .select({
       date: logGroups.sessionDate,

@@ -68,6 +68,7 @@ import {
   sttVocabularyPrompt,
 } from "../stt/stt.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
+import { trySendFallback } from "./chart-fallback.js";
 import { esc, guardLength } from "./format.js";
 import {
   aliasSaved,
@@ -694,7 +695,7 @@ export function createFlow(deps: FlowDeps): Flow {
           });
         } catch (error) {
           console.error("chart: photo failed", error instanceof Error ? error.name : "");
-          await send(ctx, CHART_FAILED);
+          await trySendFallback(() => send(ctx, CHART_FAILED));
         }
       };
       // Nothing else to say: the photo and its caption are the whole answer.
