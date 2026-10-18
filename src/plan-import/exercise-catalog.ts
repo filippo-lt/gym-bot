@@ -63,7 +63,7 @@ export const CATALOG: CatalogExercise[] = [
   ex("squat", "Squat", "quads", "weighted", "barbell_total", "barbell", true, {
     aliases: ["back squat"],
   }),
-  ex("hack_squat", "Hack squat", "quads", "weighted", "barbell_total", "barbell", true),
+  ex("hack_squat", "Hack squat", "quads", "weighted", "stack", "hack_squat", true),
   ex("ring_row", "Ring row (Australian pull-up)", "back", "bodyweight_reps", null, null, false, {
     aliases: ["Australian pull-up", "Chest-supported row", "Ring row"],
   }),

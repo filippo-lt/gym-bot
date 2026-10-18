@@ -8,6 +8,20 @@
       "when": 1792224826178,
       "tag": "0000_elite_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792300060159,
+      "tag": "0001_friendly_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792300784706,
+      "tag": "0002_illegal_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }
