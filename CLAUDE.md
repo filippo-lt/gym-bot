@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-GymBot is a single-user Telegram workout bot. `SPEC.md` is the source of truth for behaviour, domain rules and milestones. Read the relevant section before changing anything domain-related. Manual setup (BotFather, Supabase, Vercel, keys) is in `docs/SETUP.md`.
+GymBot is a single-user Telegram workout bot. `SPEC.md` is the source of truth for behaviour, domain rules and milestones. Read the relevant section before changing anything domain-related. Manual setup (BotFather, Supabase, Vercel, keys) is in `docs/SETUP.md`. Progress, open items and the live-testing playbook are in `docs/STATUS.md`: read it first and update it at the end of each milestone.
 
 ## Commands
 
