@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Every number shown to the user (message, image, caption) is computed and formatted in code; the model only phrases text and the number guard still applies.
-- Callback data ≤ 64 bytes. New prefixes only: `rd:<t|o|s>:m:<yyyymmdd>` and `ch:<exerciseId>`. The old `rd:<t|o|s>` keeps working unchanged.
+- Callback data ≤ 64 bytes. New prefixes only: `rd:<t|o|s>:m:<yyyymmdd>`, `ch:<exerciseId>` and `ch:v` (volume). The old `rd:<t|o|s>` keeps working unchanged.
 - Do not change `bot.ts` `sendSession` or what `/today` renders (M7 edits that area). Do not query `planned_items` from new code; go through `getSession` / `loadSessionAdvice`.
 - Job registration is additive: append to `JOBS` in `src/jobs/index.ts`; M9 adds its own entry.
 - No migration, no new env vars.
@@ -27,7 +27,7 @@
 1. **DST:** the morning tick on Mon 26 Oct 2026 (05:00Z = 06:00 CET) must send; 04:45Z must not. Covered in Task 6 tests.
 2. **A readiness tap on yesterday's morning message** must write nothing and say so; Telegram refuses edits after 48 h anyway. Covered in Task 7.
 3. **Pull-up sessions with no bodyweight** must not plot a load point (system load unknown) but still plot reps. Covered in Task 2.
-4. **An exercise with only imported sessions lacking per-set data** (`perSetUnknown`): no e1RM point, top set only when a load exists, no crash. Covered in Task 2.
+4. **An exercise with only imported sessions lacking per-set data** (`perSetUnknown`): no e1RM point, no crash; sessions with valid sets are marked `estimate`. Covered in Task 2.
 5. **A caption or tool result with an unformatted float** (e.g. `92.50000001`) leaking to the user. Values must go through the existing kg formatter. Covered in Task 3 caption tests.
 
 ---
@@ -65,15 +65,15 @@ Two tracks can run in parallel because their files don't overlap: **Track A** (T
 - Consumes: `SessionRec`, `ExerciseInfo` from `src/progression/types.ts`; `validSets`, `sessionEstimate`, `systemLoadOf` from `src/progression/e1rm.ts`; `loadPlanEnv`, `loadExerciseInfos`, `loadSessionRecs` from `src/progression/load-history.ts`.
 - Produces (in `series.ts`):
   ```ts
-  export interface LoadPoint { date: string; week: number | null; e1rm: number | null; topSet: number | null; flagged: boolean } // flagged = deload or test week
-  export interface RepsPoint { date: string; week: number | null; bestSet: number | null; total: number | null; seconds: number | null; step: string | null; flagged: boolean }
-  export type ChartKind = "load_reps" | "reps" | "hspu" | "timed" | "none";
+  export interface LoadPoint { date: string; week: number | null; e1rm: number | null; flagged: boolean; estimate: boolean } // flagged = deload or test week (shaded, never an e1RM point); estimate = import-only session
+  export interface RepsPoint { date: string; week: number | null; bestSet: number | null; seconds: number | null; step: string | null; flagged: boolean }
+  export type ChartKind = "load" | "load_reps" | "reps" | "hspu" | "timed" | "none";
   export function chartKindFor(type: ExerciseType): ChartKind;
   export function loadSeries(sessions: SessionRec[], ex: ExerciseInfo): LoadPoint[]; // oldest first
   export function repsSeries(sessions: SessionRec[], ex: ExerciseInfo, stepNames?: Map<number, string>): RepsPoint[]; // oldest first
   export interface VolumeCell { week: number; muscleGroup: string; sets: number }
   export function volumeSeries(rows: { week: number | null; muscleGroup: string; type: ExerciseType; sets: number }[], currentWeek: number): VolumeCell[];
-  export const VOLUME_TYPES: readonly ExerciseType[]; // weighted, bodyweight_plus, bodyweight_reps, skill_ladder, timed
+  export const VOLUME_TYPES: readonly ExerciseType[]; // weighted, bodyweight_plus, bodyweight_reps, skill_ladder (NOT timed)
   ```
 - Produces (in `load.ts`):
   ```ts
@@ -82,18 +82,19 @@ Two tracks can run in parallel because their files don't overlap: **Track A** (T
   export async function loadVolumeRows(db: Db, sinceDate?: string): Promise<Parameters<typeof volumeSeries>[0]>;
   ```
 
-Rules (from the spec): e1RM per session = `sessionEstimate(s, ex)` → `max(strict, withPlus)` (same "4+ may raise" rule as the engine; check `currentE1rm` for exactly how it combines `strict` and `withPlus` and mirror it for a single session), null when no valid set. Top set = max `systemLoadOf(set, ex, s.bwKg)` over all sets with a load (any RIR, any week). `flagged` = `isDeload || isTest`. Chart kinds: `weighted`/`bodyweight_plus` → `load_reps`; `bodyweight_reps` → `reps`; `skill_ladder` → `hspu`; `timed` → `timed`; `distance` → `reps`-style with the distance as the metric if logged (builder's call, document it), else `none`; `skill_practice`/`hiit`/`mobility` → `none`. Volume: one set = one `log_entries` row; for an imported group with no entry rows, use the group's stated set count if the schema has one, else 0, and document which.
+Rules (from the spec): e1RM per session = `sessionEstimate(s, ex)` → `max(strict, withPlus)` (same "4+ may raise" rule as the engine; check `currentE1rm` for exactly how it combines `strict` and `withPlus` and mirror it for a single session), null when no valid set (so deload/test/RED sessions never get an e1RM point). No top-set series: the design plots e1RM only. `flagged` = `isDeload || isTest`; `estimate` = `source === "import"`. Chart kinds: `weighted` → `load`; `bodyweight_plus` → `load_reps` (e1RM on system load + most reps); `bodyweight_reps` → `reps`; `skill_ladder` → `hspu`; `timed` → `timed`; `distance` → `reps`-style with the distance as the metric if logged (builder's call, document it), else `none`; `skill_practice`/`hiit`/`mobility` → `none`. Volume: one set = one `log_entries` row; for an imported group with no entry rows, use the group's stated set count if the schema has one, else 0, and document which.
 
 - [ ] **Step 1: Write failing unit tests** in `test/charts/series.test.ts`, building `SessionRec`s by hand:
-  - `loadSeries`: a session with sets `{reps 5, rir 2, loadKg 80}` and `{reps 5, rir null, loadKg 85}` → `e1rm` equals `setE1rm(80,5,2)` and `topSet` 85.
-  - deload session → `flagged: true` and `e1rm: null`, `topSet` still set.
+  - `loadSeries`: a session with sets `{reps 5, rir 2, loadKg 80}` and `{reps 5, rir null, loadKg 85}` → `e1rm` equals `setE1rm(80,5,2)` (the RIR-less 85 kg set doesn't count).
+  - deload session → `flagged: true` and `e1rm: null`.
+  - an import session with valid sets → `estimate: true`.
   - RED-readiness session → `e1rm: null`.
-  - pull-up (`bodyweight_plus`) with `bwKg: null` → `topSet: null`, `e1rm: null`; same session in `repsSeries` still has `bestSet`.
+  - pull-up (`bodyweight_plus`) with `bwKg: null` → `e1rm: null`; the same session in `repsSeries` still has `bestSet`.
   - `perSetUnknown` import session → `e1rm: null`, no throw.
   - output is oldest first even when the input is newest first.
   - `repsSeries` for `skill_ladder` carries `step` from `stepNames` by `hspuStepOrder`.
   - `timed` → `seconds` = longest `durationS`.
-  - `volumeSeries`: mobility and hiit rows ignored; cells summed per (week, muscleGroup); weeks 1..currentWeek present (empty weeks produce no cells, the spec handles gaps); rows with `week: null` (outside the plan) dropped.
+  - `volumeSeries`: mobility, hiit and timed rows ignored; cells summed per (week, muscleGroup); weeks 1..currentWeek present (empty weeks produce no cells, the spec handles gaps); rows with `week: null` (outside the plan) dropped.
   - `chartKindFor` table above.
   Run: `pnpm exec vitest run --project unit test/charts/series.test.ts`. Expected FAIL.
 - [ ] **Step 2:** Implement `series.ts`. Run. Expected PASS.
@@ -111,7 +112,7 @@ Rules (from the spec): e1RM per session = `sessionEstimate(s, ex)` → `max(stri
 - Consumes: Task 1 `renderPng`, `FONT_FAMILY`; Task 2 series and loaders.
 - Produces (in `index.ts`):
   ```ts
-  export type ChartMetric = "load" | "reps" | "both";
+  export type ChartMetric = "load" | "reps" | "auto"; // auto = by type (the /chart command)
   export type ChartRequest = { kind: "exercise"; exerciseId: number; metric: ChartMetric; weeks?: number } | { kind: "volume"; weeks?: number };
   export type ChartResult =
     | { ok: true; png: Buffer; caption: string; facts: Record<string, unknown> }
@@ -122,11 +123,11 @@ Rules (from the spec): e1RM per session = `sessionEstimate(s, ex)` → `max(stri
 - Produces (in `spec.ts`): `exerciseSpec(name: string, ex: ExerciseInfo, kind: ChartKind, load: LoadPoint[], reps: RepsPoint[], metric: ChartMetric): TopLevelSpec`, `volumeSpec(cells: VolumeCell[], currentWeek: number): TopLevelSpec`, `axisUnit(ex: ExerciseInfo): string`.
 - Produces (in `caption.ts`): `exerciseCaption(...)`, `volumeCaption(...)`, plain text, HTML-escaped, ≤ 1024 chars.
 
-Rules: `metric: "both"` → `vconcat` of load panel (when the kind has one) and reps panel. `"load"` on a kind without load → reps panel instead (and `facts.note` says so). x axis = formatted date strings (`"29 Sep"`, via Luxon) as an ordinal axis, so no "12 PM" ticks. Flagged points hollow (builder's call on style). Volume = stacked bars, x = `"W1"…"W<current>"` (all weeks shown, including empty), color = muscle group. `weeks` limits to sessions with `date >= today − 7·weeks`. Fewer than `MIN_SESSIONS` points with data → `not_enough_data`, text `Not enough data to chart <name> yet (<n> session).` / `(<n> sessions)`. Kind `none` → `no_numbers`, text `Nothing to chart for <name>: it's logged as done / skipped.` Caption (exercise with load): `<name> · e1RM <first> → <last> <unit> · <n> sessions since <d LLL>`; without e1RM points use top set (`top set <a> → <b>`); reps kinds use best-set reps; HSPU names the current step; volume: `Weekly sets per muscle group · this week: <n> sets`. Format kg with the existing formatter used by `/history` (find it in `src/bot/query-format.ts` / `log-format.ts`; reuse, don't write a new one). `facts` mirrors the caption values (numbers already rounded the same way) plus `sessions`, `firstDate`, `lastDate`, for the chat tool.
+Rules: `metric: "auto"` → by kind: `load` → e1RM panel; `load_reps` (pull-ups) → `vconcat` of e1RM over most-reps; `reps`/`hspu` → most-reps panel (HSPU: one colour per step); `timed` → seconds panel. `"load"` → the e1RM panel (on a kind without load: the reps/seconds panel instead, and `facts.note` says so). `"reps"` → most-reps panel (seconds for timed). Deload/test weeks shaded (a rect layer behind), no e1RM point there; `estimate` points hollow. x axis = formatted date strings (`"29 Sep"`, via Luxon) as an ordinal axis, so no "12 PM" ticks. Flagged points hollow (builder's call on style). Volume = stacked bars, x = `"W1"…"W<current>"` (all weeks shown, including empty), color = muscle group. `weeks` limits to sessions with `date >= today − 7·weeks`. Fewer than `MIN_SESSIONS` points with data → `not_enough_data`, text `Not enough data to chart <name> yet (<n> session).` / `(<n> sessions)`. Kind `none` → `no_numbers`, text `Nothing to chart for <name>: it's logged as done / skipped.` Caption (exercise with load): `<name> · e1RM <first> → <last> <unit> · <n> sessions since <d LLL>`, counting sessions with an e1RM point (fewer than 2 → `not_enough_data`); reps kinds use best-set reps (`best set <a> → <b> reps`); timed `<a> → <b> s`; HSPU names the current step; volume: `Weekly sets per muscle group · this week: <n> sets`. Format kg with the existing formatter used by `/history` (find it in `src/bot/query-format.ts` / `log-format.ts`; reuse, don't write a new one). `facts` mirrors the caption values (numbers already rounded the same way) plus `sessions`, `firstDate`, `lastDate`, for the chat tool.
 
-- [ ] **Step 1: Write failing tests:** `spec.test.ts`: `axisUnit` returns "kg", "kg per hand", "kg (stack)", "kg system load" for barbell/dumbbell/machine/pull-up `ExerciseInfo`s (check `LoadBasis` values in `src/plan-import/types.ts`); `exerciseSpec(… "both")` has `vconcat` length 2 for `load_reps` and 1 for `reps`; the x field is a string-typed ordinal; `volumeSpec` x domain is `["W1",…,"W5"]` for `currentWeek` 5. `caption.test.ts`: e1RM 85 → 92.50000001 renders "85 → 92.5 kg"; 1 vs 2 sessions wording; HTML in a name is escaped. Run unit. Expected FAIL.
+- [ ] **Step 1: Write failing tests:** `spec.test.ts`: `axisUnit` returns "kg", "kg per hand", "kg (stack)", "kg system load" for barbell/dumbbell/machine/pull-up `ExerciseInfo`s (check `LoadBasis` values in `src/plan-import/types.ts`); `exerciseSpec(… "auto")` has a `vconcat` of length 2 for `load_reps` and a single panel (no `vconcat`) for `load` and `reps`; the x field is a string-typed ordinal; `volumeSpec` x domain is `["W1",…,"W5"]` for `currentWeek` 5. `caption.test.ts`: e1RM 85 → 92.50000001 renders "85 → 92.5 kg"; 1 vs 2 sessions wording; HTML in a name is escaped. Run unit. Expected FAIL.
 - [ ] **Step 2:** Implement `spec.ts` and `caption.ts`. Run. Expected PASS.
-- [ ] **Step 3: Extend `test/db/charts.test.ts`:** `buildChart` for squat with 2 sessions → `ok`, PNG signature; with 1 session → `not_enough_data`; for handstand → `no_numbers`; volume → `ok`. Run db. Expected FAIL, then implement `index.ts`, run, PASS.
+- [ ] **Step 3: Extend `test/db/charts.test.ts`:** `buildChart` for squat with 2 sessions → `ok`, PNG signature; with 1 session → `not_enough_data`; for handstand → `no_numbers`; volume → `ok`. `buildChart` is the only export later tasks import, and they import it lazily (`await import("../charts/index.js")`), so keep `src/charts/index.ts` free of side effects at module load beyond the imports. Run db. Expected FAIL, then implement `index.ts`, run, PASS.
 - [ ] **Step 4:** Lint, typecheck, test, test:db. Commit "M8: chart specs, captions, buildChart".
 
 ### Task 4: `/chart` command and `ch:` callback
@@ -137,11 +138,11 @@ Rules: `metric: "both"` → `vconcat` of load panel (when the kind has one) and 
 
 **Interfaces:**
 - Consumes: `buildChart` (Task 3), `lookupExercise` (`src/queries/exercise-lookup.ts`, via `reads` seam), `formatHistoryChoice` pattern.
-- Produces: `cb.chart(exerciseId: number): string` → `ch:<id>`; `parseChartCallback(data: string): { exerciseId: number } | null`. A `BotDeps.charts?: { buildChart: typeof buildChart }` test seam.
+- Produces: `cb.chart(exerciseId: number | "v"): string` → `ch:<id>` / `ch:v`; `parseChartCallback(data: string): { exerciseId: number } | { volume: true } | null`. A `BotDeps.charts?: { buildChart: typeof buildChart }` test seam.
 
-Behaviour: `/chart` (no arg) → usage `"Usage: /chart squat · /chart pull-up · /chart volume"` (exact wording builder's call). `/chart volume` → volume chart. `/chart <name>` → `lookupExercise`; one match → `buildChart({ kind: "exercise", exerciseId, metric: "both" })`; ambiguous → choice buttons with `ch:<id>` (same layout as `/history`); unknown → the `/history` unknown text adapted to charts. `ok` → `ctx.replyWithPhoto(new InputFile(png, "chart.png"), { caption, parse_mode: "HTML" })`; not ok → `ctx.reply(text)`. `ch:<id>` tap → answer the callback, send the photo.
+Behaviour: `/chart` (no arg) → usage `"Usage: /chart squat · /chart pull-up · /chart volume"` (exact wording builder's call) **plus buttons**: one per main lift (`exercises.is_main_lift`, `ch:<id>`) and one "Volume" (`ch:v`). Load `buildChart` lazily (`await import`). `/chart volume` → volume chart. `/chart <name>` → `lookupExercise`; one match → `buildChart({ kind: "exercise", exerciseId, metric: "auto" })`; ambiguous → choice buttons with `ch:<id>` (same layout as `/history`); unknown → the `/history` unknown text adapted to charts. `ok` → `ctx.replyWithPhoto(new InputFile(png, "chart.png"), { caption, parse_mode: "HTML" })`; not ok → `ctx.reply(text)`. `ch:<id>` tap → answer the callback, send the photo.
 
-- [ ] **Step 1: Failing tests:** callbacks round-trip `ch:123`, `parseChartCallback("ch:x")` null, length ≤ 64. Bot tests with the transformer capturing API calls: `/chart` → `sendMessage` with usage; `/chart volume` → `sendPhoto`; `/chart squat` (single match) → `sendPhoto` with the caption; ambiguous → `sendMessage` whose `reply_markup` buttons start with `ch:`; `ch:<id>` callback → `sendPhoto`. Use the `charts` seam with a fake `buildChart` in unit bot tests, and one real db test for `/chart squat`. Run. Expected FAIL.
+- [ ] **Step 1: Failing tests:** callbacks round-trip `ch:123`, `parseChartCallback("ch:x")` null, length ≤ 64. Bot tests with the transformer capturing API calls: `/chart` → `sendMessage` with usage and buttons including `ch:v`; `ch:v` tap → `sendPhoto`; `/chart volume` → `sendPhoto`; `/chart squat` (single match) → `sendPhoto` with the caption; ambiguous → `sendMessage` whose `reply_markup` buttons start with `ch:`; `ch:<id>` callback → `sendPhoto`. Use the `charts` seam with a fake `buildChart` in unit bot tests, and one real db test for `/chart squat`. Run. Expected FAIL.
 - [ ] **Step 2:** Implement. Run. Expected PASS.
 - [ ] **Step 3:** Lint, typecheck, test, test:db. Commit "M8: /chart command".
 
@@ -155,9 +156,9 @@ Behaviour: `/chart` (no arg) → usage `"Usage: /chart squat · /chart pull-up �
 - Consumes: `buildChart`, `lookupExercise`.
 - Produces: `renderChartInputSchema = z.object({ metric: z.enum(["load","reps","volume"]), exercise: z.string().min(1).max(60).optional(), weeks: z.number().int().min(1).max(52).optional() })`; `LoggingBackend.renderChart(input): Promise<ReadResult>`; the turn-level pending chart: the backend keeps `{ png, caption } | null` for the current message, readable by the flow after `runIntent` (builder's call how: a field on the backend object created per message is simplest).
 
-Behaviour: tool description: "Read-only. Renders a progress chart image for an exercise (load = e1RM and top set, reps) or weekly volume per muscle group; the image is sent after your reply. Returns the chart's key numbers. Call it when the user asks about trends, progress or a chart." Prompt rule: "For trend/progress/chart questions call render_chart; describe the trend in one or two sentences using only the numbers in its result; don't describe the image." Exercise missing for load/reps → `isError` result "exercise is required". Ambiguous/unknown → facts with `found: false` and candidates (same shape as `get_exercise_history`), no chart. Second call in the same message → `isError` "one chart per message". `not_enough_data` / `no_numbers` → facts with the text, no chart, `fallbackHtml` = that text. After the loop: in the no-staged-writes branch, after the reply (or fallback) is sent, if a chart is pending, `replyWithPhoto`. A chart never goes with a confirm card (if writes were staged, drop the chart). The number guard treats the tool's `facts` as a read (it already does for reads via `result.reads`).
+Behaviour: tool description: "Read-only. Renders a progress chart image for an exercise (load = e1RM per session, reps = most reps in one set) or weekly volume per muscle group (hard sets); the image is sent after your reply. Returns the chart's key numbers. Call it when the user asks about trends, progress or a chart." Prompt rule: "For trend/progress/chart questions call render_chart; describe the trend in one or two sentences using only the numbers in its result; don't describe the image." Exercise missing for load/reps → `isError` result "exercise is required". Ambiguous/unknown → facts with `found: false` and candidates (same shape as `get_exercise_history`), no chart. Second call in the same message → `isError` "one chart per message". `not_enough_data` / `no_numbers` → facts with the text, no chart, `fallbackHtml` = that text. After the loop: in the no-staged-writes branch, after the reply is sent, if a chart is pending, `replyWithPhoto`, **also when the number guard rejected the reply and the code fallback was sent instead**. Import the chart module lazily. A chart never goes with a confirm card (if writes were staged, drop the chart). The number guard treats the tool's `facts` as a read (it already does for reads via `result.reads`).
 
-- [ ] **Step 1: Failing tests:** `tools.test.ts`: `render_chart` is in `READ_TOOLS`; invalid metric → invalid-input error; `executeTool` calls `backend.renderChart`. Flow test with the fake model scripted to call `render_chart({ metric: "load", exercise: "squat" })` then reply "Your e1RM went from 85 to 92.5 kg." → one `sendMessage` with the text, then one `sendPhoto`; a script calling it twice → the second result is an error and one photo is sent; unknown exercise → no photo. Run. Expected FAIL.
+- [ ] **Step 1: Failing tests:** `tools.test.ts`: `render_chart` is in `READ_TOOLS`; invalid metric → invalid-input error; `executeTool` calls `backend.renderChart`. Flow test with the fake model scripted to call `render_chart({ metric: "load", exercise: "squat" })` then reply "Your e1RM went from 85 to 92.5 kg." → one `sendMessage` with the text, then one `sendPhoto`; a reply with an unknown number (guard fallback) → fallback text, then still one `sendPhoto`; a script calling it twice → the second result is an error and one photo is sent; unknown exercise → no photo. Run. Expected FAIL.
 - [ ] **Step 2:** Implement. Run. Expected PASS.
 - [ ] **Step 3:** Add 2 golden phrases to the opt-in golden suite (`test/golden/`): "how is my squat going?" → `render_chart` with metric load and exercise squat; "show me my weekly volume" → `render_chart` metric volume. Don't run the golden suite (it costs API money); the orchestrator decides.
 - [ ] **Step 4:** Lint, typecheck, test, test:db. Commit "M8: render_chart tool".
@@ -176,7 +177,7 @@ Behaviour: tool description: "Read-only. Renders a progress chart image for an e
   // src/bot/morning.ts
   export const MORNING_GREETING = "☀️ Good morning.";
   export async function renderTodayText(db: Db, date: string, now: Date): Promise<{ text: string; askClassFirst: boolean; thursday: string | null }>; // the exact /today text; engine errors → plain session (advice null)
-  export function morningMessage(todayText: string, date: string, readiness?: "t" | "o" | "s"): Message; // greeting + today + (readiness ? "Readiness: <emoji>" line, no keyboard : READINESS_QUESTION + 3 buttons rd:<l>:m:<yyyymmdd>)
+  export function morningMessage(todayText: string, date: string, readiness?: "t" | "o" | "s"): Message; // greeting + today + (readiness ? "Noted: <emoji>" line, no keyboard : READINESS_QUESTION + 3 buttons rd:<l>:m:<yyyymmdd>)
   // src/jobs/morning.ts
   export const morningJob: Job; // name "morning"
   export function morningWindow(now: Date): { date: string } | null;
@@ -210,7 +211,7 @@ Behaviour (spec "Morning job"): window Mon–Fri, `06:00 <= local < 10:00` Rome.
 
 Behaviour: `rd:<l>:m:<yyyymmdd>` tap: if `morningDate !== trainingDate(now)` → `answerCallbackQuery({ text: "That button is from another day." })`, nothing written. Otherwise the same ledger write as the plain tap (`log_readiness` with `button`), then, unchanged from M5, the re-freeze happens through the existing path. Then **edit the tapped message in place** with `morningMessage(await renderTodayText(db, date, now), date, level)` (no keyboard). If the user had already started (log group exists and level frozen): keep the existing "You already started today, so today stays X. I'll use this tomorrow." reply. No `sendToday` call on the morning path. The plain `rd:<l>` path is unchanged. `classTap` Save: after the existing edit, if `trainingDate(now)` is the Friday right after `date` (the Thursday), call `deps.sendToday(ctx)`.
 
-- [ ] **Step 1: Failing db tests** (bot with the transformer, as other `bot-*.test.ts` files do): morning tap 😴 before any log on a W5 weekday → one `editMessageText` whose text has `MORNING_GREETING`, "Readiness: 😴" and the re-rendered session, no `reply_markup` buttons; the derived readiness row was rewritten (level changed if the signal changes it; pick a setup where 😴 turns GREEN into YELLOW); no `sendMessage` with a second session. Tap after a log exists → the edit happens and the "today stays" reply is sent; level unchanged. Tap with yesterday's date → callback answer text "That button is from another day.", no `readiness_logs` insert. Class Save for Thu 29 Oct with `now` = Fri 30 Oct → edit + a `sendMessage` with the Friday session; with `now` = Thu 29 Oct 21:30 → no session sent. Old `rd:t` tap still edits to "Noted: 😴" and sends today (regression). Run. Expected FAIL.
+- [ ] **Step 1: Failing db tests** (bot with the transformer, as other `bot-*.test.ts` files do): morning tap 😴 before any log on a W5 weekday → one `editMessageText` whose text has `MORNING_GREETING`, "Noted: 😴" and the re-rendered session, no `reply_markup` buttons; the derived readiness row was rewritten (level changed if the signal changes it; pick a setup where 😴 turns GREEN into YELLOW); no `sendMessage` with a second session. Tap after a log exists → the edit happens and the "today stays" reply is sent; level unchanged. Tap with yesterday's date → callback answer text "That button is from another day.", no `readiness_logs` insert. Class Save for Thu 29 Oct with `now` = Fri 30 Oct → edit + a `sendMessage` with the Friday session; with `now` = Thu 29 Oct 21:30 → no session sent. Old `rd:t` tap still edits to "Noted: 😴" and sends today (regression). Run. Expected FAIL.
 - [ ] **Step 2:** Implement. Run. Expected PASS.
 - [ ] **Step 3:** Lint, typecheck, test, test:db. Commit "M8: morning readiness tap, Friday class follow-up".
 

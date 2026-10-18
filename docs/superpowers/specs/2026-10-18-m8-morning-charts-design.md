@@ -1,6 +1,6 @@
 # M8: Morning message and charts
 
-_Design, 18 Oct 2026. SPEC.md stays the source of truth. This document records what M8 adds and the decisions behind it. The user skipped the design questions and left the calls to Claude ("you decide"), so every decision below is **Claude's call**, and the user can overturn any of them in review. "Builder's call" marks what is left to the implementer._
+_Design, 18 Oct 2026. SPEC.md stays the source of truth. This document records what M8 adds and the decisions behind it. The user skipped the design questions and left the calls to Claude ("you decide"), so every decision below is **Claude's call**, and the user can overturn any of them in review. At the parent session's request, an independent agent (Opus, without Claude's draft) then answered the 13 open design questions from SPEC and the code. Its answers are adopted here; see "Independent review" at the end. "Builder's call" marks what is left to the implementer._
 
 ## Why
 
@@ -56,40 +56,43 @@ The M5 rule stays: a tap re-freezes today's level until the first log of the day
 What changes is only the display:
 
 - The morning buttons carry a marker: `rd:<t|o|s>:m` (the old `rd:<t|o|s>` stays valid for `/readiness` and for messages already sent).
-- On an `:m` tap the bot **edits the morning message in place**: the greeting, a "Readiness: 😴" line, then the session re-rendered with the new level, with no buttons. It doesn't send a separate "Noted" message plus a second `/today`. If the user already started, the "today stays X" line is sent as a separate reply, as today.
+- On an `:m` tap the bot **edits the morning message in place**: the greeting, a "Noted: 😴" line, then the session re-rendered with the new level, with no buttons. It doesn't send a separate "Noted" message plus a second `/today`. If the user already started, the "today stays X" line is sent as a separate reply, as today.
 - Telegram doesn't allow editing a message older than 48 h. A stale tap (from a past day) answers "That button is from another day." and writes nothing. The tap's training date must equal the message's date. Builder's call: the date can go in the callback data (`rd:<l>:m:<yyyymmdd>`) to make the check exact. Keep the data ≤ 64 bytes.
 
 ### Charts: what is plotted
 
-All series are computed by pure functions from the log tables (bot and import rows alike), one exercise id at a time. OR options are separate exercises (SPEC 5.2), so "squat" never includes hack squat. Every point is one session (`session_date`).
+All series are computed by pure functions from the log tables (bot and import rows alike), one exercise id at a time, from `log_groups.exercise_id` and the history only, never `planned_items` (so M7's plan versions can't break them). OR options are separate exercises (SPEC 5.2), so "squat" never includes hack squat. Every point is one session (`session_date`).
 
-`/chart <exercise>` sends **one image with up to two stacked panels**, chosen by the exercise `type`:
+`/chart <exercise>` sends **one image**. Which panel it shows follows the exercise `type`:
 
-| Type | Top panel: load over time | Bottom panel: reps over time |
-|---|---|---|
-| `weighted`, `bodyweight_plus` | e1RM per session (the engine's `sessionEstimate` over `validSets`, so the chart matches the math) and the top set's load | most reps in one set, plus total reps (bars) |
-| `bodyweight_reps` | no panel | most reps in a set + total reps |
-| `skill_ladder` (HSPU) | no panel | reps per session, one colour per ladder step (SPEC 5.2: "charts are per ladder step") |
-| `timed` | no panel | longest set in seconds |
-| `distance` | no panel | the distance per session (builder's call on the exact metric) |
-| `skill_practice`, `hiit`, `mobility` | — | — : text reply "Nothing to chart for X: it's logged as done / skipped." |
+| Type | What is plotted |
+|---|---|
+| `weighted` | **Load over time = e1RM per session**: the engine's `sessionEstimate` over `validSets`, max of strict and "4+" (SPEC 5.2), so the chart matches the math. One panel. |
+| `bodyweight_plus` (pull-ups) | **Two stacked panels**: e1RM on system load (bodyweight + added − assist, the only number comparable from assisted to weighted) above **most reps in one set**. |
+| `bodyweight_reps` | Most reps in one set per session. |
+| `skill_ladder` (HSPU) | Most reps in one set, **one series per ladder step** (colour per step, SPEC 5.2 "charts are per ladder step"). |
+| `timed` | Longest hold in seconds per session. |
+| `distance` | The distance per session if logged (builder's call on the exact metric), else as below. |
+| `skill_practice`, `hiit`, `mobility` | No image. Text: "Nothing to chart for X: it's logged as done / skipped." |
 
-- **Units** follow SPEC 5.2 and are stated on the axis: barbell = total incl. bar; dumbbells = "kg per hand"; machines = stack value; pull-ups = system load (bodyweight + added − assist). The pull-up axis title says "system load". A session without a known bodyweight has no pull-up load point (it can still have a reps point).
-- **e1RM points** follow the engine's rules (RED sessions, deload and test weeks don't count, and a set without RIR doesn't count). So a session can have a top-set point and no e1RM point. Deload/test sessions are drawn differently, e.g. hollow points (builder's call on style).
+- **Why e1RM only and most-reps only:** total reps and top-set load move with the plan's set counts, rep ranges and deloads; e1RM and the best set don't.
+- **Units** follow SPEC 5.2 and are stated on the axis: barbell = total incl. bar; dumbbells = "kg per hand"; machines = stack value; pull-ups = "kg system load". A pull-up session without a known bodyweight has no e1RM point (it still has a reps point).
+- **e1RM points** follow the engine's validity rules: RED sessions, deload and test weeks, and sets without RIR don't count. **Deload and test weeks are shaded** on the chart, with no e1RM point. **Import-only sessions** are drawn as "estimate" points (e.g. hollow, builder's call on style), matching the engine's "estimate" label.
 - **Fewer than 2 sessions** with data → no image, text "Not enough data to chart X yet (N session)."
 - **Range:** all history by default (the plan is 12 weeks, plus the imported weeks). The chat tool can ask for the last N weeks.
-- **Caption** (code-formatted, ≤ 1024 chars): exercise name, the first → last e1RM (or reps) with dates, and the session count, e.g. "Squat · e1RM 85 → 93 kg · 7 sessions since 29 Sep".
+- **Caption** (code-formatted, short, capped at Telegram's 1024 characters): exercise name, first → last e1RM (or best reps / seconds) with dates, and the session count, e.g. "Squat · e1RM 85 → 93 kg · 7 sessions since 29 Sep".
 
-`/chart volume`: **weekly volume per muscle group** = the number of logged sets per plan week, per `exercises.muscle_group`, as stacked bars, W1 … the current week. It counts exercise types `weighted`, `bodyweight_plus`, `bodyweight_reps`, `skill_ladder`, `timed`. Warm-ups, mobility, HIIT and handstand practice are excluded. Weeks with no logs show as empty bars. Builder's call: if imported groups lack per-set rows, count their stated set count and document it. The caption gives the current week's total sets.
+`/chart volume`: **weekly volume per muscle group** = hard sets per plan week per `exercises.muscle_group`, as stacked bars, W1 … the current week. Tonnage is out because it mixes bar totals, per-hand, stack and bodyweight units. It counts every logged working set of types `weighted`, `bodyweight_plus`, `bodyweight_reps`, `skill_ladder`. RIR is not required (usually only the last set has one). Excluded: warm-ups, mobility, HIIT, handstand practice, `timed` holds, and the Thursday class (no per-set data). Weeks with no logs show as empty bars. Builder's call: if imported groups lack per-set rows, count their stated set count and document it. The caption gives the current week's total sets.
 
-`/chart` with no argument → a usage line: `/chart squat`, `/chart pull-up`, `/chart volume`. An unknown or ambiguous name uses the same lookup and choice buttons as `/history` (`lookupExercise`), with a new callback prefix `ch:<exerciseId>`.
+`/chart` with no argument → the usage line (`/chart squat`, `/chart pull-up`, `/chart volume`) **plus buttons** for the main lifts (`is_main_lift`) and one for "Volume", like the `/history` choice. An unknown or ambiguous name uses the same lookup and choice buttons as `/history` (`lookupExercise`). New callback prefix: `ch:<exerciseId>`, and `ch:v` for volume.
 
 ### Charts: in chat (`render_chart`)
 
 - A read tool in the AI loop: `render_chart({ metric: "load" | "reps" | "volume", exercise?: string, weeks?: number })`.
 - The tool resolves the exercise, builds the series, and returns the **computed facts** to the model (first/last/best values with dates, session count). It also records a pending chart on the turn. It doesn't send anything itself.
 - After the loop, the flow sends the reply text, then the chart photo (code caption). At most one chart per message; a second call in the same turn returns "one chart per message" to the model.
-- `metric: "load"` and `"reps"` render the same two-panel image as `/chart`, minus the panel not asked for. `"volume"` renders the volume chart.
+- `metric: "load"` renders the e1RM panel (for types without load math it falls back to the reps/seconds panel and the facts say so); `"reps"` renders the most-reps panel (seconds for `timed`); `"volume"` renders the volume chart. `/chart <exercise>` picks by type as above.
+- The image is sent after the text reply in the same invocation, **also when the number guard replaces the model's text with the code fallback**.
 - Unknown / ambiguous exercise → the tool result says so with the candidates. The model asks; no image.
 - Voice works through the same path: a read, so no card. The reply gets the "🎤 heard" prefix as today.
 
@@ -113,11 +116,12 @@ All series are computed by pure functions from the log tables (bot and import ro
 - grammY `replyWithPhoto(new InputFile(png, "chart.png"), { caption, parse_mode: "HTML" })` for commands and chat. Builder's call: a `Photo` variant next to `Message` in `log-format.ts`, or a separate helper.
 - PNG width ~1000 px (Telegram compresses photos; 2× zoom of an 800-wide chart is fine).
 - Rendering runs inside the webhook invocation (≈ 0.1 s; well inside the 90 s `maxDuration`). No follow-up job needed (SPEC §3 allows one if needed).
+- **The chart module is loaded lazily** (`await import("../charts/index.js")` when a chart is requested), so Vega and resvg don't slow every webhook cold start.
 
 ## Constraints (from the codebase and SPEC)
 
 - Numbers: everything shown is formatted in code. Series values are rounded for display with the same helpers as `/history` (builder's call to reuse `src/bot/query-format.ts` or `log-format.ts` helpers).
-- Callback data ≤ 64 bytes. New prefixes: `rd:<l>:m[:<yyyymmdd>]`, `ch:<exerciseId>`. Document them in CLAUDE.md with the others.
+- Callback data ≤ 64 bytes. New prefixes: `rd:<l>:m:<yyyymmdd>`, `ch:<exerciseId>`, `ch:v`. Document them in CLAUDE.md with the others.
 - `bot.ts` `sendSession` is likely touched by M7. M8 doesn't change it. The morning text is built in a new function that calls `getSession` + `loadSessionAdvice` + `formatSession`, and `/today` keeps its own path. Builder's call: a shared `renderToday(db, date, now)` in a new file, used by the job and by the `:m` tap re-render.
 - Jobs: `run` returns `"sent" | "skipped"`; `JobContext.send` sends one `Message` (text + keyboard). The Friday class card is a second `send` call in the same run. Mark-done after both, like today (the known "send twice if mark-done fails" issue stays as is).
 - `/chart` must be registered in `scripts/telegram-setup.ts` `setMyCommands` and in `HELP_TEXT`. Re-running `pnpm telegram:setup` against production is a user step.
@@ -148,3 +152,21 @@ All series are computed by pure functions from the log tables (bot and import ro
 ## Follow-up (not M8)
 
 - **Weekly check-in and closing the week:** `/done`, `/checkin`, the Friday 20:00 check-in job (SPEC 5.6b), the recovery score feeding readiness, and the Sunday summary into memory (5.6e). Proposed as its own milestone.
+
+## Independent review (18 Oct 2026)
+
+An independent agent answered 13 neutral design questions without seeing this draft. It agreed on: scope (check-in features out of M8), readiness (freeze at send, a tap re-freezes until the first log, then counts for tomorrow), edit the morning message in place, the 06:00–10:00 window with a skip once a log exists, `/today` content reused, Friday class card first then the session plus a refresh after Save, "plan finished" once on Mon 21 Dec, the renderer, hard sets for volume, and `render_chart` as a read tool with max one chart per message.
+
+Changed in this document because of it:
+- `/chart <exercise>` plots **e1RM only** for load (no top-set line) and **most reps in one set** only (no total reps). Both panels appear only for pull-ups.
+- Deload/test weeks are shaded with no e1RM point; import-only points are drawn as estimates.
+- `timed` holds are left out of weekly volume.
+- `/chart` with no argument also shows buttons for the main lifts and "Volume" (`ch:v`).
+- The chart module is imported lazily; the chart image is sent even when the number guard falls back.
+- The tap confirmation line reads "Noted: 😴".
+
+## Open points for the user
+
+- **Repeat morning sends.** If marking the job done fails after the message was sent, the runner re-claims after 5 minutes and sends again while the window is open. With a 4-hour window that could repeat several times (the independent review flagged it). It is a known minor issue in STATUS for the class question. M8 keeps the shared runner unchanged (M9 also adds a job to it). Fixing it properly (mark done in the same step as the send, or store the sent message id) is proposed for M9 hardening.
+- **Morning send vs the chat lease.** The tick sends and freezes readiness outside the chat lease. DB writes are serialised by advisory locks, but a morning message can land between a log and its echo. Accepted.
+- **Check-in milestone timing.** The weekly recovery score (a readiness signal) and the check-in max (pull-up gate) stay missing until the check-in milestone ships. The independent review recommends scheduling it well before W12 (14 Dec).
