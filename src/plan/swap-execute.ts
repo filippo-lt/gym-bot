@@ -6,6 +6,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { logGroups } from "../db/schema/log.js";
 import { equipment, exercises, plans, sessionOverrides } from "../db/schema/plan.js";
 import type { Q } from "../logging/db.js";
+import { dateLabel } from "../logging/describe.js";
 import type { ResolvedSwap } from "../logging/types.js";
 import { addDays } from "../plan-import/build-plan.js";
 import { computeRir } from "../plan-import/rir.js";
@@ -25,11 +26,7 @@ export interface PlanChangeResult {
 export type SwapOutcome = PlanChangeResult | { refused: string };
 
 function dateWords(date: string, today: string): string {
-  if (date === today) return "today";
-  const d = new Date(`${date}T00:00:00Z`);
-  const wd = d.getUTCDay();
-  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return `on ${names[wd]} ${date.slice(8)}`;
+  return date === today ? "today" : `on ${dateLabel(date)}`;
 }
 
 async function ensureExercise(
@@ -89,11 +86,26 @@ async function insertOverrides(
         replacedExerciseId: r.from.id,
         replacementExerciseId: toId,
       })
-      .onConflictDoNothing()
       .returning({ id: sessionOverrides.id });
     if (row) ids.push(row.id);
   }
   return ids;
+}
+
+async function existingOverride(tx: Q, r: ResolvedSwap): Promise<boolean> {
+  if (r.todayItemIds.length === 0) return false;
+  const [o] = await tx
+    .select({ id: sessionOverrides.id })
+    .from(sessionOverrides)
+    .where(
+      and(
+        eq(sessionOverrides.sessionDate, r.referenceDate),
+        eq(sessionOverrides.replacedExerciseId, r.from.id),
+        inArray(sessionOverrides.plannedItemId, r.todayItemIds),
+      ),
+    )
+    .limit(1);
+  return o !== undefined;
 }
 
 async function loggedFrom(tx: Q, r: ResolvedSwap): Promise<boolean> {
@@ -120,6 +132,11 @@ export async function executeSwap(
     if (r.todayItemIds.length === 0) {
       return { refused: `${r.from.name} isn't in the plan for that day; nothing changed.` };
     }
+    if (await existingOverride(tx, r)) {
+      return {
+        refused: `${r.from.name} is already swapped ${dateWords(r.referenceDate, today)}; nothing changed.`,
+      };
+    }
     const to = await ensureExercise(tx, r, alias);
     const overrideIds = await insertOverrides(tx, r, to.id, r.todayItemIds);
     return {
@@ -144,8 +161,14 @@ export async function executeSwap(
   const [plan] = await tx.select({ id: plans.id }).from(plans).orderBy(desc(plans.id)).limit(1);
   if (!plan) throw new Error("No plan found in the database.");
 
-  const to = await ensureExercise(tx, r, alias);
+  const todayOverride = r.referenceDate === today && !logged && r.todayItemIds.length > 0;
+  if (todayOverride && (await existingOverride(tx, r))) {
+    return {
+      refused: `${r.from.name} is already swapped today; nothing changed.`,
+    };
+  }
   const latest = await loadLatestContent(tx, plan.id);
+  const to = await ensureExercise(tx, r, alias);
 
   const [fromRow] = await tx
     .select({ type: exercises.type })
@@ -209,7 +232,7 @@ export async function executeSwap(
   }
 
   let overrideIds: number[] = [];
-  if (r.referenceDate === today && !logged && r.todayItemIds.length > 0) {
+  if (todayOverride) {
     overrideIds = await insertOverrides(tx, r, to.id, r.todayItemIds);
   }
   return {

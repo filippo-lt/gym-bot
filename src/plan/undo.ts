@@ -10,14 +10,14 @@ import {
   planWeeks,
   sessionOverrides,
 } from "../db/schema/plan.js";
-import { proposals, suggestions } from "../db/schema/progression.js";
+import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
 import type { Q } from "../logging/db.js";
 import type { PlanChangeResult } from "./swap-execute.js";
 
 const TOO_LATE = "Too late to undo: it's already in use. Swap back instead.";
 type UndoOutcome = { ok: true } | { ok: false; reply: string };
 
-async function versionInUse(tx: Q, versionId: number): Promise<boolean> {
+async function versionInUse(tx: Q, versionId: number, ownOverrideIds: number[]): Promise<boolean> {
   const [v] = await tx
     .select({ planId: planVersions.planId })
     .from(planVersions)
@@ -57,6 +57,13 @@ async function versionInUse(tx: Q, versionId: number): Promise<boolean> {
     .limit(1);
   if (sg) return true;
 
+  // A later one-off swap on one of these items would break the delete.
+  const overrideRows = await tx
+    .select({ id: sessionOverrides.id })
+    .from(sessionOverrides)
+    .where(inArray(sessionOverrides.plannedItemId, ids));
+  if (overrideRows.some((o) => !ownOverrideIds.includes(o.id))) return true;
+
   // An open card may still point at one of these items (text search on the jsonb).
   const open = await tx
     .select({ actions: sql<string>`${pendingActions.actions}::text` })
@@ -85,7 +92,7 @@ export async function undoPlanChange(
   if (r?.kind !== "plan_change") return { ok: false, reply: "Nothing to undo." };
   if (r.undone) return { ok: false, reply: "Already undone." };
 
-  if (r.versionId !== null && (await versionInUse(tx, r.versionId))) {
+  if (r.versionId !== null && (await versionInUse(tx, r.versionId, r.overrideIds))) {
     return { ok: false, reply: TOO_LATE };
   }
 
@@ -150,7 +157,17 @@ export async function undoPlanChange(
       .from(suggestions)
       .where(eq(suggestions.exerciseId, id))
       .limit(1);
-    if (!a && !b && !c && !d) await tx.delete(exercises).where(eq(exercises.id, id));
+    const [e] = await tx
+      .select({ x: sessionItems.id })
+      .from(sessionItems)
+      .where(eq(sessionItems.chosenExerciseId, id))
+      .limit(1);
+    const [f] = await tx
+      .select({ x: readinessLogs.id })
+      .from(readinessLogs)
+      .where(eq(readinessLogs.exerciseId, id))
+      .limit(1);
+    if (!a && !b && !c && !d && !e && !f) await tx.delete(exercises).where(eq(exercises.id, id));
   }
 
   await tx

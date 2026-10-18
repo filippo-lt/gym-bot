@@ -367,14 +367,14 @@ describe("executeSwap: rest of plan", () => {
     });
     expect(rows[0]?.equipment_id).not.toBeNull();
     // Same slug existing by now: reused, not created again.
-    const again = await run(
-      await resolved(
-        swapInput({ exercise: { said: "squat" }, scope: "today", replacement: bandSpec }),
-      ),
-      "x",
+    const second = await resolved(
+      swapInput({ exercise: { said: "squat" }, scope: "today", replacement: bandSpec }),
     );
+    const again = await run(second, "x");
     // resolveSwap now finds it in the catalog, so it is no longer new.
     if ("refused" in again) throw new Error(again.refused);
+    const [ov] = await sql`select session_date from session_overrides order by id desc limit 1`;
+    expect(ov?.session_date).toBe(second.referenceDate);
     expect(again.createdExerciseId).toBeNull();
     expect(
       await num("select count(*)::int as n from exercises where slug = 'band_pull_apart'"),
@@ -399,6 +399,36 @@ describe("executeSwap: rest of plan", () => {
     const out = await run(r);
     race.on = false;
     expect(out).toEqual({ refused: "The plan changed meanwhile, try again." });
+  });
+});
+
+describe("executeSwap: refusals", () => {
+  it("refuses rest with days null when several weekdays remain", async () => {
+    const r = await resolved(
+      swapInput({ exercise: { said: "squat" }, scope: "rest", days: "every_day" }),
+    );
+    const out = await run({ ...r, days: null, futureWeekdays: ["tue", "fri"] });
+    expect("refused" in out).toBe(true);
+    expect(await num("select count(*)::int as n from plan_versions")).toBe(1);
+  });
+
+  it("refuses a second one-off swap of the same item and day", async () => {
+    const r = await resolved(swapInput({ scope: "today" }));
+    await run(r);
+    const out = await run(r);
+    expect("refused" in out).toBe(true);
+    expect(await num("select count(*)::int as n from session_overrides")).toBe(1);
+  });
+
+  it("creates no exercise when refused", async () => {
+    const r = await resolved(swapInput({ scope: "today", replacement: bandSpec }));
+    const [face] = await sql`select id from exercises where slug = 'face_pull'`;
+    await sql`insert into log_groups (session_date, performed_at, exercise_id, source) values (${TODAY}, now(), ${face?.id}, 'text')`;
+    const out = await run(r);
+    expect("refused" in out).toBe(true);
+    expect(
+      await num("select count(*)::int as n from exercises where slug = 'band_pull_apart'"),
+    ).toBe(0);
   });
 });
 
@@ -525,6 +555,30 @@ describe("undoPlanChange", () => {
     );
     if (!r.ok) throw new Error(r.error);
     await executeActions(db, "p:8", [r.action], { now: new Date("2026-10-19T09:01:00Z") });
+    const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
+    expect(u.ok).toBe(false);
+  });
+
+  it("is refused when a later one-off swap sits on the version's items", async () => {
+    await saved();
+    const [it5] = await sql`
+      select pi.id from planned_items pi join plan_versions v on v.id = pi.plan_version_id
+      where v.version = 2 and pi.week = 5 and pi.weekday = 'mon' and pi.item_order = 0`;
+    const [a] = await sql`select id from exercises where slug = 'leg_press'`;
+    const [b] = await sql`select id from exercises where slug = 'push_up'`;
+    await sql`insert into session_overrides (session_date, planned_item_id, replaced_exercise_id, replacement_exercise_id) values ('2026-10-26', ${it5?.id}, ${a?.id}, ${b?.id})`;
+    const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
+    expect(u.ok).toBe(false);
+    expect(await num("select count(*)::int as n from plan_versions")).toBe(2);
+  });
+
+  it("is refused when a suggestion references the version's items", async () => {
+    await saved();
+    const [it5] = await sql`
+      select pi.id from planned_items pi join plan_versions v on v.id = pi.plan_version_id
+      where v.version = 2 and pi.week = 5 and pi.weekday = 'mon' and pi.item_order = 0`;
+    const [a] = await sql`select id from exercises where slug = 'leg_press'`;
+    await sql`insert into suggestions (session_date, planned_item_id, sub_item, exercise_id, sets, reps_min, reps_max, rir_min, rir_max, rir_mid) values ('2026-10-26', ${it5?.id}, 0, ${a?.id}, 3, 15, 15, 1, 3, 2)`;
     const u = await db.transaction((tx) => undoPlanChange(tx, "p:7", 0));
     expect(u.ok).toBe(false);
   });
