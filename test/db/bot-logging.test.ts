@@ -10,7 +10,8 @@ import {
 } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
 import { BUDGET_REACHED, EXPIRED, STALE } from "../../src/bot/log-format.js";
-import { connect, MON, resetAndSeed } from "./logging-fixture.js";
+import { saveAlias } from "../../src/logging/memory.js";
+import { connect, exId, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
 afterAll(async () => {
@@ -145,6 +146,33 @@ describe("direct logging", () => {
     expect(msgs.map((m) => m.role)).toEqual(["user", "assistant"]);
   });
 
+  it("records button outcomes in the conversation and strips Markdown from replies", async () => {
+    const t = setup([tool("log_sets", squatLog()), ok]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    const last = await sql`select role, text from conversation_messages order by id desc limit 1`;
+    expect(last[0]).toMatchObject({ role: "assistant" });
+    expect(String(last[0]?.text)).toMatch(/^Removed \(Undo button\): squat 3 × 8/);
+  });
+
+  it("strips Markdown from replies", async () => {
+    const m = setup([turn(text("**Log sets:** use `bench`\n## Plan"))]);
+    await m.say("what can you do");
+    expect(m.texts().at(-1)).toBe("Log sets: use bench\nPlan");
+  });
+
+  it("✅ on a card tells the model it was saved", async () => {
+    const t = setup([turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog())), ok]);
+    await t.say("bench and lateral");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    const rows =
+      await sql`select text from conversation_messages where role = 'assistant' order by id`;
+    expect(rows.map((r) => String(r.text))).toEqual([
+      expect.stringMatching(/^Asked to confirm: /),
+      expect.stringMatching(/^Saved \(user confirmed\): bench_press 2 × 6/),
+    ]);
+  });
+
   it("asks RIR, and the tap writes it and drops the row", async () => {
     const t = setup([tool("log_sets", benchLog()), ok]);
     await t.say("bench 2x6 55");
@@ -226,6 +254,72 @@ describe("direct logging", () => {
   });
 });
 
+describe("button outcomes reach the conversation", () => {
+  const lastAssistant = async () =>
+    String(
+      (
+        await sql`select text from conversation_messages where role = 'assistant' order by id desc limit 1`
+      )[0]?.text,
+    );
+
+  it("rir, clean, undo, undo of an edit and a dead Undo", async () => {
+    const t = setup([tool("log_sets", benchLog()), ok]);
+    await t.say("bench 2x6 55");
+    const rir = t.buttons(t.lastSent()).filter((b) => b.data.startsWith("rir:"));
+    await t.tap(rir[2]?.data as string, 1001);
+    expect(await lastAssistant()).toMatch(/^RIR 2 set on bench_press 2 × 6/);
+    const undo = t.buttons(t.edits().at(-1))[0]?.data as string;
+    await t.tap(undo, 1001);
+    expect(await lastAssistant()).toMatch(/^Removed \(Undo button\): bench_press/);
+    await t.tap(undo, 1001);
+    expect(await lastAssistant()).toMatch(/already removed/);
+    await t.tap(rir[2]?.data as string, 1001);
+    expect(await lastAssistant()).toMatch(/already removed/);
+  });
+
+  it("clean reps", async () => {
+    const t = setup([tool("log_sets", log("pull_up", { count: 3, reps: 5 }, { rir: 2 })), ok]);
+    await t.say("pull ups 3x5");
+    const clean = t.buttons(t.lastSent()).filter((b) => b.data.startsWith("cl:"));
+    await t.tap(clean[0]?.data as string, 1001);
+    expect(await lastAssistant()).toMatch(/^Marked clean: pull_up/);
+  });
+
+  it("undo of an edit, and a repeated tap on it", async () => {
+    const t = setup([
+      tool("log_sets", benchLog()),
+      ok,
+      tool("edit_last_entry", {
+        changes: { load_kg: 57.5 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      }),
+      ok,
+    ]);
+    await t.say("bench 2x6 55");
+    await t.say("no it was 57.5");
+    const undo = t.buttons(t.lastSent())[0]?.data as string;
+    await t.tap(undo, 1002);
+    expect(await lastAssistant()).toMatch(/^Edit undone, log is back to: bench_press/);
+    await sql`update log_entries set load_kg = 60`;
+    await t.tap(undo, 1002);
+    expect(await lastAssistant()).toMatch(/^Edit not undone/);
+  });
+
+  it("memory delete and a dead ✅", async () => {
+    await saveAlias(db, "sq", await exId(sql, "squat"));
+    const t = setup();
+    await t.say("/memory");
+    const del = t.buttons(t.lastSent())[0]?.data as string;
+    await t.tap(del, 1001);
+    expect(await lastAssistant()).toBe("Memory item deleted.");
+    await t.tap(del, 1001);
+    expect(await lastAssistant()).toMatch(/already deleted/);
+    await t.tap("pa:9999:ok", 1001);
+    expect(await lastAssistant()).toMatch(/not found/);
+  });
+});
+
 describe("confirm cards", () => {
   const two = () => [turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog())), ok];
 
@@ -301,8 +395,14 @@ describe("confirm cards", () => {
     await t.say("bench and lateral");
     const no = t.buttons(t.lastSent())[2]?.data as string;
     await t.tap(no, 1001);
-    expect(String(t.edits().at(-1)?.payload.text)).toBe("Cancelled, nothing saved.");
+    expect(String(t.edits().at(-1)?.payload.text)).toBe(
+      "Cancelled, nothing saved: bench_press 2 × 6 · 55 kg; lateral_raise 2 × 15 · 6 kg",
+    );
     expect(await count("log_groups")).toBe(0);
+    // the model sees the outcome next time
+    const last = await sql`select role, text from conversation_messages order by id desc limit 1`;
+    expect(last[0]?.role).toBe("assistant");
+    expect(String(last[0]?.text)).toContain("Cancelled by the user");
   });
 
   it("a far-off load asks first and says why", async () => {
@@ -638,7 +738,9 @@ describe("an open request blocks direct writes (round 2)", () => {
     expect(card).toContain("57.5 kg");
     expect(await count("log_groups")).toBe(0);
     // the old card is retired
-    const retired = t.edits().find((c) => c.payload.text === "Replaced by a newer request.");
+    const retired = t
+      .edits()
+      .find((c) => String(c.payload.text).startsWith("Replaced by a newer request: bench_press"));
     expect(retired?.payload.message_id).toBe(1001);
     expect(
       (await sql`select status from pending_actions order by id`).map((r) => r.status),

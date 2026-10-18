@@ -49,7 +49,10 @@ export const logSetsInputSchema = z.strictObject({
     /** The words the user used, e.g. "fp". Used for aliases and fuzzy matching. */
     said: z.string().min(1).max(100),
   }),
-  /** Omit or "today" for today's session; a weekday only when the user named it. */
+  /**
+   * Omit unless the user named a day. "today" only when the user says it was today or rejects an
+   * earlier day (no make-up of an earlier planned session is then proposed); a weekday when named.
+   */
   day: z.enum(DAY_VALUES).optional(),
   /** Either one object per set, or a uniform block {count, reps, load_kg, ...}. */
   sets: z.union([z.array(setInputSchema).min(1).max(20), uniformSetsSchema]),
@@ -262,11 +265,27 @@ export interface BeforeGroup {
   note: string | null;
 }
 
+/** A session_items row as it was before a bot write touched it (null = there was no row). */
+export interface SessionItemBefore {
+  status: "planned" | "done" | "modified" | "skipped";
+  chosenExerciseId: number | null;
+  source: "bot" | "import";
+}
+
 export type LedgerResult =
-  | { kind: "log"; groupId: number }
+  | {
+      kind: "log";
+      groupId: number;
+      /** The planned item the log marked done (the state below belongs to it). */
+      plannedItemId?: number | null;
+      /** Undo restores this; absent on legacy rows. */
+      sessionItemBefore?: SessionItemBefore | null;
+    }
   | {
       kind: "edit";
       groupId: number;
+      /** State of the new planned item's row before an edit moved the group onto it. */
+      sessionItemBefore?: SessionItemBefore | null;
       before: ResolvedEntry[];
       beforeGroup?: BeforeGroup;
       /** Values written by the edit: Undo only restores while these are still current. */
@@ -298,6 +317,8 @@ export interface PromptContext {
   todayItems: { name: string; options: Candidate[]; prescription: string; status: string }[];
   aliases: { said: string; slug: string; name: string }[];
   pending: { summary: string; awaitingEdit: boolean } | null;
+  /** Newest bot logs, formatted in code: edit_last_entry targets the first one. */
+  lastSaved: { summary: string; sessionDate: string }[];
   recent: { role: "user" | "assistant"; text: string }[];
 }
 

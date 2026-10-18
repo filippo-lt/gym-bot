@@ -6,6 +6,8 @@ import { HistoryOpenIssuesError, importHistory } from "../../src/db/import-histo
 import * as schema from "../../src/db/schema/index.js";
 import { seedPlan } from "../../src/db/seed-plan.js";
 import { buildHistoryImport, hashExport } from "../../src/history-import/index.js";
+import { executeActions, undoGroup } from "../../src/logging/execute.js";
+import { stageLogSets } from "../../src/logging/resolve.js";
 import {
   EQUIPMENT,
   GOOD_OVERRIDES,
@@ -24,7 +26,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await sql`truncate table log_entries, log_groups, session_items, class_logs, weekly_metrics, bodyweight_logs, planned_item_options, planned_items, plan_weeks, plan_versions, plans, hspu_ladder, exercises, equipment restart identity cascade`;
+  await sql`truncate table write_ledger, log_entries, log_groups, session_items, class_logs, weekly_metrics, bodyweight_logs, planned_item_options, planned_items, plan_weeks, plan_versions, plans, hspu_ladder, exercises, equipment restart identity cascade`;
   await seedPlan(db, planFixture());
 });
 
@@ -85,6 +87,76 @@ describe("importHistory", () => {
     const [bench2] =
       await sql`select count(*)::int as n from session_items where planned_item_id = ${bench?.id}`;
     expect(bench2?.n).toBe(1);
+  });
+
+  it("a re-import keeps an item done when a bot log exists for it", async () => {
+    await importHistory(db, build(), opts);
+    const [bench] = await sql`select id from planned_items where item_key = 'w01-mon-03-0'`;
+    const [sq] = await sql`select id from exercises where slug = 'squat'`;
+    await sql`update session_items set status = 'skipped' where import_row_key = '2026-09-28/Bench press/3'`;
+    await sql`insert into log_groups (session_date, performed_at, planned_item_id, exercise_id, source) values ('2026-09-28', now(), ${bench?.id}, ${sq?.id}, 'text')`;
+    const summary = await importHistory(db, build(), opts);
+    expect(summary.clashes.some((c) => c.includes("a bot log exists"))).toBe(true);
+    const [row] =
+      await sql`select status, source from session_items where planned_item_id = ${bench?.id} and session_date = '2026-09-28'`;
+    expect(row).toEqual({ status: "done", source: "import" });
+  });
+
+  it("restores a done row for a bot-logged slot the export has no row for", async () => {
+    await importHistory(db, build(), opts);
+    const [free] = await sql`
+      select p.id, p.weekday from planned_items p
+      where p.week = 1 and p.id not in (select planned_item_id from session_items) limit 1`;
+    const date = {
+      mon: "2026-09-28",
+      tue: "2026-09-29",
+      wed: "2026-09-30",
+      thu: "2026-10-01",
+      fri: "2026-10-02",
+    }[String(free?.weekday) as "mon"];
+    const [sq] = await sql`select id from exercises where slug = 'squat'`;
+    await sql`insert into session_items (session_date, planned_item_id, status, source, import_row_key) values (${date}, ${free?.id}, 'skipped', 'import', 'stale-row')`;
+    await sql`insert into log_groups (session_date, performed_at, planned_item_id, exercise_id, source) values (${date}, now(), ${free?.id}, ${sq?.id}, 'text')`;
+    await importHistory(db, build(), opts);
+    const [row] =
+      await sql`select status, source, chosen_exercise_id from session_items where planned_item_id = ${free?.id}`;
+    expect(row).toEqual({ status: "done", source: "bot", chosen_exercise_id: sq?.id });
+  });
+
+  it("log on an import row, re-import, then undo: the row goes back to the state recorded at log time", async () => {
+    await importHistory(db, build(), opts);
+    // An imported row with no imported log group (the common case for weeks 2-3).
+    const [slot] = await sql`
+      select s.session_date::text as d, s.planned_item_id as item, s.import_row_key as k, e.slug
+      from session_items s
+      join planned_item_options o on o.planned_item_id = s.planned_item_id
+      join exercises e on e.id = o.exercise_id
+      where s.source = 'import' and e.type = 'weighted' and not exists (
+        select 1 from log_groups g where g.session_date = s.session_date and g.planned_item_id = s.planned_item_id)
+      limit 1`;
+    if (!slot) throw new Error("fixture has no import row without a group");
+    await sql`update session_items set status = 'skipped' where import_row_key = ${slot.k}`;
+    const when = new Date(`${slot.d}T08:00:00Z`);
+    const a = await stageLogSets(
+      db,
+      {
+        exercise: { slug: slot.slug, said: slot.slug },
+        sets: { count: 2, reps: 6, load_kg: 55 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      },
+      when,
+    );
+    if (!a.ok) throw new Error(a.error);
+    const r = await executeActions(db, "u:1", [a.action], { now: when });
+    const groupId = r.status === "done" && r.results[0]?.kind === "log" ? r.results[0].groupId : 0;
+    await importHistory(db, build(), opts);
+    await undoGroup(db, groupId);
+    // Documented: undo restores the status recorded when the bot logged (skipped here, even
+    // though the re-import reset the row from the export); it stays an import row, never deleted.
+    const [row] =
+      await sql`select status, source from session_items where import_row_key = ${slot.k}`;
+    expect(row).toEqual({ status: "skipped", source: "import" });
   });
 
   it("never touches non-import class, metric and bodyweight rows", async () => {

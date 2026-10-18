@@ -16,6 +16,7 @@ import { activeAliases, normalizeAlias } from "./memory.js";
 import {
   addDays,
   type DayPlan,
+  isSettled,
   loadDayPlan,
   loadPlanContext,
   type PlanContext,
@@ -254,6 +255,8 @@ async function findPlanned(
   exerciseId: number,
   today: string,
   target: DayPlan,
+  /** False when the user said "today" explicitly: no make-up search, only today's plan. */
+  allowMakeup: boolean,
 ): Promise<PlannedMatch> {
   const item = pickItem(target.items, exerciseId);
   if (item) {
@@ -270,13 +273,14 @@ async function findPlanned(
     hspuStepId: null,
     sessionDate: today,
   };
-  if (target.date !== today || !ctx) return unplanned;
+  if (!allowMakeup || target.date !== today || !ctx) return unplanned;
   const ref = weekRefFor(ctx, today);
   if (!ref) return unplanned;
   for (let i = Math.min(ref.dayIndex, 5) - 1; i >= 0; i -= 1) {
     const plan = await loadDayPlan(db, ctx, addDays(ref.mondayDate, i));
+    // Imported done/skipped items (no group) are settled: never a make-up target.
     const open = plan.items.find(
-      (it) => !it.hasGroup && it.options.some((o) => o.id === exerciseId),
+      (it) => !it.hasGroup && !isSettled(it.status) && it.options.some((o) => o.id === exerciseId),
     );
     if (open) {
       return {
@@ -361,7 +365,7 @@ export async function resolveLog(
     }) ?? sets.map((st) => checkConflicts(exercise, st)).find((e) => e !== null && e !== undefined);
   if (invalid) return { kind: "error", error: invalid };
 
-  const planned = await findPlanned(db, ctx, exercise.id, today, target);
+  const planned = await findPlanned(db, ctx, exercise.id, today, target, input.day === undefined);
   const entries = buildEntries(exercise, input.sets, { rir: input.rir, clean: input.clean });
   const bwKg = await latestBwKg(db);
   const missing = missingFields(exercise, entries);

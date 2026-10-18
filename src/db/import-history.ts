@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { HistoryImport, HistoryIssue } from "../history-import/types.js";
 import type { Equipment } from "../plan-import/types.js";
 import * as schema from "./schema/index.js";
@@ -174,18 +174,71 @@ export async function importHistory(
         clashes.push(`session_item ${w.import_row_key}: a bot row already exists, kept`);
         return false;
       });
+      // A bot log on the slot wins over what the export says: the item stays done.
+      const botGroups = wanted.length
+        ? await tx
+            .select({ d: schema.logGroups.sessionDate, p: schema.logGroups.plannedItemId })
+            .from(schema.logGroups)
+            .where(
+              and(
+                ne(schema.logGroups.source, "import"),
+                inArray(
+                  schema.logGroups.plannedItemId,
+                  wanted.map((w) => w.plannedItemId),
+                ),
+              ),
+            )
+        : [];
+      const botLogged = new Set(botGroups.map((e) => `${e.d}/${e.p}`));
+      const statusFor = (s: (typeof sessionRows)[number]) => {
+        if (s.status === "done" || !botLogged.has(`${s.session_date}/${s.plannedItemId}`)) {
+          return s.status;
+        }
+        clashes.push(`session_item ${s.import_row_key}: a bot log exists, kept as done`);
+        return "done" as const;
+      };
       for (const batch of chunks(sessionRows)) {
         await tx.insert(schema.sessionItems).values(
           batch.map((s) => ({
             sessionDate: s.session_date,
             plannedItemId: s.plannedItemId,
-            status: s.status,
+            status: statusFor(s),
             chosenExerciseId: s.chosen_exercise_slug ? exerciseId(s.chosen_exercise_slug) : null,
             source: "import" as const,
             importRowKey: s.import_row_key,
           })),
         );
         inserted.session_items += batch.length;
+      }
+
+      // A bot-logged slot the export has no row for (its old import row was deleted above)
+      // still needs its done row.
+      const allBot = await tx
+        .select({
+          d: schema.logGroups.sessionDate,
+          p: schema.logGroups.plannedItemId,
+          e: schema.logGroups.exerciseId,
+        })
+        .from(schema.logGroups)
+        .where(
+          and(ne(schema.logGroups.source, "import"), isNotNull(schema.logGroups.plannedItemId)),
+        )
+        .orderBy(schema.logGroups.id);
+      const slots = new Map<string, { d: string; p: number; e: number }>();
+      for (const g of allBot) slots.set(`${g.d}/${g.p}`, { d: g.d, p: g.p as number, e: g.e });
+      for (const slot of slots.values()) {
+        const rows = await tx
+          .insert(schema.sessionItems)
+          .values({
+            sessionDate: slot.d,
+            plannedItemId: slot.p,
+            status: "done",
+            chosenExerciseId: slot.e,
+            source: "bot",
+          })
+          .onConflictDoNothing()
+          .returning({ id: schema.sessionItems.id });
+        if (rows.length) clashes.push(`session_item ${slot.d}/${slot.p}: restored for a bot log`);
       }
 
       for (const g of result.log_groups) {

@@ -175,6 +175,27 @@ describe("createBot", () => {
       expect(seen).toEqual([]);
     });
 
+    it.each(["/week/help", "/today/memory", "/nope hello"])(
+      "does not send garbled %s (no command entity) to the flow",
+      async (body) => {
+        const { seen, flow } = stubFlow();
+        const { bot, calls } = setup(flow);
+        await bot.handleUpdate({
+          update_id: 700,
+          message: {
+            message_id: 1,
+            date: 0,
+            chat: { id: 42, type: "private", first_name: "F" },
+            from: { id: 42, is_bot: false, first_name: "F" },
+            text: body,
+          },
+        });
+        expect(seen).toEqual([]);
+        expect(calls).toHaveLength(1);
+        expect(String(calls[0]?.payload.text)).toBe("I don't know that command. Try /help.");
+      },
+    );
+
     it("answers non-text messages itself", async () => {
       const { seen, flow } = stubFlow();
       const { bot, calls } = setup(flow);

@@ -53,7 +53,12 @@ export function createBot(deps: BotDeps): Bot {
 
   // Commands the bot does not know must not reach the model.
   bot.on("message:entities:bot_command", (ctx) => ctx.reply(UNKNOWN_COMMAND, html));
-  bot.on("message:text", (ctx) => flow.text(ctx));
+  // Garbled commands ("/week/help") carry no entity but still never reach the model.
+  bot.on("message:text", (ctx) =>
+    ctx.message.text.trimStart().startsWith("/")
+      ? ctx.reply(UNKNOWN_COMMAND, html)
+      : flow.text(ctx),
+  );
   bot.on("message", (ctx) => ctx.reply(TEXT_ONLY, html));
 
   return bot;

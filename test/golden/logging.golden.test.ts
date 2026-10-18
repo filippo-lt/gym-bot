@@ -163,6 +163,7 @@ const promptContext: PromptContext = {
   ],
   aliases: [],
   pending: null,
+  lastSaved: [],
   recent: [],
 };
 const usage: UsageStore = { totals: async () => ({ day: 0, month: 0 }), record: async () => {} };

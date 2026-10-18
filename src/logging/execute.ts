@@ -2,7 +2,7 @@
  * Executor: writes staged actions in one transaction, protected by write_ledger so a retry
  * never duplicates a write and never fails (SPEC 3).
  */
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import { pendingActions, writeLedger } from "../db/schema/agent.js";
 import { logEntries, logGroups, sessionItems } from "../db/schema/log.js";
 import { hspuLadder, plannedItems } from "../db/schema/plan.js";
@@ -13,6 +13,7 @@ import type {
   GroupSnapshot,
   LedgerResult,
   ResolvedEntry,
+  SessionItemBefore,
   StagedAction,
 } from "./types.js";
 
@@ -93,12 +94,32 @@ async function ladderId(q: Q, slug: string | undefined | null): Promise<number |
   return row?.id ?? null;
 }
 
+/**
+ * Marks the planned item done and returns the row as it was (null = none). An existing row keeps
+ * its source: an imported "done" must stay imported, so Undo can never delete it.
+ */
 async function markItemDone(
   q: Q,
   sessionDate: string,
   plannedItemId: number,
   exerciseId: number,
-): Promise<void> {
+): Promise<SessionItemBefore | null> {
+  const key = and(
+    eq(sessionItems.sessionDate, sessionDate),
+    eq(sessionItems.plannedItemId, plannedItemId),
+  );
+  const [existing] = await q
+    .select({
+      status: sessionItems.status,
+      chosenExerciseId: sessionItems.chosenExerciseId,
+      source: sessionItems.source,
+    })
+    .from(sessionItems)
+    .where(key);
+  if (existing) {
+    await q.update(sessionItems).set({ status: "done", chosenExerciseId: exerciseId }).where(key);
+    return existing;
+  }
   await q
     .insert(sessionItems)
     .values({
@@ -108,17 +129,50 @@ async function markItemDone(
       chosenExerciseId: exerciseId,
       source: "bot",
     })
-    .onConflictDoUpdate({
-      target: [sessionItems.sessionDate, sessionItems.plannedItemId],
-      set: { status: "done", chosenExerciseId: exerciseId, source: "bot" },
-    });
+    .onConflictDoNothing();
+  return null;
 }
 
-/** Removes the bot-made session_items row when no group is left for that planned item. */
+/**
+ * The session_items state a group's planned item had before the bot marked it done, from the
+ * ledger (the log, or the edit that moved the group onto this item). undefined = not recorded.
+ */
+async function recordedItemBefore(
+  q: Q,
+  groupId: number,
+  plannedItemId: number,
+): Promise<SessionItemBefore | null | undefined> {
+  const rows = await q
+    .select({ result: writeLedger.result })
+    .from(writeLedger)
+    .where(sql`${writeLedger.result}->>'groupId' = ${String(groupId)}`)
+    .orderBy(desc(writeLedger.createdAt));
+  for (const { result } of rows) {
+    if (result.kind === "log" && (result.plannedItemId ?? plannedItemId) === plannedItemId) {
+      return result.sessionItemBefore;
+    }
+    if (
+      result.kind === "edit" &&
+      result.sessionItemBefore !== undefined &&
+      result.beforeGroup?.plannedItemId !== plannedItemId &&
+      result.afterGroup?.plannedItemId === plannedItemId
+    ) {
+      return result.sessionItemBefore;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Undoes markItemDone when no group is left for that planned item: a row that did not exist
+ * before is deleted (bot rows only), one that did is put back as it was. Without a record
+ * (legacy ledger rows) only a bot row is deleted, so an imported one always survives.
+ */
 async function cleanupSessionItem(
   q: Q,
   sessionDate: string,
   plannedItemId: number | null,
+  before?: SessionItemBefore | null,
 ): Promise<void> {
   if (plannedItemId === null) return;
   const [other] = await q
@@ -127,15 +181,18 @@ async function cleanupSessionItem(
     .where(and(eq(logGroups.sessionDate, sessionDate), eq(logGroups.plannedItemId, plannedItemId)))
     .limit(1);
   if (other) return;
-  await q
-    .delete(sessionItems)
-    .where(
-      and(
-        eq(sessionItems.sessionDate, sessionDate),
-        eq(sessionItems.plannedItemId, plannedItemId),
-        eq(sessionItems.source, "bot"),
-      ),
-    );
+  const key = and(
+    eq(sessionItems.sessionDate, sessionDate),
+    eq(sessionItems.plannedItemId, plannedItemId),
+  );
+  if (before) {
+    await q
+      .update(sessionItems)
+      .set({ status: before.status, chosenExerciseId: before.chosenExerciseId })
+      .where(key);
+    return;
+  }
+  await q.delete(sessionItems).where(and(key, eq(sessionItems.source, "bot")));
 }
 
 const groupFields = (g: typeof logGroups.$inferSelect): BeforeGroup => ({
@@ -168,8 +225,14 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
       if (r.entries.length > 0) {
         await tx.insert(logEntries).values(r.entries.map((e) => entryValues(groupId, e)));
       }
-      if (r.plannedItem) await markItemDone(tx, r.sessionDate, r.plannedItem.id, r.exercise.id);
-      return { kind: "log", groupId };
+      if (!r.plannedItem) return { kind: "log", groupId, plannedItemId: null };
+      const sessionItemBefore = await markItemDone(
+        tx,
+        r.sessionDate,
+        r.plannedItem.id,
+        r.exercise.id,
+      );
+      return { kind: "log", groupId, plannedItemId: r.plannedItem.id, sessionItemBefore };
     }
     case "edit_group": {
       const gid = a.before.groupId;
@@ -212,11 +275,16 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
           .set(pickFields(e, fields))
           .where(and(eq(logEntries.groupId, gid), eq(logEntries.setIndex, setIndex)));
       }
-      if (exerciseChanged && newPlanned !== g.plannedItemId) {
-        await cleanupSessionItem(tx, g.sessionDate, g.plannedItemId);
+      if (exerciseChanged && newPlanned !== g.plannedItemId && g.plannedItemId !== null) {
+        const old = await recordedItemBefore(tx, gid, g.plannedItemId);
+        await cleanupSessionItem(tx, g.sessionDate, g.plannedItemId, old);
       }
+      let movedOnto: SessionItemBefore | null | undefined;
       if (exerciseChanged && newPlanned !== null) {
-        await markItemDone(tx, g.sessionDate, newPlanned, a.after.exercise.id);
+        const prior = await markItemDone(tx, g.sessionDate, newPlanned, a.after.exercise.id);
+        // Only a move onto another item has a "before" to restore; on the same item the log's own
+        // record still holds.
+        if (newPlanned !== g.plannedItemId) movedOnto = prior;
       }
       const [g2] = await tx.select().from(logGroups).where(eq(logGroups.id, gid));
       const updated = await groupSnapshot(tx, gid);
@@ -227,6 +295,7 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
         beforeGroup,
         after: updated?.entries ?? a.after.entries,
         afterGroup: g2 ? groupFields(g2) : undefined,
+        ...(movedOnto !== undefined ? { sessionItemBefore: movedOnto } : {}),
       };
       return result;
     }
@@ -244,8 +313,12 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
 async function deleteGroup(q: Q, groupId: number): Promise<GroupSnapshot | null> {
   const snap = await groupSnapshot(q, groupId);
   if (!snap) return null;
+  const before =
+    snap.plannedItemId === null
+      ? undefined
+      : await recordedItemBefore(q, groupId, snap.plannedItemId);
   await q.delete(logGroups).where(eq(logGroups.id, groupId));
-  await cleanupSessionItem(q, snap.sessionDate, snap.plannedItemId);
+  await cleanupSessionItem(q, snap.sessionDate, snap.plannedItemId, before);
   return snap;
 }
 
@@ -424,7 +497,7 @@ export async function undoEdit(
         .set(Object.fromEntries(groupDiff.map((k) => [k, bg[k]])))
         .where(eq(logGroups.id, gid));
       if (groupDiff.includes("plannedItemId") && bg.plannedItemId !== g.plannedItemId) {
-        await cleanupSessionItem(tx, g.sessionDate, g.plannedItemId);
+        await cleanupSessionItem(tx, g.sessionDate, g.plannedItemId, result.sessionItemBefore);
         if (bg.plannedItemId !== null) {
           await markItemDone(tx, g.sessionDate, bg.plannedItemId, bg.exerciseId);
         }

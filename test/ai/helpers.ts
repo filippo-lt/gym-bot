@@ -74,5 +74,6 @@ export const promptContext: PromptContext = {
   todayItems: [],
   aliases: [],
   pending: null,
+  lastSaved: [],
   recent: [],
 };
