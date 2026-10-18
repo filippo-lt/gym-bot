@@ -22,11 +22,23 @@ export async function downloadTelegramFile(args: {
     throw new FileTooLargeError(maxBytes);
   }
   if (!file.file_path) throw new Error("telegram file has no path");
-  const res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+  // Network errors can echo the token-bearing URL: never let one escape.
+  const failed = () => new Error("telegram file download failed");
+  let res: Response;
+  try {
+    res = await fetchImpl(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+  } catch {
+    throw failed();
+  }
   if (!res.ok) throw new Error(`telegram file download failed (HTTP ${res.status})`);
   const declared = Number(res.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) throw new FileTooLargeError(maxBytes);
-  const bytes = new Uint8Array(await res.arrayBuffer());
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await res.arrayBuffer());
+  } catch {
+    throw failed();
+  }
   if (bytes.byteLength > maxBytes) throw new FileTooLargeError(maxBytes);
   return bytes;
 }

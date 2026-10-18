@@ -152,6 +152,7 @@ describe("createBot", () => {
       const seen: string[] = [];
       const flow: Flow = {
         text: async (ctx) => void seen.push(`text:${ctx.message?.text}`),
+        voice: async () => void seen.push("voice"),
         callback: async (ctx) => void seen.push(`cb:${ctx.callbackQuery?.data}`),
         undoCommand: async () => void seen.push("undo"),
         memoryCommand: async () => void seen.push("memory"),
@@ -208,6 +209,22 @@ describe("createBot", () => {
       },
     );
 
+    it("routes voice notes to the flow", async () => {
+      const { seen, flow } = stubFlow();
+      const { bot } = setup(flow);
+      await bot.handleUpdate({
+        update_id: 601,
+        message: {
+          message_id: 1,
+          date: 0,
+          chat: { id: 42, type: "private", first_name: "F" },
+          from: { id: 42, is_bot: false, first_name: "F" },
+          voice: { file_id: "f", file_unique_id: "u", duration: 3 },
+        },
+      });
+      expect(seen).toEqual(["voice"]);
+    });
+
     it("answers non-text messages itself", async () => {
       const { seen, flow } = stubFlow();
       const { bot, calls } = setup(flow);
@@ -218,7 +235,15 @@ describe("createBot", () => {
           date: 0,
           chat: { id: 42, type: "private", first_name: "F" },
           from: { id: 42, is_bot: false, first_name: "F" },
-          voice: { file_id: "f", file_unique_id: "u", duration: 3 },
+          sticker: {
+            file_id: "f",
+            file_unique_id: "u",
+            type: "regular",
+            width: 1,
+            height: 1,
+            is_animated: false,
+            is_video: false,
+          },
         },
       });
       expect(seen).toEqual([]);
@@ -380,6 +405,7 @@ describe("query commands", () => {
     const seenByFlow: string[] = [];
     const flow: Flow = {
       text: async () => {},
+      voice: async () => {},
       callback: async (ctx) => void seenByFlow.push(String(ctx.callbackQuery?.data)),
       undoCommand: async () => {},
       memoryCommand: async () => {},

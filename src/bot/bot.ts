@@ -11,7 +11,7 @@ import { parseHistoryCallback } from "./callbacks.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import { HELP_TEXT, type Message, TEXT_ONLY, UNKNOWN_COMMAND } from "./log-format.js";
-import { type AiSource, createFlow, type Flow } from "./logging-flow.js";
+import { type AiSource, createFlow, type Flow, type MediaSource } from "./logging-flow.js";
 import {
   formatHistory,
   formatHistoryChoice,
@@ -31,6 +31,8 @@ export interface BotDeps {
   transformer?: Transformer;
   /** The AI model and token caps; a function is called only when free text arrives. */
   ai?: AiSource;
+  /** Voice: STT provider and file download; commands and text work without it. */
+  media?: MediaSource;
   /** Test seam: replace the DB queries. */
   sessions?: {
     getSession: (db: Db, date: string) => Promise<Session>;
@@ -62,7 +64,8 @@ export function createBot(deps: BotDeps): Bot {
   const bot = new Bot(deps.token, deps.botInfo ? { botInfo: deps.botInfo } : undefined);
   if (deps.transformer) bot.api.config.use(deps.transformer);
   const queries = deps.sessions ?? { getSession, getWeek };
-  const flow = deps.flow ?? createFlow({ db: deps.db, now: deps.now, ai: deps.ai });
+  const flow =
+    deps.flow ?? createFlow({ db: deps.db, now: deps.now, ai: deps.ai, media: deps.media });
   const reads = deps.reads ?? {
     lookupExercise,
     getExerciseHistory: (db: Db, id: number) => getExerciseHistory(db, id),
@@ -182,6 +185,7 @@ export function createBot(deps: BotDeps): Bot {
       ? ctx.reply(UNKNOWN_COMMAND, html)
       : flow.text(ctx),
   );
+  bot.on("message:voice", (ctx) => flow.voice(ctx));
   bot.on("message", (ctx) => ctx.reply(TEXT_ONLY, html));
 
   return bot;

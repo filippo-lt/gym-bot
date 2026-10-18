@@ -57,6 +57,12 @@ import type {
   StagedAction,
 } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
+import {
+  MAX_VOICE_SECONDS,
+  type SpeechToText,
+  STT_TIMEOUT_MS,
+  sttVocabularyPrompt,
+} from "../stt/stt.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
 import { esc, guardLength } from "./format.js";
 import {
@@ -77,6 +83,7 @@ import {
   editEchoMessage,
   expiredText,
   groupsToMask,
+  heardLine,
   type Keyboard,
   type Message,
   maskToGroups,
@@ -90,6 +97,11 @@ import {
   STALE,
   stripMarkdown,
   summarize,
+  VOICE_BLANK,
+  VOICE_BUDGET,
+  VOICE_FAILED,
+  VOICE_NOT_CONFIGURED,
+  VOICE_TOO_LONG,
   viewFromSnapshot,
 } from "./log-format.js";
 import { createSkipFlow } from "./skip-flow.js";
@@ -103,14 +115,24 @@ export interface AiConfig {
 /** A function so the key is only read when free text arrives; it may throw when not configured. */
 export type AiSource = AiConfig | (() => AiConfig);
 
+/** Voice notes: the speech-to-text provider (throws when not configured) and the file download. */
+export interface MediaSource {
+  stt?: () => { stt: SpeechToText; dailySecondsCap: number };
+  download(fileId: string, maxBytes: number): Promise<Uint8Array>;
+}
+
 export interface FlowDeps {
   db: Db;
   now: () => Date;
   ai?: AiSource;
+  media?: MediaSource;
 }
+
+const VOICE_MAX_BYTES = 20 * 1024 * 1024;
 
 export interface Flow {
   text(ctx: Context): Promise<void>;
+  voice(ctx: Context): Promise<void>;
   callback(ctx: Context): Promise<void>;
   undoCommand(ctx: Context): Promise<void>;
   memoryCommand(ctx: Context): Promise<void>;
@@ -562,10 +584,51 @@ export function createFlow(deps: FlowDeps): Flow {
   // -------------------------------------------------------------------------
   // Free text
 
+  /**
+   * The inbox can run a handler twice. Never ask the model (or STT) again for work already done.
+   * True when this update was already handled (its echoes or card are re-sent when needed).
+   */
+  async function alreadyHandled(ctx: Context, chatId: number, key: string): Promise<boolean> {
+    const updateId = ctx.update.update_id;
+    const prior = await ledgerResults(db, key);
+    if (prior.length > 0) {
+      await sendEchoes(ctx, key, [], prior);
+      return true;
+    }
+    const existing = await getPendingBySourceUpdate(db, chatId, updateId);
+    if (existing) {
+      if (existing.status === "open" && existing.messageId === null) {
+        // The first run crashed before its card went out: do what it would have done, including
+        // the "Replaces: …" notice and retiring the older card.
+        await sendPendingCard(ctx, chatId, existing, await getReplacedPredecessor(db, existing));
+      }
+      return true;
+    }
+    return false;
+  }
+
   async function text(ctx: Context): Promise<void> {
     const body = ctx.message?.text;
     const chatId = ctx.chat?.id;
     if (body === undefined || chatId === undefined) return;
+    if (!aiConfig()) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    await handleInput(ctx, { body, source: "text" });
+  }
+
+  /** The intent pipeline for one message, typed or transcribed. */
+  async function handleInput(
+    ctx: Context,
+    input: { body: string; source: InputSource; transcript?: string },
+  ): Promise<void> {
+    const { body, source } = input;
+    const voice = source === "voice";
+    const transcript = input.transcript ?? null;
+    const heard = voice && transcript ? `${heardLine(transcript)}\n\n` : "";
+    const chatId = (ctx.chat as { id: number }).id;
     const ai = aiConfig();
     if (!ai) {
       await send(ctx, NO_AI_KEY);
@@ -575,26 +638,10 @@ export function createFlow(deps: FlowDeps): Flow {
     const key = `u:${updateId}`;
     const now = deps.now();
 
-    // The inbox can run a handler twice. Never ask the model again for work already done.
-    const prior = await ledgerResults(db, key);
-    if (prior.length > 0) {
-      await sendEchoes(ctx, key, [], prior);
-      return;
-    }
-    const existing = await getPendingBySourceUpdate(db, chatId, updateId);
-    if (existing) {
-      if (existing.status === "open" && existing.messageId === null) {
-        // The first run crashed before its card went out: do what it would have done, including
-        // the "Replaces: …" notice and retiring the older card.
-        await sendPendingCard(ctx, chatId, existing, await getReplacedPredecessor(db, existing));
-      }
-      return;
-    }
-
     // One query at a time (session pooler rule).
     const staticBlock = await promptStatic();
     const context = await buildPromptContext(db, chatId, now);
-    await appendMessage(db, chatId, "user", body);
+    await appendMessage(db, chatId, "user", voice ? `[voice] ${body}` : body);
 
     let result: Awaited<ReturnType<typeof runIntent>>;
     try {
@@ -629,7 +676,7 @@ export function createFlow(deps: FlowDeps): Flow {
       const fallback = [...result.reads].reverse().find((r) => r.fallbackHtml !== null);
       const sendFallback = async (html: string | null) => {
         await send(ctx, {
-          text: html ? html : esc(NUMBER_GUARD_FALLBACK),
+          text: heard + (html ? html : esc(NUMBER_GUARD_FALLBACK)),
           keyboard: [],
         });
         await appendMessage(
@@ -652,7 +699,7 @@ export function createFlow(deps: FlowDeps): Flow {
           await sendFallback(fallback?.fallbackHtml ?? null);
           return;
         }
-        await send(ctx, { text: esc(guardLength(reply, 3000)), keyboard: [] });
+        await send(ctx, { text: heard + esc(guardLength(reply, 3000)), keyboard: [] });
         await appendMessage(db, chatId, "assistant", reply);
         return;
       }
@@ -664,7 +711,7 @@ export function createFlow(deps: FlowDeps): Flow {
       const reply = result.truncated
         ? "Sorry, that message was too long for me. Please split it."
         : DIDNT_GET_IT;
-      await send(ctx, { text: esc(reply), keyboard: [] });
+      await send(ctx, { text: heard + esc(reply), keyboard: [] });
       await appendMessage(db, chatId, "assistant", reply);
       return;
     }
@@ -675,6 +722,7 @@ export function createFlow(deps: FlowDeps): Flow {
     const decision = decidePolicy(staged, {
       openPending: open !== null,
       partlyUnderstood: partly,
+      voiceInput: voice,
     });
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
@@ -698,6 +746,8 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: partly ? [PARTLY] : [],
         updateId,
         now,
+        inputSource: source,
+        transcript,
       });
       const a = staged[decision.index];
       await appendMessage(
@@ -716,9 +766,64 @@ export function createFlow(deps: FlowDeps): Flow {
         reasons: decision.reasons,
         updateId,
         now,
+        inputSource: source,
+        transcript,
       });
       await appendMessage(db, chatId, "assistant", `Asked to confirm: ${plainSummary(staged)}`);
     }
+  }
+
+  async function voice(ctx: Context): Promise<void> {
+    const note = ctx.message?.voice;
+    const chatId = ctx.chat?.id;
+    if (!note || chatId === undefined) return;
+    if (!aiConfig()) {
+      await send(ctx, NO_AI_KEY);
+      return;
+    }
+    let sttConfig: { stt: SpeechToText; dailySecondsCap: number } | undefined;
+    try {
+      sttConfig = deps.media?.stt?.();
+    } catch (error) {
+      console.error(`stt: not configured (${error instanceof Error ? error.name : "error"})`);
+    }
+    if (!sttConfig || !deps.media) {
+      await send(ctx, VOICE_NOT_CONFIGURED);
+      return;
+    }
+    if (await alreadyHandled(ctx, chatId, `u:${ctx.update.update_id}`)) return;
+    if (note.duration > MAX_VOICE_SECONDS) {
+      await send(ctx, VOICE_TOO_LONG);
+      return;
+    }
+    const now = deps.now();
+    const usage = createUsageStore(db);
+    if ((await usage.sttSecondsToday(now)) + note.duration > sttConfig.dailySecondsCap) {
+      await send(ctx, VOICE_BUDGET);
+      return;
+    }
+    let transcript: string;
+    try {
+      const staticBlock = await promptStatic();
+      const audio = await deps.media.download(note.file_id, VOICE_MAX_BYTES);
+      transcript = (
+        await sttConfig.stt.transcribe(audio, {
+          filename: "voice.ogg",
+          prompt: sttVocabularyPrompt(staticBlock.catalog.map((e) => e.name)),
+          signal: AbortSignal.timeout(STT_TIMEOUT_MS),
+        })
+      ).trim();
+    } catch (error) {
+      console.error(`stt: failed (${error instanceof Error ? error.name : "error"})`);
+      await send(ctx, VOICE_FAILED);
+      return;
+    }
+    await usage.recordStt(note.duration, sttConfig.stt.name, now);
+    if (!/[\p{L}\p{N}]/u.test(transcript)) {
+      await send(ctx, VOICE_BLANK);
+      return;
+    }
+    await handleInput(ctx, { body: transcript, source: "voice", transcript });
   }
 
   // -------------------------------------------------------------------------
@@ -1307,5 +1412,5 @@ export function createFlow(deps: FlowDeps): Flow {
     presentPending,
   });
 
-  return { text, callback, undoCommand, memoryCommand, skipCommand: skip.skipCommand };
+  return { text, voice, callback, undoCommand, memoryCommand, skipCommand: skip.skipCommand };
 }

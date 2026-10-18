@@ -69,7 +69,12 @@ export const HELP_TEXT = [
   "• show me Monday's session",
 ].join("\n");
 
-export const TEXT_ONLY = "I can read text only for now.";
+export const TEXT_ONLY = "I can read text, voice notes and class board photos.";
+export const VOICE_NOT_CONFIGURED = "Voice isn't configured yet. Text still works.";
+export const VOICE_TOO_LONG = "That voice note is too long. Please keep it under 2 minutes.";
+export const VOICE_BUDGET = "Voice budget reached. Text still works.";
+export const VOICE_BLANK = "I couldn't hear that. Please try again or type it.";
+export const VOICE_FAILED = "Sorry, I couldn't transcribe that. Please try again or type it.";
 export const UNKNOWN_COMMAND = "I don't know that command. Try /help.";
 export const NO_AI_KEY = "AI isn't configured yet. Commands still work.";
 export const BUDGET_REACHED = "AI budget reached. Commands still work.";
@@ -544,10 +549,14 @@ export function stripMarkdown(text: string): string {
 const HEARD_MAX = 300;
 
 /** The "🎤 heard:" line (capped, escaped) and a blank line, first on every voice-origin card. */
+export function heardLine(heard: string): string {
+  const text = heard.length > HEARD_MAX ? `${heard.slice(0, HEARD_MAX)}…` : heard;
+  return `🎤 heard: ${esc(text)}`;
+}
+
 function pushHeard(lines: string[], heard: string | null | undefined): void {
   if (!heard) return;
-  const text = heard.length > HEARD_MAX ? `${heard.slice(0, HEARD_MAX)}…` : heard;
-  lines.push(`🎤 heard: ${esc(text)}`, "");
+  lines.push(heardLine(heard), "");
 }
 
 export function confirmCard(args: {

@@ -55,4 +55,20 @@ describe("downloadTelegramFile", () => {
     }).catch((e) => e);
     expect(noPath.message).not.toContain("SECRET-TOKEN");
   });
+
+  it("hides the token when fetch itself fails", async () => {
+    const api = { getFile: async () => ({ file_path: "voice/a.oga" }) };
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      throw new Error(`connect ECONNRESET ${String(url)}`);
+    });
+    const err = await downloadTelegramFile({
+      api,
+      token: TOKEN,
+      fileId: "f",
+      maxBytes: 100,
+      fetchImpl,
+    }).catch((e) => e);
+    expect(err.message).toBe("telegram file download failed");
+    expect(err.message).not.toContain("SECRET-TOKEN");
+  });
 });
