@@ -271,7 +271,11 @@ export function createInputs(deps: InputsDeps): Inputs {
         .where(and(eq(proposals.id, id), eq(proposals.status, "open")))
         .returning({ id: proposals.id });
       if (declined.length === 0) {
-        await ctx.answerCallbackQuery({ text: "Already decided." });
+        const [cur] = await db.select().from(proposals).where(eq(proposals.id, id));
+        if (cur?.status === "expired") {
+          await edit(ctx, { text: CLOSED, keyboard: [] });
+          await ctx.answerCallbackQuery({ text: CLOSED });
+        } else await ctx.answerCallbackQuery({ text: "Already decided." });
         return;
       }
       await edit(ctx, { text: "OK, I won't move the deload.", keyboard: [] });

@@ -222,6 +222,15 @@ describe("ensureDeloadProposal", () => {
     expect(await ensureDeloadProposal(db, "2026-11-04", "sessions")).not.toBeNull();
   });
 
+  it("a new proposal expires an older open one", async () => {
+    const first = await ensureDeloadProposal(db, W6, "sessions");
+    await sql`insert into readiness_logs (date, at, kind, source, level)
+      values (${W6_TUE}, now(), 'button_ok', 'derived', 'GREEN')`;
+    const second = await ensureDeloadProposal(db, "2026-11-04", "sessions");
+    expect(second?.id).not.toBe(first?.id);
+    expect((await proposalRows()).map((r) => r.status)).toEqual(["expired", "open"]);
+  });
+
   it("an open proposal whose Monday arrived is expired", async () => {
     await ensureDeloadProposal(db, W6, "sessions");
     expect(await ensureDeloadProposal(db, W7, null)).toBeNull();
@@ -489,6 +498,22 @@ describe("/today card", () => {
     await t.tap(ok);
     expect(String(t.lastEdit()?.payload.text)).toBe("This offer is closed; nothing changed.");
     expect((await proposalRows())[0]?.status).toBe("expired");
+    expect(await sql`select id from plan_versions`).toHaveLength(1);
+  });
+
+  it("✅ and ❌ on an offer the Monday sweep expired say it is closed", async () => {
+    await twoReds();
+    const t = setup();
+    await t.say("/today");
+    const [ok, no] = t.buttons(t.cards()[0]);
+    clock = rome10(W7);
+    await t.say("/today");
+    expect((await proposalRows())[0]?.status).toBe("expired");
+    await t.tap(ok?.data as string);
+    expect(String(t.lastEdit()?.payload.text)).toBe("This offer is closed; nothing changed.");
+    expect(t.buttons(t.lastEdit())).toEqual([]);
+    await t.tap(no?.data as string);
+    expect(String(t.lastEdit()?.payload.text)).toBe("This offer is closed; nothing changed.");
     expect(await sql`select id from plan_versions`).toHaveLength(1);
   });
 

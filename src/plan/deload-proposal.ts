@@ -149,10 +149,15 @@ export async function ensureDeloadProposal(
     const p = last.payload as DeloadPayload;
     const open = deloadPreview(latest.content, p.insertAt);
     return open
-      ? { id: last.id, preview: open, messageId: last.messageId, trigger: p.trigger ?? "sessions" }
+      ? { id: last.id, preview: open, messageId: last.messageId, trigger: p.trigger }
       : null;
   }
 
+  // At most one live card: an older open offer is replaced by the new one.
+  await db
+    .update(proposals)
+    .set({ status: "expired" })
+    .where(and(eq(proposals.kind, "earlier_deload"), eq(proposals.status, "open")));
   const payload: DeloadPayload = {
     currentWeek: week.week,
     insertAt,
@@ -193,6 +198,7 @@ export async function applyDeloadProposal(
     .from(proposals)
     .where(and(eq(proposals.id, proposalId), eq(proposals.kind, "earlier_deload")))
     .for("update");
+  if (row?.status === "expired") return { ok: false, reason: "closed", reply: CLOSED };
   if (row?.status !== "open") return { ok: false, reason: "decided", reply: "Already decided." };
   const p = row.payload as DeloadPayload;
   const close = async (status: "expired") => {
