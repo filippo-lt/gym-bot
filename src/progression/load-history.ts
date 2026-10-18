@@ -14,10 +14,9 @@ import {
 } from "../db/schema/log.js";
 import { equipment, exercises, hspuLadder } from "../db/schema/plan.js";
 import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
-import { trainingDate, weekdayOf } from "../domain/calendar.js";
+import { trainingDate } from "../domain/calendar.js";
 import type { Q } from "../logging/db.js";
 import { loadVersionIndex, planDayFromIndex, type VersionIndex } from "../plan/effective.js";
-import type { Modifier, Priority, Tag, Weekday } from "../plan-import/types.js";
 import { gateEventsFrom } from "./pullup.js";
 import { driftFor } from "./readiness.js";
 import type {
