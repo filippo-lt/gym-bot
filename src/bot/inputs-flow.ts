@@ -34,8 +34,8 @@ import {
   type Message,
   maskToGroups,
 } from "./log-format.js";
-import { deloadAppliedText, deloadProposalText } from "./plan-change-format.js";
 import { morningMessage, renderTodayText } from "./morning.js";
+import { deloadAppliedText, deloadProposalText } from "./plan-change-format.js";
 import { READINESS_EMOJI, READINESS_QUESTION } from "./readiness-text.js";
 
 const HTML = { parse_mode: "HTML" as const };

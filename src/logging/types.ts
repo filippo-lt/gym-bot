@@ -4,9 +4,9 @@
  * (SPEC 5.6d). Every number shown to the user comes from code, never from the model.
  */
 import { z } from "zod";
+import type { BudgetCap } from "../ai/budget.js";
 import { EXERCISE_TYPES, LOAD_BASES } from "../db/schema/plan.js";
 import type { PlanChangeResult } from "../plan/swap-execute.js";
-import type { BudgetCap } from "../ai/budget.js";
 import type { ExerciseType, LoadBasis, Priority, Weekday } from "../plan-import/types.js";
 import { classMoveSchema } from "./class-moves.js";
 

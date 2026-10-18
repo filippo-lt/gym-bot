@@ -11,7 +11,6 @@ import {
   loadPlanEnv,
   loadSessionRecs,
   type PlanEnv,
-  weekFor,
 } from "../progression/load-history.js";
 import type { ExerciseInfo, SessionRec } from "../progression/types.js";
 import type { volumeSeries } from "./series.js";
@@ -81,7 +80,7 @@ export async function loadVolumeRows(
     exercises.type,
   );
   return rows.map((r) => ({
-    week: env ? (weekFor(env, r.date)?.week ?? null) : null,
+    week: env ? (env.weekOf(r.date)?.week ?? null) : null,
     muscleGroup: r.muscleGroup,
     type: r.type,
     sets: r.sets,
