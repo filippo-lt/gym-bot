@@ -2,8 +2,8 @@
 
 exports[`cards > clarify message 1`] = `
 "Which exercise is "fp"?
-[Face pull ex:8:0]
-[Front raise ex:8:1]
+[Face pull ex:8:0:0]
+[Front raise ex:8:1:0]
 [❌ pa:8:no]"
 `;
 
@@ -26,7 +26,7 @@ exports[`cards > replaced notice and delete card 1`] = `
 "Replaces: Bench 2 × 6 · 55 kg
 
 Remove this?
-• Remove Squat 2 × 8 · 60 kg
+• Squat 2 × 8 · 60 kg
 [✅ pa:4:ok] [❌ pa:4:no]"
 `;
 

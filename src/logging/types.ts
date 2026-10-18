@@ -280,6 +280,8 @@ export type LedgerResult =
       plannedItemId?: number | null;
       /** Undo restores this; absent on legacy rows. */
       sessionItemBefore?: SessionItemBefore | null;
+      /** Telegram id of the echo sent for a direct write, so a later edit can refresh it. */
+      messageId?: number;
     }
   | {
       kind: "edit";

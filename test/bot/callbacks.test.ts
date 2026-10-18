@@ -10,7 +10,7 @@ describe("callback data", () => {
     cb.pending(ID, "ok"),
     cb.pending(ID, "ed"),
     cb.pending(ID, "no"),
-    cb.exercise(ID, 5),
+    cb.exercise(ID, 5, 19),
     cb.rir(ID, 4),
     cb.clean(ID, false),
     cb.undoGroup(ID),
@@ -26,7 +26,14 @@ describe("callback data", () => {
 
   it("round-trips", () => {
     expect(parseCallback(cb.pending(7, "ok"))).toEqual({ t: "pa", id: 7, act: "ok" });
-    expect(parseCallback(cb.exercise(7, 2))).toEqual({ t: "ex", pendingId: 7, index: 2 });
+    expect(parseCallback(cb.exercise(7, 2, 1))).toEqual({
+      t: "ex",
+      pendingId: 7,
+      index: 2,
+      action: 1,
+    });
+    // buttons sent before the clarify position was encoded
+    expect(parseCallback("ex:7:2")).toEqual({ t: "ex", pendingId: 7, index: 2, action: null });
     expect(parseCallback(cb.rir(9, 4))).toEqual({ t: "rir", groupId: 9, value: 4 });
     expect(parseCallback(cb.clean(9, false))).toEqual({ t: "cl", groupId: 9, clean: false });
     expect(parseCallback(cb.undoGroup(9))).toEqual({ t: "ug", groupId: 9 });

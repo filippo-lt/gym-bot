@@ -95,7 +95,12 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
       try {
         await deps.handle(claimed.payload);
       } catch (error) {
-        const status = await markRetryOrFailed(db, claimed.id, describeError(error));
+        const status = await markRetryOrFailed(db, claimed.id, owner, describeError(error));
+        if (status === null) {
+          // The sweep already resolved this row (and notified, if it failed): nothing to add.
+          console.error(`inbox ${claimed.id}: handler failed after the claim was lost`);
+          continue;
+        }
         console.error(`inbox ${claimed.id}: ${status} (attempt ${claimed.attempts})`);
         if (status === "failed") {
           summary.failed += 1;
@@ -110,9 +115,12 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
 
       // Window: if markDone fails the handler runs again on retry; domain writes go through write_ledger.
       try {
-        await markDone(db, claimed.id);
-        summary.processed += 1;
-        console.log(`inbox ${claimed.id}: done (attempt ${claimed.attempts})`);
+        if (await markDone(db, claimed.id, owner)) {
+          summary.processed += 1;
+          console.log(`inbox ${claimed.id}: done (attempt ${claimed.attempts})`);
+        } else {
+          console.error(`inbox ${claimed.id}: handled after the claim was lost`);
+        }
       } catch (error) {
         console.error(`inbox ${claimed.id}: handled but not marked done (${describeError(error)})`);
         summary.stoppedReason = "retry_later";

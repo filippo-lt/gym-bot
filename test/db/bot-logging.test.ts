@@ -11,6 +11,8 @@ import {
 import { createBot } from "../../src/bot/bot.js";
 import { BUDGET_REACHED, EXPIRED, STALE } from "../../src/bot/log-format.js";
 import { saveAlias } from "../../src/logging/memory.js";
+import { createPending } from "../../src/logging/pending.js";
+import type { StagedAction } from "../../src/logging/types.js";
 import { connect, exId, MON, resetAndSeed } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -49,8 +51,10 @@ beforeEach(async () => {
 function setup(script: ScriptedTurn[] = [], caps = { daily: 1_000_000, monthly: 10_000_000 }) {
   const calls: Call[] = [];
   let mid = 1000;
+  const fail = { edits: false };
   const transformer: Transformer = async (_prev, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
+    if (fail.edits && method === "editMessageText") throw new Error("message can't be edited");
     if (method === "sendMessage") {
       return {
         ok: true,
@@ -111,7 +115,7 @@ function setup(script: ScriptedTurn[] = [], caps = { daily: 1_000_000, monthly: 
       .flat()
       .map((b) => ({ text: b.text, data: b.callback_data }));
   const lastSent = () => sent().at(-1);
-  return { calls, model, say, tap, sent, edits, answers, texts, buttons, lastSent };
+  return { calls, fail, model, say, tap, sent, edits, answers, texts, buttons, lastSent };
 }
 
 const tool = (name: string, input: unknown) => turn(toolUse(name, input));
@@ -351,6 +355,29 @@ describe("confirm cards", () => {
     expect(t.model.requests).toHaveLength(2);
   });
 
+  it("a re-run after a crash still announces the replaced request and retires its card (MINOR-3)", async () => {
+    const t = setup(two());
+    await t.say("first");
+    const [old] = await sql`select id, actions, message_id from pending_actions`;
+    // The second update's first run died right after createPending: no card went out.
+    await createPending(db, {
+      chatId: CHAT,
+      kind: "confirm",
+      actions: old?.actions as StagedAction[],
+      reasons: [],
+      sourceUpdateId: 7100,
+      now: clock,
+    });
+    await t.say("second", 7100);
+    expect(t.texts()[1]).toContain("Replaces: ");
+    const retired = t.edits().filter((e) => e.payload.message_id === old?.message_id);
+    expect(String(retired.at(-1)?.payload.text)).toContain("Replaced by a newer request");
+    expect(await count("pending_actions")).toBe(2);
+    // the card went out: a further run sends nothing
+    await t.say("second", 7100);
+    expect(t.sent()).toHaveLength(2);
+  });
+
   it("a second card replaces the first; the old ✅ is stale", async () => {
     const t = setup([...two(), ...two()]);
     await t.say("first");
@@ -359,7 +386,9 @@ describe("confirm cards", () => {
     expect(t.texts()[1]).toContain("Replaces: ");
     await t.tap(oldOk, 1001);
     expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
-    expect(t.texts().at(-1)).toBe(EXPIRED);
+    // toast only: no new chat message, the stale card just loses its buttons
+    expect(t.sent()).toHaveLength(2);
+    expect(String(t.edits().at(-1)?.payload.text)).toContain("Replaced by a newer request");
     expect(await count("log_groups")).toBe(0);
     const newOk = t.buttons(t.sent()[1])[0]?.data as string;
     await t.tap(newOk, 1002);
@@ -373,7 +402,9 @@ describe("confirm cards", () => {
     clock = new Date(clock.getTime() + 31 * 60_000);
     await t.tap(okData, 1001);
     expect(await count("log_groups")).toBe(0);
-    expect(t.texts().at(-1)).toBe(EXPIRED);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(t.sent()).toHaveLength(1); // no extra chat message
+    expect(String(t.edits().at(-1)?.payload.text)).toMatch(/^Expired, nothing saved: /);
   });
 
   it("✏️ then a correction replaces the card and says so", async () => {
@@ -434,7 +465,7 @@ describe("clarify and aliases", () => {
     expect(t.texts()[0]).toBe('Which exercise is "sq"?');
     const btns = t.buttons(t.lastSent());
     const squat = btns.find((b) => b.text === "squat");
-    expect(squat?.data).toMatch(/^ex:\d+:\d+$/);
+    expect(squat?.data).toMatch(/^ex:\d+:\d+:\d+$/);
     expect(btns.at(-1)?.data).toMatch(/^pa:\d+:no$/);
     await t.tap(squat?.data as string, 1001);
 
@@ -663,7 +694,221 @@ describe("retries and stale buttons", () => {
     clock = new Date(clock.getTime() + 31 * 60_000);
     await t.tap(t.buttons(card)[1]?.data as string, 1001);
     expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(t.sent()).toHaveLength(1);
+    expect(String(t.edits().at(-1)?.payload.text)).toMatch(/^Expired, nothing saved/);
     expect((await sql`select awaiting_edit from pending_actions`)[0]?.awaiting_edit).toBe(false);
+  });
+
+  it("an edit refreshes the original echo, and undoing the edit restores it", async () => {
+    const t = setup([tool("log_sets", benchLog()), ok, editCall({ load_kg: 57.5 }), ok]);
+    await t.say("bench 2x6 55");
+    const echo = t.lastSent();
+    const echoId = 1001;
+    expect(String(echo?.payload.text)).toContain("55 kg");
+    const [ledger] = await sql`select result from write_ledger`;
+    expect(ledger?.result.messageId).toBe(echoId);
+    await t.say("no it was 57.5");
+    const refreshed = t.edits().find((e) => e.payload.message_id === echoId);
+    expect(String(refreshed?.payload.text)).toContain("57.5 kg");
+    expect(JSON.stringify(refreshed?.payload.reply_markup)).toContain("ug:");
+    const undo = t.buttons(t.lastSent()).find((b) => b.data.startsWith("ue:"));
+    await t.tap(undo?.data as string, 2000);
+    const restored = t.edits().filter((e) => e.payload.message_id === echoId);
+    expect(String(restored.at(-1)?.payload.text)).toContain("55 kg");
+    expect(String(restored.at(-1)?.payload.text)).not.toContain("57.5");
+  });
+
+  it("an edit refreshes the echo of a confirmed-card write too (MINOR-5)", async () => {
+    const t = setup([
+      tool(
+        "log_sets",
+        log("bench_press", { count: 2, reps: 6, load_kg: 55 }, { needs_confirmation: true }),
+      ),
+      ok,
+      editCall({ load_kg: 57.5 }),
+      ok,
+    ]);
+    await t.say("bench 2x6 55");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    const echoId = Number((await sql`select result->>'messageId' as m from write_ledger`)[0]?.m);
+    expect(echoId).toBeGreaterThan(0);
+    await t.say("no it was 57.5");
+    const refreshed = t.edits().filter((e) => e.payload.message_id === echoId);
+    expect(String(refreshed.at(-1)?.payload.text)).toContain("57.5 kg");
+  });
+
+  it("a Telegram error while refreshing the echo is swallowed (MINOR-10)", async () => {
+    const t = setup([tool("log_sets", benchLog()), ok, editCall({ load_kg: 57.5 }), ok]);
+    await t.say("bench 2x6 55");
+    t.fail.edits = true;
+    await t.say("no it was 57.5");
+    expect((await sql`select load_kg::float as l from log_entries`).map((r) => r.l)).toEqual([
+      57.5, 57.5,
+    ]);
+    expect(t.texts().at(-1)).toContain("Changed");
+  });
+
+  it("✏️ and ✅ after ✅ was saved keep the saved card, no chat message (MAJOR-1)", async () => {
+    const t = setup([turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog())), ok]);
+    await t.say("bench and lateral");
+    const [okB, edB, noB] = t.buttons(t.lastSent()).map((b) => b.data);
+    await t.tap(okB as string, 1001);
+    const sentBefore = t.sent().length;
+    for (const data of [edB, noB, okB]) {
+      await t.tap(data as string, 1001);
+      expect(t.answers().at(-1)?.payload.text).toBe("Already saved.");
+      expect(String(t.edits().at(-1)?.payload.text)).toBe("Saved ✓");
+    }
+    expect(t.sent()).toHaveLength(sentBefore);
+    expect(await count("log_groups")).toBe(2);
+    expect((await sql`select awaiting_edit from pending_actions`)[0]?.awaiting_edit).toBe(false);
+  });
+
+  it("a stale ✅ edit that Telegram refuses does not fail the update (MINOR-4)", async () => {
+    const pair = () => [
+      turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog())),
+      ok,
+    ];
+    const t = setup([...pair(), ...pair()]);
+    await t.say("first");
+    const oldOk = t.buttons(t.lastSent())[0]?.data as string;
+    await t.say("second");
+    t.fail.edits = true;
+    await t.tap(oldOk, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(await count("log_groups")).toBe(0);
+  });
+
+  it("an old-format ex: button is never applied: expired toast, card closed, no write", async () => {
+    const said = (name: string) =>
+      toolUse("log_sets", {
+        exercise: { said: name },
+        sets: { count: 3, reps: 8, load_kg: 60 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      });
+    const t = setup([turn(said("sq"), said("lat")), nothing]);
+    await t.say("sq 3x8 60 and lat 3x8 60");
+    const id = (await sql`select id from pending_actions`)[0]?.id;
+    await t.tap(`ex:${id}:0`, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(String(t.edits().at(-1)?.payload.text)).toMatch(/^Expired, nothing saved/);
+    expect(await count("log_groups")).toBe(0);
+    // the request is closed too: a later message does not announce "Replaces: …"
+    expect((await sql`select status from pending_actions`)[0]?.status).toBe("cancelled");
+    await t.tap(`ex:${id}:3`, 1001); // unknown shapes don't throw either
+    expect(await count("log_groups")).toBe(0);
+  });
+
+  it("an old-format ex: button on an already saved request says so", async () => {
+    const t = setup([
+      tool("log_sets", {
+        exercise: { said: "sq" },
+        sets: { count: 3, reps: 8, load_kg: 60 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      }),
+      nothing,
+    ]);
+    await t.say("sq 3x8 60");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001);
+    const id = (await sql`select id from pending_actions`)[0]?.id;
+    await t.tap(`ex:${id}:0`, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe("Already saved.");
+    expect(await count("log_groups")).toBe(1);
+  });
+
+  it("a stale tap on a saved clarify card keeps 'Exercise: …' (no 'Saved ✓' overwrite)", async () => {
+    const t = setup([
+      tool("log_sets", {
+        exercise: { said: "sq" },
+        sets: { count: 3, reps: 8, load_kg: 60 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      }),
+      nothing,
+    ]);
+    await t.say("sq 3x8 60");
+    const btns = t.buttons(t.lastSent());
+    const squat = btns.find((b) => b.text === "squat");
+    await t.tap(squat?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
+    const editsBefore = t.edits().length;
+    await t.tap(btns.at(-1)?.data as string, 1001); // the clarify card's ❌
+    expect(t.answers().at(-1)?.payload.text).toBe("Already saved.");
+    expect(t.edits()).toHaveLength(editsBefore);
+  });
+
+  it("✅ still sends the echoes when the card edit fails; a stale ✅ with a failing edit is fine", async () => {
+    const t = setup([turn(toolUse("log_sets", benchLog()), toolUse("log_sets", lateralLog())), ok]);
+    await t.say("bench and lateral");
+    const [okB] = t.buttons(t.lastSent()).map((b) => b.data);
+    t.fail.edits = true;
+    await t.tap(okB as string, 1001);
+    expect(await count("log_groups")).toBe(2);
+    expect(t.sent()).toHaveLength(3); // card + 2 echoes
+  });
+
+  it("✅ on a request whose log is gone, with a failing edit, still answers stale", async () => {
+    const t = setup([
+      tool("log_sets", benchLog()),
+      ok,
+      editCall({ load_kg: 57.5 }, { needs_confirmation: true }),
+      ok,
+    ]);
+    await t.say("bench 2x6 55");
+    await t.say("it was 57.5");
+    const okBtn = t.buttons(t.lastSent())[0]?.data as string;
+    await sql`delete from log_groups`;
+    t.fail.edits = true;
+    await t.tap(okBtn, 1002);
+    expect(t.answers().at(-1)?.payload.text).toBe(STALE);
+    expect((await sql`select status from pending_actions`)[0]?.status).toBe("cancelled");
+  });
+
+  it("a retried direct write re-sends its echo and records the newest echo id", async () => {
+    const t = setup([tool("log_sets", benchLog()), ok]);
+    await t.say("bench 2x6 55", 8000);
+    await t.say("bench 2x6 55", 8000);
+    expect(t.sent()).toHaveLength(2);
+    const [row] = await sql`select result->>'messageId' as m from write_ledger`;
+    expect(Number(row?.m)).toBe(1002);
+  });
+
+  it("an expired clarify card loses its buttons on a tap (MINOR-3)", async () => {
+    const t = setup([
+      tool("log_sets", {
+        exercise: { said: "fp" },
+        sets: { count: 2, reps: 6, load_kg: 55 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      }),
+      nothing,
+    ]);
+    await t.say("fp 2x6 55");
+    const btn = t.buttons(t.lastSent())[0]?.data as string;
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t.tap(btn, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(String(t.edits().at(-1)?.payload.text)).toMatch(/^Expired, nothing saved/);
+  });
+
+  it("a log plus a removal is a Save card, with the Remove prefix on the delete line (MINOR-9)", async () => {
+    const t = setup([
+      tool("log_sets", squatLog()),
+      ok,
+      turn(toolUse("log_sets", benchLog()), toolUse("undo_last_entry", {})),
+      ok,
+    ]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("bench 2x6 55 and undo that");
+    const card = t.texts().at(-1) ?? "";
+    expect(card).toContain("Save this?");
+    expect(card).toMatch(/• Remove /);
+    expect((await sql`select kind from pending_actions order by id desc limit 1`)[0]?.kind).toBe(
+      "confirm",
+    );
   });
 
   it("a retried edit keeps its Undo button, rebuilt from the ledger (m8)", async () => {
@@ -972,6 +1217,32 @@ describe("round 4", () => {
     expect(await count("log_groups")).toBe(2);
     await t.tap(squat?.data as string, 1001);
     expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
+  });
+
+  it("a retried tap names its own clarify when the message had two (MINOR-B)", async () => {
+    const said = (name: string) =>
+      toolUse("log_sets", {
+        exercise: { said: name },
+        sets: { count: 3, reps: 8, load_kg: 60 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      });
+    const t = setup([turn(said("sq"), said("lat")), nothing]);
+    await t.say("sq 3x8 60 and lat 3x8 60");
+    const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
+    expect(squat?.data).toBeDefined();
+    await t.tap(squat?.data as string, 1001);
+    const bench = t.buttons(t.edits().at(-1)).find((b) => b.text === "bench_press");
+    expect(bench).toBeDefined();
+    await t.tap(bench?.data as string, 1001);
+    await t.tap(t.buttons(t.edits().at(-1))[0]?.data as string, 1001);
+    expect(await count("log_groups")).toBe(2);
+    await t.tap(squat?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
+    await t.tap(bench?.data as string, 1001);
+    expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: bench_press");
+    expect(t.answers().at(-1)?.payload.text).toBe("Already saved.");
+    expect(await count("log_groups")).toBe(2);
   });
 
   it("a late tap on an executed pending re-edits the card to its final text (MINOR-3)", async () => {

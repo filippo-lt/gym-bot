@@ -309,6 +309,56 @@ describe("failures and deadline", () => {
     expect(err[0]?.done_at).not.toBeNull();
   });
 
+  describe("a claim lost to the stuck-row sweep", () => {
+    // Invocation A holds the last attempt of a row and runs past the lease. Invocation B sweeps
+    // it to failed (and notifies) before A's handler finishes.
+    const interleave = async (aHandlerFails: boolean) => {
+      await seed(1);
+      await main.sql`update inbox set attempts = 2`;
+      const notified: number[] = [];
+      const notify = async (_c: number, p: unknown) => void notified.push((p as { n: number }).n);
+      let b: Awaited<ReturnType<typeof processChat>> | undefined;
+      const a = await processChat({
+        db: main.db,
+        chatId: CHAT,
+        handle: async () => {
+          await main.sql`update inbox set claimed_at = now() - interval '151 seconds'`;
+          await main.sql`update chat_lease set until = now() - interval '1 second'`;
+          b = await processChat({
+            db: main.db,
+            chatId: CHAT,
+            handle: noop,
+            sendTyping: noop,
+            notifyFailed: notify,
+            deadline: FAR(),
+          });
+          if (aHandlerFails) throw new Error("late boom");
+        },
+        sendTyping: noop,
+        notifyFailed: notify,
+        deadline: FAR(),
+      });
+      return { a, b, notified };
+    };
+
+    it("one notice when the late handler then throws", async () => {
+      const { a, b, notified } = await interleave(true);
+      expect(b?.failed).toBe(1);
+      expect(a.failed).toBe(0);
+      expect(notified).toEqual([1000]);
+      expect(await statuses()).toEqual(["1000:failed:3"]);
+      const row = await main.sql`select error from inbox`;
+      expect(row[0]?.error).toBe("timed out");
+    });
+
+    it("a late success does not flip the failed row to done or count as processed", async () => {
+      const { a, notified } = await interleave(false);
+      expect(a.processed).toBe(0);
+      expect(notified).toEqual([1000]);
+      expect(await statuses()).toEqual(["1000:failed:3"]);
+    });
+  });
+
   it("a failing sendTyping or notifyFailed does not stop the loop", async () => {
     await seed(2);
     const handled: number[] = [];

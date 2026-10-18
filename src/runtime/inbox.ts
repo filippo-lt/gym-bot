@@ -63,28 +63,39 @@ export async function claim(db: Db, id: number, owner: string): Promise<InboxRow
   return rows[0] ?? null;
 }
 
-export async function markDone(db: Db, id: number): Promise<void> {
-  await db.execute(
-    sql`UPDATE inbox SET status = 'done', done_at = now(), error = NULL WHERE id = ${id}`,
+/**
+ * Only the owner of a live claim can finish a row: when a stuck-row sweep already resolved it
+ * (reset or failed) this changes nothing and returns false.
+ */
+export async function markDone(db: Db, id: number, owner: string): Promise<boolean> {
+  const rows = await db.execute(
+    sql`UPDATE inbox SET status = 'done', done_at = now(), error = NULL
+        WHERE id = ${id} AND status = 'processing' AND claimed_by = ${owner}::uuid
+        RETURNING id`,
   );
+  return rows.length > 0;
 }
 
-/** Back to pending, or failed once the attempts are used up. */
+/**
+ * Back to pending, or failed once the attempts are used up. Null when the claim is no longer
+ * ours (someone else already resolved the row): nothing changed, so nothing to report.
+ */
 export async function markRetryOrFailed(
   db: Db,
   id: number,
+  owner: string,
   error: string,
-): Promise<"pending" | "failed"> {
+): Promise<"pending" | "failed" | null> {
   const rows = await db.execute<{ status: "pending" | "failed" }>(
     sql`UPDATE inbox
         SET status = CASE WHEN attempts >= ${MAX_ATTEMPTS} THEN 'failed'::inbox_status
                           ELSE 'pending'::inbox_status END,
             error = ${error.slice(0, 500)},
             done_at = CASE WHEN attempts >= ${MAX_ATTEMPTS} THEN now() ELSE NULL END
-        WHERE id = ${id}
+        WHERE id = ${id} AND status = 'processing' AND claimed_by = ${owner}::uuid
         RETURNING status`,
   );
-  return rows[0]?.status ?? "pending";
+  return rows[0]?.status ?? null;
 }
 
 /** Chats that have work a sweeper should pick up. */
