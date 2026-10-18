@@ -41,7 +41,7 @@ import type {
   UndoLastInput,
 } from "./types.js";
 import { buildEntries, convertLoad, expandSets, missingFields } from "./units.js";
-import { checkKeys, usedKeys } from "./validate.js";
+import { checkConflicts, checkKeys, usedKeys } from "./validate.js";
 
 export const MAX_CANDIDATES = 6;
 /** Slots kept for fuzzy matches when today's session already fills the list. */
@@ -170,6 +170,7 @@ async function pickExercise(
   ex: LogSetsInput["exercise"],
   catalog: CatalogExercise[],
   target: DayPlan,
+  trustSlug = false,
 ): Promise<ExerciseOutcome> {
   const said = normalizeAlias(ex.said);
   const ok = (exercise: CatalogExercise): ExerciseOutcome => ({ kind: "ok", exercise });
@@ -196,6 +197,8 @@ async function pickExercise(
   // 1. exact catalog slug. The user's own words win when they name another exercise exactly
   // ("hack squat" with slug squat); when they only look like one, ask.
   const bySlug = ex.slug ? catalog.find((c) => c.slug === ex.slug) : undefined;
+  // A button tap is the user's own choice: no fit-judgement against the original words.
+  if (bySlug && trustSlug) return ok(bySlug);
   if (bySlug) {
     const verdict = judgeGivenSlug(
       ex.said,
@@ -329,7 +332,12 @@ const asResolvedExercise = (c: CatalogExercise): ResolvedExercise => ({
   equipment: c.equipment,
 });
 
-export async function resolveLog(db: Q, input: LogSetsInput, now: Date): Promise<ResolveOutcome> {
+export async function resolveLog(
+  db: Q,
+  input: LogSetsInput,
+  now: Date,
+  opts: { trustSlug?: boolean } = {},
+): Promise<ResolveOutcome> {
   const today = trainingDate(now);
   const ctx = await loadPlanContext(db, today);
   const catalog = await loadCatalog(db);
@@ -341,15 +349,16 @@ export async function resolveLog(db: Q, input: LogSetsInput, now: Date): Promise
     return { kind: "error", error: `Unknown HSPU step "${input.hspu_step}".` };
   }
 
-  const picked = await pickExercise(db, input.exercise, catalog, target);
+  const picked = await pickExercise(db, input.exercise, catalog, target, opts.trustSlug);
   if (picked.kind === "clarify") {
     return { kind: "clarify", said: input.exercise.said, candidates: picked.candidates };
   }
   const exercise = asResolvedExercise(picked.exercise);
-  const invalid = checkKeys(
-    exercise,
-    usedKeys({ hspu_step: input.hspu_step }, ...expandSets(input.sets)),
-  );
+  const sets = expandSets(input.sets);
+  const invalid =
+    checkKeys(exercise, usedKeys({ hspu_step: input.hspu_step, clean: input.clean }, ...sets), {
+      checkClean: true,
+    }) ?? sets.map((st) => checkConflicts(exercise, st)).find((e) => e !== null && e !== undefined);
   if (invalid) return { kind: "error", error: invalid };
 
   const planned = await findPlanned(db, ctx, exercise.id, today, target);
@@ -425,6 +434,25 @@ export async function stageLogSets(db: Q, input: LogSetsInput, now: Date): Promi
 }
 
 /** Candidate chosen from the clarify buttons: re-resolve with that slug. */
+/** The tapped candidate can't take what the user said (e.g. plates on a stack). */
+export class ClarifiedInvalidError extends Error {
+  constructor(
+    readonly exerciseName: string,
+    readonly reason: string,
+  ) {
+    super(reason);
+    this.name = "ClarifiedInvalidError";
+  }
+}
+
+/** The tap doesn't match any candidate, or it no longer resolves. */
+export class ClarifyChoiceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ClarifyChoiceError";
+  }
+}
+
 export async function resolveClarified(
   db: Q,
   action: Extract<StagedAction, { kind: "clarify_exercise" }>,
@@ -432,15 +460,18 @@ export async function resolveClarified(
   now: Date,
 ): Promise<Extract<StagedAction, { kind: "log_sets" }>> {
   if (!action.candidates.some((c) => c.slug === candidateSlug)) {
-    throw new Error(`"${candidateSlug}" is not one of the candidates.`);
+    throw new ClarifyChoiceError("not one of the candidates");
   }
   const input: LogSetsInput = {
     ...action.input,
     exercise: { slug: candidateSlug, said: action.said },
   };
-  const r = await resolveLog(db, input, now);
-  if (r.kind === "error") throw new Error(r.error);
-  if (r.kind !== "ok") throw new Error("Could not resolve the chosen exercise.");
+  const r = await resolveLog(db, input, now, { trustSlug: true });
+  if (r.kind === "error") {
+    const name = action.candidates.find((c) => c.slug === candidateSlug)?.name ?? candidateSlug;
+    throw new ClarifiedInvalidError(name, r.error);
+  }
+  if (r.kind !== "ok") throw new ClarifyChoiceError("could not resolve the chosen exercise");
   return { kind: "log_sets", input, resolved: r.log };
 }
 
@@ -506,7 +537,8 @@ export async function stageEdit(db: Q, input: EditLastInput, now: Date): Promise
   const step = c.hspu_step ? ladder.find((s) => s.slug === c.hspu_step) : undefined;
   if (c.hspu_step && !step) return fail(`Unknown HSPU step "${c.hspu_step}".`);
 
-  const invalid = checkKeys(exercise, usedKeys(c), { checkClean: true });
+  const invalid =
+    checkKeys(exercise, usedKeys(c), { checkClean: true }) ?? checkConflicts(exercise, c);
   if (invalid) return fail(invalid);
 
   const count = before.entries.length;

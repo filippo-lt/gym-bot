@@ -470,6 +470,55 @@ describe("keys the exercise can't take (MINOR-4/7)", () => {
     expect((await stageLogSets(db, pull({ count: 3, reps: 5, band: "red" }), MON)).ok).toBe(true);
   });
 
+  it("rejects clean on an exercise that can't take it (MINOR-1)", async () => {
+    await fails(input({ clean: true }), "clean");
+    expect((await stageLogSets(db, pull({ count: 3, reps: 5 }), MON)).ok).toBe(true);
+    expect((await stageLogSets(db, { ...pull({ count: 3, reps: 5 }), clean: true }, MON)).ok).toBe(
+      true,
+    );
+  });
+
+  it("rejects conflicting load keys, naming both (MINOR-2)", async () => {
+    await fails(
+      input({ sets: [{ reps: 5, load_kg: 50, plates_per_side_kg: 10 }] }),
+      "load_kg and plates_per_side_kg",
+    );
+    await fails(
+      input({
+        exercise: { slug: "lateral_raise", said: "lateral" },
+        sets: [{ reps: 5, load_kg: 6, pair_total_kg: 12 }],
+      }),
+      "load_kg and pair_total_kg",
+    );
+    await fails(pull({ count: 3, reps: 5, added_kg: 10, load_kg: 10 }), "added_kg and load_kg");
+    // different sets may use different forms
+    expect(
+      (
+        await stageLogSets(
+          db,
+          input({
+            sets: [
+              { reps: 5, load_kg: 50 },
+              { reps: 5, plates_per_side_kg: 10 },
+            ],
+          }),
+          MON,
+        )
+      ).ok,
+    ).toBe(true);
+    await executeActions(db, "u:61", [await stage(input())], { now: MON });
+    const e = await stageEdit(
+      db,
+      {
+        changes: { load_kg: 60, plates_per_side_kg: 10 },
+        guessed_fields: [],
+        needs_confirmation: false,
+      },
+      MON,
+    );
+    expect(!e.ok && e.error).toContain("load_kg and plates_per_side_kg");
+  });
+
   it("edits name them too", async () => {
     await executeActions(db, "u:60", [await stage(input())], { now: MON });
     for (const [changes, field] of [

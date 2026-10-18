@@ -529,7 +529,9 @@ describe("retries and stale buttons", () => {
     await t.say("sq 3x8 60 rir 2");
     const squat = t.buttons(t.lastSent()).find((b) => b.text === "squat");
     await t.tap(squat?.data as string, 1001, 8000);
+    const editsAfterFirst = t.edits().length;
     await t.tap(squat?.data as string, 1001, 8000);
+    expect(t.edits().length).toBe(editsAfterFirst); // MINOR-7: the card text is left alone
     expect(await count("log_groups")).toBe(1);
     expect(t.answers().some((a) => a.payload.text === EXPIRED)).toBe(false);
     expect(t.texts().includes(EXPIRED)).toBe(false);
@@ -693,5 +695,69 @@ describe("an open request blocks direct writes (round 2)", () => {
     await t.tap(face?.data as string, 1001);
     expect(t.answers().at(-1)?.payload.text).toBe("Already answered.");
     expect(await count("log_groups")).toBe(0);
+  });
+});
+
+describe("round 3", () => {
+  const fp = (extra: Record<string, unknown> = {}) => ({
+    exercise: { said: "fp" },
+    sets: { count: 2, reps: 6, load_kg: 55 },
+    guessed_fields: [],
+    needs_confirmation: false,
+    ...extra,
+  });
+
+  it("a tap on a candidate that doesn't resemble the words saves it (BLOCKER-1)", async () => {
+    const t = setup([tool("log_sets", fp()), nothing]);
+    await t.say("fp 2x6 55");
+    const bench = t.buttons(t.lastSent()).find((b) => b.text === "bench_press");
+    expect(bench).toBeDefined();
+    await t.tap(bench?.data as string, 1001);
+    const rows =
+      await sql`select e.slug from log_groups g join exercises e on e.id = g.exercise_id`;
+    expect(rows.map((r) => r.slug)).toEqual(["bench_press"]);
+  });
+
+  it("an errored tool call plus a staged one never writes directly (MAJOR-1)", async () => {
+    const t = setup([
+      turn(
+        toolUse("log_sets", benchLog()),
+        toolUse("log_sets", log("lateral_raise", [{ reps: 15, load_kg: 6, pad_height: 10 }])),
+      ),
+      ok,
+    ]);
+    await t.say("bench 2x6 55 and lateral raises pad height 10");
+    expect(t.texts().at(-1)).toContain("Save this?");
+    expect(t.texts().at(-1)).toContain("part of your message couldn't be saved");
+    expect(await count("log_groups")).toBe(0);
+    expect(await count("pending_actions")).toBe(1);
+  });
+
+  it("a tapped candidate that can't take the sets closes the card (MINOR-4)", async () => {
+    const t = setup([
+      tool(
+        "log_sets",
+        fp({ exercise: { said: "sq" }, sets: { count: 2, reps: 6, plates_per_side_kg: 20 } }),
+      ),
+      nothing,
+    ]);
+    await t.say("sq 2x6 20 a side");
+    const hack = t.buttons(t.lastSent()).find((b) => b.text === "hack_squat");
+    await t.tap(hack?.data as string, 1001);
+    const text = String(t.edits().at(-1)?.payload.text);
+    expect(text).toMatch(/^Can't save hack_squat: plates_per_side_kg .* Send it again\.$/);
+    expect((await sql`select status from pending_actions`)[0]?.status).toBe("cancelled");
+    expect(await count("log_groups")).toBe(0);
+    expect(await count("memory_items")).toBe(0);
+  });
+
+  it("✏️ on an expired clarify card says expired (MINOR-5)", async () => {
+    const t = setup([tool("log_sets", fp()), nothing]);
+    await t.say("fp 2x6 55");
+    const id = (await sql`select id from pending_actions`)[0]?.id;
+    clock = new Date(clock.getTime() + 31 * 60_000);
+    await t.tap(`pa:${id}:ed`, 1001);
+    expect(t.answers().at(-1)?.payload.text).toBe(EXPIRED);
+    expect(t.texts().at(-1)).not.toContain("Pick one");
   });
 });

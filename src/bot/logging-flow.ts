@@ -36,7 +36,12 @@ import {
 } from "../logging/pending.js";
 import { decidePolicy } from "../logging/policy.js";
 import { buildPromptContext, buildPromptStatic } from "../logging/prompt-context.js";
-import { createLoggingBackend, resolveClarified } from "../logging/resolve.js";
+import {
+  ClarifiedInvalidError,
+  ClarifyChoiceError,
+  createLoggingBackend,
+  resolveClarified,
+} from "../logging/resolve.js";
 import type { GroupSnapshot, LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
@@ -389,7 +394,10 @@ export function createFlow(deps: FlowDeps): Flow {
     // With an unsaved request open nothing is written directly: the new actions go to a card
     // that replaces it (and says so).
     const open = await getOpenPending(db, chatId, now);
-    const decision = decidePolicy(staged, { openPending: open !== null });
+    const decision = decidePolicy(staged, {
+      openPending: open !== null,
+      partlyUnderstood: result.toolErrors > 0,
+    });
     if (decision.mode === "direct") {
       const r = await executeActions(db, key, staged, { now });
       if (r.status === "done") {
@@ -576,7 +584,11 @@ export function createFlow(deps: FlowDeps): Flow {
       return;
     }
     if (act === "ed") {
-      if (pending.kind === "clarify_exercise" && pending.status === "open") {
+      if (
+        pending.kind === "clarify_exercise" &&
+        pending.status === "open" &&
+        pending.expiresAt.getTime() > now.getTime()
+      ) {
         await answer();
         await send(ctx, "Pick one of the buttons above, or send a new message.");
       } else if (await markAwaitingEdit(db, id, now)) {
@@ -626,11 +638,6 @@ export function createFlow(deps: FlowDeps): Flow {
     const pending = await getPending(db, pendingId);
     if (pending?.status === "executed" && (await ledgerResults(db, `p:${pendingId}`)).length > 0) {
       // A retried tap: the choice was already saved. Nothing to write, nothing to repeat.
-      const done = pending.actions.find((x) => x.kind === "log_sets");
-      await edit(
-        ctx,
-        done?.kind === "log_sets" ? `Exercise: ${esc(done.resolved.exercise.name)}` : "Saved ✓",
-      );
       await answer("Already saved.");
       return;
     }
@@ -658,9 +665,22 @@ export function createFlow(deps: FlowDeps): Flow {
     try {
       resolved = await resolveClarified(db, clarify, chosen.slug, now);
     } catch (error) {
-      // The sets don't fit that exercise (e.g. plates on a stack): say so, keep the card.
-      await answer(error instanceof Error ? error.message.slice(0, 190) : "Can't use that one.");
-      return;
+      if (error instanceof ClarifiedInvalidError) {
+        // The sets don't fit that exercise: close the request instead of leaving a stuck card.
+        await cancelPending(db, pendingId);
+        await edit(
+          ctx,
+          `Can't save ${esc(error.exerciseName)}: ${esc(error.reason)} Send it again.`,
+        );
+        await answer();
+        return;
+      }
+      console.error(`ai: clarify choice failed (${error instanceof Error ? error.name : "error"})`);
+      if (error instanceof ClarifyChoiceError) {
+        await answer("That choice is no longer available.");
+        return;
+      }
+      throw error; // DB and other unexpected errors: let the inbox retry
     }
     const said = clarify.said;
     const exercise = resolved.resolved.exercise;

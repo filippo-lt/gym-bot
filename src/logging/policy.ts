@@ -89,6 +89,8 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
 export interface PolicyContext {
   /** The chat already has an unsaved request (a card, with or without ✏️). */
   openPending?: boolean;
+  /** A tool call errored during this intent, so part of the message was not understood. */
+  partlyUnderstood?: boolean;
 }
 
 export function decidePolicy(actions: StagedAction[], ctx: PolicyContext = {}): PolicyDecision {
@@ -96,6 +98,7 @@ export function decidePolicy(actions: StagedAction[], ctx: PolicyContext = {}): 
   if (clarify >= 0) return { mode: "clarify", index: clarify };
   const reasons: ConfirmReason[] = [];
   if (ctx.openPending) reasons.push("replaces_pending");
+  if (ctx.partlyUnderstood) reasons.push("partly_understood");
   if (actions.length > 1) reasons.push("multiple_writes");
   for (const a of actions) {
     for (const r of actionReasons(a)) if (!reasons.includes(r)) reasons.push(r);

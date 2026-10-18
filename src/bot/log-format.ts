@@ -391,6 +391,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         if (guessed.length) out.push(`${guessed.join(", ")} ${plural ? "were" : "was"} guessed`);
         break;
       }
+      case "partly_understood":
+        out.push("part of your message couldn't be saved");
+        break;
       case "model_flag":
         out.push("I wasn't sure");
         break;

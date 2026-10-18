@@ -241,7 +241,9 @@ export type ConfirmReason =
   | "reps_far_off"
   | "delete"
   /** An unsaved request is open: new actions replace it through a card, never a direct write. */
-  | "replaces_pending";
+  | "replaces_pending"
+  /** A tool call failed while others were staged: part of the message was not understood. */
+  | "partly_understood";
 
 export type PolicyDecision =
   | { mode: "direct" }
@@ -314,5 +316,12 @@ export interface UsageStore {
 }
 
 export type IntentResult =
-  | { kind: "ok"; staged: StagedAction[]; replyText: string | null; turns: number }
+  | {
+      kind: "ok";
+      staged: StagedAction[];
+      replyText: string | null;
+      turns: number;
+      /** Tool calls that came back as errors (their actions were not staged). */
+      toolErrors: number;
+    }
   | { kind: "budget_reached" };

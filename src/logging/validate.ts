@@ -92,3 +92,22 @@ export function checkKeys(
   }
   return null;
 }
+
+/** Two ways to say the same load in one set or change: ask for one, never drop one silently. */
+export function checkConflicts(
+  exercise: Pick<ResolvedExercise, "type">,
+  used: UsedKeys,
+): string | null {
+  const has = (k: keyof UsedKeys) => used[k] !== undefined;
+  const clash = (a: keyof UsedKeys, b: keyof UsedKeys) =>
+    `${a} and ${b} conflict: send only one of them.`;
+  if (has("load_kg") && has("plates_per_side_kg")) return clash("load_kg", "plates_per_side_kg");
+  if (has("load_kg") && has("pair_total_kg")) return clash("load_kg", "pair_total_kg");
+  if (has("plates_per_side_kg") && has("pair_total_kg")) {
+    return clash("plates_per_side_kg", "pair_total_kg");
+  }
+  if (exercise.type === "bodyweight_plus" && has("added_kg") && has("load_kg")) {
+    return clash("added_kg", "load_kg");
+  }
+  return null;
+}

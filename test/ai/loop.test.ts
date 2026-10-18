@@ -52,7 +52,7 @@ describe("runIntent", () => {
     ]);
     const backend = fakeBackend();
     const res = await runIntent({ ...base, model, backend, usage: fakeUsage() });
-    expect(res).toMatchObject({ kind: "ok", staged: [], turns: 2 });
+    expect(res).toMatchObject({ kind: "ok", staged: [], turns: 2, toolErrors: 1 });
     expect(backend.calls).toEqual([]);
     const last = model.messageSnapshots[1]?.at(-1);
     const block = Array.isArray(last?.content) ? last.content[0] : undefined;

@@ -42,6 +42,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const system = buildSystem(p.promptStatic, p.promptContext);
   const messages: MessageParam[] = [{ role: "user", content: p.text }];
   const staged: StagedAction[] = [];
+  let toolErrors = 0;
 
   try {
     let turns = 0;
@@ -75,7 +76,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
             .map((b) => b.text)
             .join("")
             .trim() || null;
-        return { kind: "ok", staged, replyText, turns };
+        return { kind: "ok", staged, replyText, turns, toolErrors };
       }
 
       const results: {
@@ -88,6 +89,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
         if (controller.signal.aborted) throw controller.signal.reason;
         const exec = await executeTool(tu.name, tu.input, p.backend);
         if (exec.staged) staged.push(exec.staged);
+        if (exec.isError) toolErrors++;
         results.push({
           type: "tool_result",
           tool_use_id: tu.id,
@@ -100,7 +102,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
         { role: "user", content: results },
       );
     }
-    return { kind: "ok", staged, replyText: null, turns };
+    return { kind: "ok", staged, replyText: null, turns, toolErrors };
   } finally {
     clearTimeout(timer);
   }
