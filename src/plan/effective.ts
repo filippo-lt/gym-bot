@@ -205,107 +205,22 @@ function lastDateOf(version: VersionInfo): string {
   return addDays(version.startDate, version.weeks * 7 - 1);
 }
 
-/** One date through an already loaded index (use when reading several dates). */
-export async function planDayFromIndex(q: Q, index: VersionIndex, date: string): Promise<PlanDay> {
-  const version = index.versionFor(date);
-  if (!version) return { kind: "no_plan" };
-  const status = planWeekFor(date, version.startDate, version.weeks);
-  if (status.status === "before_start") {
-    return { kind: "before_start", startDate: version.startDate };
-  }
-  if (status.status === "finished") return { kind: "finished", lastDate: lastDateOf(version) };
-  const week = index.weekOf(date);
-  if (!week) throw new Error(`Plan week ${status.week} is missing.`);
-  const common = {
-    date,
-    versionId: version.versionId,
-    week: week.week,
-    phase: week.phase,
-    isDeload: week.isDeload,
-    isTest: week.isTest,
-    weeksTotal: version.weeks,
-  };
-  const weekday = weekdayOf(date);
-  if (!weekday) return { kind: "rest", ...common };
+type ItemRow = typeof plannedItems.$inferSelect;
+type OverrideRow = typeof sessionOverrides.$inferSelect;
 
-  const rows = await q
-    .select()
-    .from(plannedItems)
-    .where(
-      and(
-        eq(plannedItems.planVersionId, version.versionId),
-        eq(plannedItems.week, week.week),
-        eq(plannedItems.weekday, weekday),
-      ),
-    )
-    .orderBy(asc(plannedItems.itemOrder), asc(plannedItems.subItem));
-  const ids = rows.map((r) => r.id);
-
-  const optionRows = ids.length
-    ? await q
-        .select({
-          plannedItemId: plannedItemOptions.plannedItemId,
-          id: exercises.id,
-          slug: exercises.slug,
-          name: exercises.name,
-          type: exercises.type,
-          loadBasis: exercises.loadBasis,
-          equipmentId: exercises.equipmentId,
-          isMainLift: exercises.isMainLift,
-          muscleGroup: exercises.muscleGroup,
-        })
-        .from(plannedItemOptions)
-        .innerJoin(exercises, eq(exercises.id, plannedItemOptions.exerciseId))
-        .where(inArray(plannedItemOptions.plannedItemId, ids))
-        .orderBy(asc(plannedItemOptions.plannedItemId), asc(plannedItemOptions.optionIndex))
-    : [];
-  const overrideRows = ids.length
-    ? await q
-        .select()
-        .from(sessionOverrides)
-        .where(
-          and(eq(sessionOverrides.sessionDate, date), inArray(sessionOverrides.plannedItemId, ids)),
-        )
-        .orderBy(asc(sessionOverrides.id))
-    : [];
-
-  const optionsById = new Map<number, PlanDayOption[]>();
-  const known = new Map<number, PlanDayOption>();
-  for (const o of optionRows) {
-    const { plannedItemId, muscleGroup: _m, ...opt } = o;
-    const list = optionsById.get(plannedItemId) ?? [];
-    list.push(opt);
-    optionsById.set(plannedItemId, list);
-    known.set(opt.id, opt);
-  }
-  const missing = [
-    ...new Set(overrideRows.map((o) => o.replacementExerciseId).filter((id) => !known.has(id))),
-  ];
-  if (missing.length > 0) {
-    const extra = await q
-      .select({
-        id: exercises.id,
-        slug: exercises.slug,
-        name: exercises.name,
-        type: exercises.type,
-        loadBasis: exercises.loadBasis,
-        equipmentId: exercises.equipmentId,
-        isMainLift: exercises.isMainLift,
-      })
-      .from(exercises)
-      .where(inArray(exercises.id, missing));
-    for (const e of extra) known.set(e.id, e);
-  }
-  const overridesById = new Map<number, (typeof overrideRows)[number][]>();
-  for (const o of overrideRows) {
-    const list = overridesById.get(o.plannedItemId) ?? [];
-    list.push(o);
-    overridesById.set(o.plannedItemId, list);
-  }
-
-  const items: PlanDayItem[] = rows.map((r) => {
-    // An override whose replaced exercise is not an option of the item is ignored; with several
-    // overrides on one item, swappedToday shows the last one applied.
+/**
+ * The pure part of rendering a day: the item rows with their options and the one-off overrides
+ * that belong to this date. An override whose replaced exercise is not an option of the item is
+ * ignored; with several overrides on one item, swappedToday shows the last one applied.
+ */
+function composeItems(
+  rows: ItemRow[],
+  optionsById: Map<number, PlanDayOption[]>,
+  overridesById: Map<number, OverrideRow[]>,
+  known: Map<number, PlanDayOption>,
+  weekIsDeload: boolean,
+): PlanDayItem[] {
+  return rows.map((r) => {
     let options = optionsById.get(r.id) ?? [];
     let swappedToday: PlanDayItem["swappedToday"] = null;
     for (const ov of overridesById.get(r.id) ?? []) {
@@ -328,7 +243,7 @@ export async function planDayFromIndex(q: Q, index: VersionIndex, date: string):
       const rir = computeRir({
         options: options.map((o) => ({ type: o.type, is_main_lift: o.isMainLift })),
         modifiers: r.modifiers as Modifier[],
-        weekIsDeload: week.isDeload,
+        weekIsDeload,
       });
       rirMin = rir.rir_min;
       rirMax = rir.rir_max;
@@ -368,7 +283,172 @@ export async function planDayFromIndex(q: Q, index: VersionIndex, date: string):
       swappedToday,
     };
   });
-  return { kind: "day", weekday, ...common, items };
+}
+
+interface DaySlot {
+  position: number;
+  date: string;
+  weekday: Weekday;
+  versionId: number;
+  week: number;
+  isDeload: boolean;
+  common: Omit<Extract<PlanDay, { kind: "rest" }>, "kind">;
+}
+
+/**
+ * Several dates through an already loaded index with a fixed number of queries (planned items,
+ * options, overrides, extra replacement exercises), whatever the number of dates.
+ */
+export async function planDaysFromIndex(
+  q: Q,
+  index: VersionIndex,
+  dates: string[],
+): Promise<PlanDay[]> {
+  const out: PlanDay[] = new Array(dates.length);
+  const slots: DaySlot[] = [];
+  for (const [position, date] of dates.entries()) {
+    const version = index.versionFor(date);
+    if (!version) {
+      out[position] = { kind: "no_plan" };
+      continue;
+    }
+    const status = planWeekFor(date, version.startDate, version.weeks);
+    if (status.status === "before_start") {
+      out[position] = { kind: "before_start", startDate: version.startDate };
+      continue;
+    }
+    if (status.status === "finished") {
+      out[position] = { kind: "finished", lastDate: lastDateOf(version) };
+      continue;
+    }
+    const week = index.weekOf(date);
+    if (!week) throw new Error(`Plan week ${status.week} is missing.`);
+    const common = {
+      date,
+      versionId: version.versionId,
+      week: week.week,
+      phase: week.phase,
+      isDeload: week.isDeload,
+      isTest: week.isTest,
+      weeksTotal: version.weeks,
+    };
+    const weekday = weekdayOf(date);
+    if (!weekday) {
+      out[position] = { kind: "rest", ...common };
+      continue;
+    }
+    slots.push({
+      position,
+      date,
+      weekday,
+      versionId: version.versionId,
+      week: week.week,
+      isDeload: week.isDeload,
+      common,
+    });
+  }
+  if (slots.length === 0) return out;
+
+  const rows = await q
+    .select()
+    .from(plannedItems)
+    .where(
+      and(
+        inArray(plannedItems.planVersionId, [...new Set(slots.map((s) => s.versionId))]),
+        inArray(plannedItems.week, [...new Set(slots.map((s) => s.week))]),
+        inArray(plannedItems.weekday, [...new Set(slots.map((s) => s.weekday))]),
+      ),
+    )
+    .orderBy(asc(plannedItems.itemOrder), asc(plannedItems.subItem));
+  const rowsOf = (s: DaySlot) =>
+    rows.filter(
+      (r) => r.planVersionId === s.versionId && r.week === s.week && r.weekday === s.weekday,
+    );
+  const ids = slots.flatMap((s) => rowsOf(s).map((r) => r.id));
+
+  const optionRows = ids.length
+    ? await q
+        .select({
+          plannedItemId: plannedItemOptions.plannedItemId,
+          id: exercises.id,
+          slug: exercises.slug,
+          name: exercises.name,
+          type: exercises.type,
+          loadBasis: exercises.loadBasis,
+          equipmentId: exercises.equipmentId,
+          isMainLift: exercises.isMainLift,
+          muscleGroup: exercises.muscleGroup,
+        })
+        .from(plannedItemOptions)
+        .innerJoin(exercises, eq(exercises.id, plannedItemOptions.exerciseId))
+        .where(inArray(plannedItemOptions.plannedItemId, ids))
+        .orderBy(asc(plannedItemOptions.plannedItemId), asc(plannedItemOptions.optionIndex))
+    : [];
+  const overrideRows = ids.length
+    ? await q
+        .select()
+        .from(sessionOverrides)
+        .where(
+          and(
+            inArray(
+              sessionOverrides.sessionDate,
+              slots.map((s) => s.date),
+            ),
+            inArray(sessionOverrides.plannedItemId, ids),
+          ),
+        )
+        .orderBy(asc(sessionOverrides.id))
+    : [];
+
+  const optionsById = new Map<number, PlanDayOption[]>();
+  const known = new Map<number, PlanDayOption>();
+  for (const o of optionRows) {
+    const { plannedItemId, muscleGroup: _m, ...opt } = o;
+    const list = optionsById.get(plannedItemId) ?? [];
+    list.push(opt);
+    optionsById.set(plannedItemId, list);
+    known.set(opt.id, opt);
+  }
+  const missing = [
+    ...new Set(overrideRows.map((o) => o.replacementExerciseId).filter((id) => !known.has(id))),
+  ];
+  if (missing.length > 0) {
+    const extra = await q
+      .select({
+        id: exercises.id,
+        slug: exercises.slug,
+        name: exercises.name,
+        type: exercises.type,
+        loadBasis: exercises.loadBasis,
+        equipmentId: exercises.equipmentId,
+        isMainLift: exercises.isMainLift,
+      })
+      .from(exercises)
+      .where(inArray(exercises.id, missing));
+    for (const e of extra) known.set(e.id, e);
+  }
+
+  for (const s of slots) {
+    const overridesById = new Map<number, OverrideRow[]>();
+    for (const o of overrideRows) {
+      if (o.sessionDate !== s.date) continue;
+      const list = overridesById.get(o.plannedItemId) ?? [];
+      list.push(o);
+      overridesById.set(o.plannedItemId, list);
+    }
+    out[s.position] = {
+      kind: "day",
+      weekday: s.weekday,
+      ...s.common,
+      items: composeItems(rowsOf(s), optionsById, overridesById, known, s.isDeload),
+    };
+  }
+  return out;
+}
+
+/** One date through an already loaded index (use planDaysFromIndex for several dates). */
+export async function planDayFromIndex(q: Q, index: VersionIndex, date: string): Promise<PlanDay> {
+  return (await planDaysFromIndex(q, index, [date]))[0] as PlanDay;
 }
 
 /** Everything needed to render or reason about one date. */
@@ -376,10 +456,10 @@ export async function planDayOn(q: Q, date: string): Promise<PlanDay> {
   return planDayFromIndex(q, await loadVersionIndex(q), date);
 }
 
-/** Inclusive range of dates, one version index load, then per-day items. */
+/** Inclusive range of dates: one version index load, then one batched read of the items. */
 export async function planDaysBetween(q: Q, from: string, to: string): Promise<PlanDay[]> {
   const index = await loadVersionIndex(q);
-  const days: PlanDay[] = [];
-  for (let d = from; d <= to; d = addDays(d, 1)) days.push(await planDayFromIndex(q, index, d));
-  return days;
+  const dates: string[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) dates.push(d);
+  return planDaysFromIndex(q, index, dates);
 }

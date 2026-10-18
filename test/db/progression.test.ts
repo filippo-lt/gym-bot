@@ -726,4 +726,21 @@ describe("plan versions and one-off overrides (M7)", () => {
     expect(tue?.suggestions[hack]).toBeTruthy();
     expect(tue?.suggestions[hack]?.labels).not.toContain("back_after_break");
   });
+
+  it("control: a Monday-only swap does not hide real misses on the Tuesday item", async () => {
+    const hack = await exId(sql, "hack_squat");
+    for (const w of [1, 2]) {
+      await logGroup({
+        slug: "hack_squat",
+        date: addDaysIso(MONDAYS[w - 1] as string, 1),
+        itemKey: `w${pad(w)}-tue-00-0`,
+        sets: bench(60),
+      });
+    }
+    await recentClasses(["2026-10-30"]);
+    await swapFrom("2026-11-02", "hack_squat", "squat", ["mon"]);
+    const r = await ensureSuggestions(db, "2026-11-03");
+    const tue = r?.session.items.find((i) => i.target.planName === "Hack squat solo");
+    expect(tue?.suggestions[hack]?.labels).toContain("back_after_break");
+  });
 });

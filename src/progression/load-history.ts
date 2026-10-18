@@ -16,9 +16,14 @@ import { equipment, exercises, hspuLadder } from "../db/schema/plan.js";
 import { proposals, readinessLogs, suggestions } from "../db/schema/progression.js";
 import { trainingDate } from "../domain/calendar.js";
 import type { Q } from "../logging/db.js";
-import { loadVersionIndex, planDayFromIndex, type VersionIndex } from "../plan/effective.js";
+import {
+  loadVersionIndex,
+  planDayFromIndex,
+  planDaysFromIndex,
+  type VersionIndex,
+} from "../plan/effective.js";
 import { gateEventsFrom } from "./pullup.js";
-import { driftFor } from "./readiness.js";
+import { driftFor, RECOVERY_LOW_MAX } from "./readiness.js";
 import type {
   ExerciseInfo,
   GateEvent,
@@ -37,8 +42,6 @@ import type {
 export const DERIVED_KIND = "button_ok";
 export const PULLUP_METRIC = "pullups";
 export const RECOVERY_METRIC = "recovery";
-/** Recovery at or below this score is a readiness signal (SPEC 5.6b/c). */
-export const RECOVERY_LOW_MAX = 2;
 
 /** Signals that can still matter: recovery lives 3 days, chat/button 24 h. */
 const SIGNAL_LOOKBACK_DAYS = 4;
@@ -444,13 +447,13 @@ async function loadOccurrences(
   today: { id: number; subItem: number; optionIds: number[] }[],
 ): Promise<ItemOccurrence[]> {
   if (today.length === 0) return [];
-  const days: Extract<Awaited<ReturnType<typeof planDayFromIndex>>, { kind: "day" }>[] = [];
+  const dates: string[] = [];
   for (let d = addDays(date, -7); env.weekOf(d); d = addDays(d, -7)) {
-    const wk = env.weekOf(d);
-    if (!wk || wk.isDeload) continue;
-    const day = await planDayFromIndex(q, env, d);
-    if (day.kind === "day") days.push(day);
+    if (!env.weekOf(d)?.isDeload) dates.push(d);
   }
+  const days = (await planDaysFromIndex(q, env, dates)).filter(
+    (day): day is Extract<typeof day, { kind: "day" }> => day.kind === "day",
+  );
   const empty = () => today.map((t) => ({ plannedItemId: t.id, occurrences: [] }));
   if (days.length === 0) return empty();
 
