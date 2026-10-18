@@ -9,7 +9,7 @@ Plan facts used below (from `seed/hybrid-strength-plan.json`): Face pull is on F
 
 2. **Swap for one day.** Send `swap face pulls for band pull-aparts only today`.
    Face pull is on Friday only. On other days the card uses the next Friday and names its date; "today" in the text is that date.
-   Expect: a card "Swap for <date>: Face pull → Band pull-apart (3 × 15, same tags). Nothing else changes." plus, if Band pull-apart is not in the catalog yet, "New exercise: Band pull-apart · <how it was classified>." The classification (for example "reps only (no load math)") is chosen by the model, so read that line before you tap ✅. Tap ✅.
+   Expect: a card "Swap for <date>: Face pull → Band pull-apart (2 × 12–15, same tags). Nothing else changes." plus, if Band pull-apart is not in the catalog yet, "New exercise: Band pull-apart · <how it was classified>." The classification (for example "reps only (no load math)") is chosen by the model, so read that line before you tap ✅. Tap ✅.
    Expect: "Saved. ..." with an Undo button.
    Send `/today` (on a Friday) or `/session fri`. Expect the Band pull-apart with "(instead of Face pull today)".
    Tap Undo. Expect "Undone. The plan is back as it was." `/today` shows Face pull again.

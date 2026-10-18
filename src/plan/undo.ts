@@ -148,7 +148,8 @@ export async function undoPlanChange(
             .where(inArray(sessionOverrides.plannedItemId, ids))
         : [];
     if (foreign.length > 0) {
-      if (!base) return { ok: false, reply: TOO_LATE };
+      // Every plan-change version has a predecessor; throwing rolls back the deletes above.
+      if (!base) throw new Error(`Plan version ${r.versionId} has no previous version.`);
       dropped = await repointOverrides(tx, foreign, base.id);
     }
     if (ids.length > 0) {
