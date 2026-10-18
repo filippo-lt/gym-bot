@@ -68,11 +68,12 @@ describe("buildBackup", () => {
       expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
     }
     expect(built.meta.manifest.plans?.rows).toBeGreaterThan(0);
-    expect(built.meta.manifest.plans?.sha256).toBe(
-      (
-        await sql`select encode(sha256(convert_to(${built.tableJson.plans as string}::jsonb::text, 'UTF8')), 'hex') as h`
-      )[0]?.h,
-    );
+    for (const [name, entry] of Object.entries(built.meta.manifest)) {
+      const h = (
+        await sql`select encode(sha256(convert_to(${built.tableJson[name] as string}::jsonb::text, 'UTF8')), 'hex') as h`
+      )[0]?.h;
+      expect(entry.sha256, name).toBe(h);
+    }
   });
 
   it("writes a parseable file with typed values", async () => {
@@ -88,6 +89,7 @@ describe("buildBackup", () => {
   });
 
   it("keeps text[] as arrays and jsonb as objects", async () => {
+    await sql`insert into write_ledger (source_key, action_index, result) values ('t:backup', 0, '{"ok": true, "n": [1, 2]}'::jsonb)`;
     const catalog = await readCatalog(db);
     const built = await buildBackup(db, NOW);
     const parsed = JSON.parse(built.json).tables as Record<string, Record<string, unknown>[]>;
@@ -104,10 +106,14 @@ describe("buildBackup", () => {
         if (ty === "ARRAY") {
           expect(Array.isArray(v)).toBe(true);
           arrays++;
-        } else if (typeof v === "object") objects++;
+        } else {
+          expect(typeof v, `${t}.${c}`).toBe("object");
+          objects++;
+        }
       }
     }
-    expect(arrays + objects).toBeGreaterThan(0);
+    expect(arrays).toBeGreaterThan(0);
+    expect(objects).toBeGreaterThan(0);
   });
 });
 

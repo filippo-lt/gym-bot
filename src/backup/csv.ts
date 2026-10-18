@@ -1,3 +1,4 @@
+// A jsonb scalar string is written as its plain text: the CSV is for spreadsheets, not restore.
 function cell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text =
@@ -13,5 +14,5 @@ function cell(value: unknown): string {
 export function toCsv(columns: string[], rows: Record<string, unknown>[]): string {
   const lines = [columns.map(cell).join(",")];
   for (const row of rows) lines.push(columns.map((c) => cell(row[c])).join(","));
-  return `﻿${lines.join("\r\n")}\r\n`;
+  return `\ufeff${lines.join("\r\n")}\r\n`;
 }
