@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, lt, lte } from "drizzle-orm";
 import { pendingActions } from "../db/schema/agent.js";
 import type { Db, Q } from "./db.js";
-import type { StagedAction } from "./types.js";
+import type { InputSource, StagedAction } from "./types.js";
 
 export type Pending = typeof pendingActions.$inferSelect;
 export type PendingKind = Pending["kind"];
@@ -17,6 +17,8 @@ export async function createPending(
     reasons: string[];
     sourceUpdateId: number | null;
     now: Date;
+    inputSource?: InputSource;
+    transcript?: string | null;
   },
 ): Promise<{ pending: Pending; replaced: Pending | null; reused: boolean }> {
   return db.transaction(async (tx) => {
@@ -38,6 +40,8 @@ export async function createPending(
         actions: args.actions,
         reasons: args.reasons,
         sourceUpdateId: args.sourceUpdateId,
+        inputSource: args.inputSource ?? "text",
+        transcript: args.transcript ?? null,
         createdAt: args.now,
         expiresAt: new Date(args.now.getTime() + PENDING_TTL_MS),
       })

@@ -424,6 +424,10 @@ export type ConfirmReason =
   | "skip_primary"
   | "skip_session"
   | "skip_ambiguous"
+  /** Voice can mishear numbers and names: a voice note always goes through a card. */
+  | "voice_input"
+  /** A class log that moves planned sessions (later task). */
+  | "class_moves"
   /** A limitation/preference is never saved without a tap (SPEC 5.6e). */
   | "memory"
   /** Band kg changes the equipment table: always a tap. */

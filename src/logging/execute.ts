@@ -22,6 +22,7 @@ import { writeSkip } from "./skip.js";
 import type {
   BeforeGroup,
   GroupSnapshot,
+  InputSource,
   LedgerResult,
   ResolvedEntry,
   SessionItemBefore,
@@ -216,7 +217,12 @@ const groupFields = (g: typeof logGroups.$inferSelect): BeforeGroup => ({
   note: g.note,
 });
 
-async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerResult> {
+async function writeAction(
+  tx: Tx,
+  a: StagedAction,
+  now: Date,
+  source: InputSource = "text",
+): Promise<LedgerResult> {
   switch (a.kind) {
     case "log_sets": {
       const r = a.resolved;
@@ -242,7 +248,7 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
           // The level frozen for the group's own session day; a make-up never takes today's.
           readinessLevel: await loadFrozenLevel(tx, r.sessionDate),
           bwKg: r.bwKg,
-          source: "text",
+          source,
           note: r.note,
           hspuStepId: await ladderId(tx, r.hspuStep?.slug),
         })
@@ -493,6 +499,8 @@ export async function executeActions(
     now?: Date;
     replaceActions?: StagedAction[];
     replaceReasons?: string[];
+    /** Where the request came from; stored on the log group. */
+    source?: InputSource;
   } = {},
 ): Promise<ExecuteResult> {
   const now = opts.now ?? new Date();
@@ -527,7 +535,12 @@ function runActions(
   db: Db,
   sourceKey: string,
   actions: StagedAction[],
-  opts: { pendingId?: number; replaceActions?: StagedAction[]; replaceReasons?: string[] },
+  opts: {
+    pendingId?: number;
+    replaceActions?: StagedAction[];
+    replaceReasons?: string[];
+    source?: InputSource;
+  },
   now: Date,
 ): Promise<ExecuteResult> {
   return db.transaction(async (tx): Promise<ExecuteResult> => {
@@ -589,7 +602,7 @@ function runActions(
         results.push((existing as { result: LedgerResult }).result);
         continue;
       }
-      const result = await writeAction(tx, action, now);
+      const result = await writeAction(tx, action, now, opts.source);
       await tx
         .update(writeLedger)
         .set({ result })

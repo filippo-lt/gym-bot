@@ -1143,6 +1143,30 @@ describe("round 4", () => {
     });
   });
 
+  it("voice origin survives clarify: confirm card with heard line, no write", async () => {
+    const said = {
+      exercise: { said: "fp" },
+      sets: { count: 2, reps: 15, load_kg: 25 },
+      guessed_fields: [],
+      needs_confirmation: false,
+    };
+    const t = setup([tool("log_sets", said), nothing]);
+    await t.say("fp 2x15 25");
+    await sql`update pending_actions set input_source = 'voice', transcript = 'face pull two by fifteen'`;
+    const face = t.buttons(t.lastSent()).find((b) => b.text === "Face pull");
+    await t.tap(face?.data as string, 1001);
+    const card = String(t.edits().at(-1)?.payload.text);
+    expect(card.startsWith("🎤 heard: face pull two by fifteen")).toBe(true);
+    expect(card).toContain("from a voice note");
+    expect(await count("log_groups")).toBe(0);
+    expect((await sql`select kind, status from pending_actions`)[0]).toMatchObject({
+      kind: "confirm",
+      status: "open",
+    });
+    await t.tap("pa:1:ok", 1001);
+    expect((await sql`select source from log_groups`).map((r) => r.source)).toEqual(["voice"]);
+  });
+
   it("a truncated turn: confirm card for what was staged, nothing written (MAJOR-1)", async () => {
     const t = setup([
       tool("log_sets", benchLog()),

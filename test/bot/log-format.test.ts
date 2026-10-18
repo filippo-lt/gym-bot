@@ -356,6 +356,29 @@ describe("cards", () => {
     expect(m.keyboard[0]).toHaveLength(2);
   });
 
+  it("confirmCard shows the heard line first", () => {
+    const a = logAction();
+    const m = confirmCard({
+      id: 5,
+      kind: "confirm",
+      actions: [a],
+      reasons: ["voice_input"],
+      heard: "fifteen face pulls",
+    });
+    expect(m.text.startsWith("🎤 heard: fifteen face pulls\n\nSave this?")).toBe(true);
+    expect(m.text).toContain("Why I'm asking: from a voice note");
+    const long = confirmCard({
+      id: 5,
+      kind: "confirm",
+      actions: [a],
+      reasons: [],
+      heard: "x".repeat(400),
+    });
+    expect(long.text.split("\n")[0]).toBe(`🎤 heard: ${"x".repeat(300)}…`);
+    const esc = confirmCard({ id: 5, kind: "confirm", actions: [a], reasons: [], heard: "a < b" });
+    expect(esc.text.split("\n")[0]).toBe("🎤 heard: a &lt; b");
+  });
+
   it("clarify message", () => {
     const m = clarifyCard({
       id: 8,

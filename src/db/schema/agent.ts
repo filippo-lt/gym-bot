@@ -16,7 +16,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { LedgerResult, StagedAction } from "../../logging/types.js";
+import type { InputSource, LedgerResult, StagedAction } from "../../logging/types.js";
 
 export const PENDING_KINDS = ["confirm", "clarify_exercise", "delete"] as const;
 export const PENDING_STATUSES = ["open", "executed", "cancelled", "replaced", "expired"] as const;
@@ -52,7 +52,7 @@ export const pendingActions = pgTable(
     messageId: integer("message_id"),
     sourceUpdateId: bigint("source_update_id", { mode: "number" }),
     /** Where the staged input came from; voice and photo cards show what was heard or read. */
-    inputSource: text("input_source").notNull().default("text"),
+    inputSource: text("input_source").$type<InputSource>().notNull().default("text"),
     /** Voice transcript or photo read-out, shown on the card. */
     transcript: text("transcript"),
     createdAt: createdAt(),

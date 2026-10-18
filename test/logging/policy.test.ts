@@ -273,3 +273,38 @@ describe("skip_items policy", () => {
     expect(reasons([skip("High"), logAction()])).toEqual(["multiple_writes"]);
   });
 });
+
+describe("decidePolicy voice", () => {
+  const voice = { voiceInput: true };
+  const bw: StagedAction = { kind: "log_bodyweight", input: { kg: 70 }, date: "2026-09-28" };
+  const readiness: StagedAction = {
+    kind: "log_readiness",
+    input: { signal: "good" },
+    date: "2026-09-28",
+  };
+  const cls: StagedAction = {
+    kind: "log_class",
+    input: { heavy_groups: [] },
+    date: "2026-10-01",
+  };
+
+  it("voice turns a clear log into confirm", () => {
+    for (const a of [logAction(), readiness, bw, cls]) {
+      expect(decidePolicy([a], voice)).toEqual({ mode: "confirm", reasons: ["voice_input"] });
+    }
+  });
+
+  it("clarify still wins over voice", () => {
+    const clarify: StagedAction = {
+      kind: "clarify_exercise",
+      said: "fp",
+      candidates: [],
+      input: logInput(),
+    };
+    expect(decidePolicy([clarify], voice)).toEqual({ mode: "clarify", index: 0 });
+  });
+
+  it("voice with no actions stays direct", () => {
+    expect(decidePolicy([], voice)).toEqual({ mode: "direct" });
+  });
+});

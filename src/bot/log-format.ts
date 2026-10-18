@@ -421,6 +421,9 @@ export function reasonPhrases(actions: StagedAction[], reasons: string[]): strin
         if (guessed.length) out.push(`${guessed.join(", ")} ${plural ? "were" : "was"} guessed`);
         break;
       }
+      case "voice_input":
+        out.push("from a voice note");
+        break;
       case "partly_understood":
         out.push("part of your message couldn't be saved");
         break;
@@ -534,6 +537,8 @@ export function stripMarkdown(text: string): string {
     .replace(/^[ \t]*#{1,6}[ \t]*/gm, "");
 }
 
+const HEARD_MAX = 300;
+
 export function confirmCard(args: {
   id: number;
   kind: Pending["kind"];
@@ -541,9 +546,15 @@ export function confirmCard(args: {
   reasons: string[];
   /** Summary of an older request this one replaced. */
   replacedSummary?: string | null;
+  /** Voice transcript or photo read-out, shown first. */
+  heard?: string | null;
 }): Message {
   const isDelete = args.kind === "delete";
   const lines: string[] = [];
+  if (args.heard) {
+    const text = args.heard.length > HEARD_MAX ? `${args.heard.slice(0, HEARD_MAX)}…` : args.heard;
+    lines.push(`🎤 heard: ${esc(text)}`, "");
+  }
   if (args.replacedSummary) {
     lines.push(`Replaces: ${esc(args.replacedSummary)}`, "");
   }

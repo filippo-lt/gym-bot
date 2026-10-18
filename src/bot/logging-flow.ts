@@ -49,7 +49,13 @@ import {
   createLoggingBackend,
   resolveClarified,
 } from "../logging/resolve.js";
-import type { GroupSnapshot, LedgerResult, PromptStatic, StagedAction } from "../logging/types.js";
+import type {
+  GroupSnapshot,
+  InputSource,
+  LedgerResult,
+  PromptStatic,
+  StagedAction,
+} from "../logging/types.js";
 import { createUsageStore } from "../logging/usage.js";
 import { type CallbackAction, parseCallback } from "./callbacks.js";
 import { esc, guardLength } from "./format.js";
@@ -420,7 +426,7 @@ export function createFlow(deps: FlowDeps): Flow {
 
   function renderPending(p: Pending, replacedSummary: string | null): Message {
     if (p.kind === "clarify_exercise") {
-      const d = decidePolicy(p.actions);
+      const d = decidePolicy(p.actions, { voiceInput: p.inputSource === "voice" });
       const a = d.mode === "clarify" ? p.actions[d.index] : undefined;
       if (a?.kind === "clarify_exercise") {
         return clarifyCard({
@@ -439,6 +445,7 @@ export function createFlow(deps: FlowDeps): Flow {
       actions: p.actions,
       reasons: p.reasons,
       replacedSummary,
+      heard: p.transcript,
     });
   }
 
@@ -450,6 +457,8 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: string[];
       updateId: number | null;
       now: Date;
+      inputSource?: InputSource;
+      transcript?: string | null;
     },
   ): Promise<Pending> {
     const chatId = (ctx.chat as { id: number }).id;
@@ -460,6 +469,8 @@ export function createFlow(deps: FlowDeps): Flow {
       reasons: args.reasons,
       sourceUpdateId: args.updateId,
       now: args.now,
+      inputSource: args.inputSource,
+      transcript: args.transcript,
     });
     // The handler ran twice for one update: the first run already sent (or finished) the card.
     if (reused && (pending.messageId !== null || pending.status !== "open")) return pending;
@@ -954,7 +965,11 @@ export function createFlow(deps: FlowDeps): Flow {
           ? SKIPPED_DONE
           : "Saved ✓";
     const key = `p:${id}`;
-    const r = await executeActions(db, key, pending.actions, { pendingId: id, now });
+    const r = await executeActions(db, key, pending.actions, {
+      pendingId: id,
+      now,
+      source: pending.inputSource,
+    });
     if (r.status === "stale") {
       await editQuietly(ctx, STALE);
       await answer(STALE);
@@ -1043,7 +1058,7 @@ export function createFlow(deps: FlowDeps): Flow {
       await remember(chatId, "A tapped exercise choice had expired; nothing saved.");
       return;
     }
-    const d = decidePolicy(pending.actions);
+    const d = decidePolicy(pending.actions, { voiceInput: pending.inputSource === "voice" });
     const clarify = d.mode === "clarify" ? pending.actions[d.index] : undefined;
     const chosen = clarify?.kind === "clarify_exercise" ? clarify.candidates[index] : undefined;
     if (d.mode === "clarify" && d.index !== tappedAction) {
@@ -1111,7 +1126,10 @@ export function createFlow(deps: FlowDeps): Flow {
 
     const actions = pending.actions.map((x, i) => (i === d.index ? resolved : x));
     const partly = pending.reasons.includes(PARTLY);
-    const next = decidePolicy(actions, { partlyUnderstood: partly });
+    const next = decidePolicy(actions, {
+      partlyUnderstood: partly,
+      voiceInput: pending.inputSource === "voice",
+    });
     if (next.mode === "clarify") {
       if (!(await replacePendingActions(db, pendingId, actions))) {
         await answer(EXPIRED);
@@ -1150,7 +1168,16 @@ export function createFlow(deps: FlowDeps): Flow {
         await remember(chatOf(ctx), "The request had expired; nothing saved.");
         return;
       }
-      await edit(ctx, confirmCard({ id: pendingId, kind, actions, reasons: next.reasons }));
+      await edit(
+        ctx,
+        confirmCard({
+          id: pendingId,
+          kind,
+          actions,
+          reasons: next.reasons,
+          heard: pending.transcript,
+        }),
+      );
       await remember(chatId, `${chose} Asked to confirm: ${plainSummary(actions)}`);
       const aliasMessage = await saveChosenAlias();
       if (aliasMessage) await send(ctx, aliasMessage);
@@ -1164,6 +1191,7 @@ export function createFlow(deps: FlowDeps): Flow {
       now,
       replaceActions: actions,
       replaceReasons: pending.reasons,
+      source: pending.inputSource,
     });
     if (r.status !== "done") {
       await answer(r.status === "stale" ? STALE : EXPIRED);
