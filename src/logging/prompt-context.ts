@@ -9,7 +9,7 @@ import { recentMessages } from "./conversation.js";
 import type { Db } from "./db.js";
 import { dateLabel, describeAction } from "./describe.js";
 import { groupSnapshot } from "./groups.js";
-import { activeAliases } from "./memory.js";
+import { activeAliases, listMemory } from "./memory.js";
 import { getOpenPending } from "./pending.js";
 import type { PromptContext, PromptStatic } from "./types.js";
 
@@ -17,11 +17,13 @@ import type { PromptContext, PromptStatic } from "./types.js";
 export const LAST_SAVED_LIMIT = 3;
 export const LAST_SAVED_WINDOW_MS = 6 * 3600 * 1000;
 
-/** About 1,500 tokens (SPEC 5.6e). */
+/** About 1,500 tokens (SPEC 5.6e). Aliases and limitations/preferences each have their own block. */
 export const ALIAS_CHAR_CAP = 6000;
+export const MEMORY_CHAR_CAP = 6000;
 
 export async function buildPromptStatic(db: Db): Promise<PromptStatic> {
-  const [catalog, ladder] = await Promise.all([loadCatalog(db), loadLadder(db)]);
+  const catalog = await loadCatalog(db);
+  const ladder = await loadLadder(db);
   return {
     catalog: catalog.map((c) => ({
       slug: c.slug,
@@ -71,6 +73,16 @@ export async function buildPromptContext(
     aliases.push({ said: a.alias, slug: a.slug, name: a.name });
   }
 
+  // Newest first: when the cap is hit the oldest items are the ones dropped.
+  const memory: PromptContext["memory"] = [];
+  let memChars = 0;
+  for (const m of await listMemory(db)) {
+    if (m.kind !== "limitation" && m.kind !== "preference") continue;
+    memChars += m.kind.length + m.content.length + 4;
+    if (memChars > MEMORY_CHAR_CAP) break;
+    memory.push({ kind: m.kind, content: m.content });
+  }
+
   const since = new Date(now.getTime() - LAST_SAVED_WINDOW_MS);
   const recentGroups = await db
     .select({ id: logGroups.id })
@@ -98,6 +110,7 @@ export async function buildPromptContext(
     todayLabel,
     todayItems,
     aliases,
+    memory,
     pending: open
       ? { summary: open.actions.map(describeAction).join("; "), awaitingEdit: open.awaitingEdit }
       : null,

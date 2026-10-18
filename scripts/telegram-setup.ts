@@ -30,7 +30,11 @@ try {
   });
   await api.setMyCommands([
     { command: "today", description: "Today's session" },
+    { command: "next", description: "Next exercise" },
+    { command: "session", description: "A session by day or date" },
     { command: "week", description: "This week" },
+    { command: "plan", description: "Plan overview" },
+    { command: "history", description: "Last sessions of an exercise" },
     { command: "undo", description: "Remove my last log" },
     { command: "memory", description: "What I remember" },
     { command: "help", description: "Commands" },

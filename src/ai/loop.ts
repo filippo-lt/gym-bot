@@ -4,13 +4,14 @@ import type {
   LoggingBackend,
   PromptContext,
   PromptStatic,
+  ReadRecord,
   StagedAction,
   UsageStore,
 } from "../logging/types.js";
 import { AI_BUDGET_MS, AI_MAX_TURNS } from "./constants.js";
 import type { IntentModel, MessageParam } from "./model.js";
 import { buildSystem } from "./prompt.js";
-import { executeTool, TOOLS } from "./tools.js";
+import { executeTool, READ_TOOLS, TOOLS } from "./tools.js";
 
 export interface RunIntentParams {
   text: string;
@@ -91,6 +92,7 @@ export function countUnresolvedErrors(events: IntentEvent[]): number {
       if (e.tool === "edit_last_entry" || e.tool === "undo_last_entry") {
         return x.kind === "edit_group" || x.kind === "delete_group";
       }
+      if (e.tool === "save_memory") return x.kind === "save_memory";
       // Unknown tool name (a typo): any later staged action is the retry.
       return true;
     });
@@ -175,6 +177,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
   const staged: StagedAction[] = [];
   const events: IntentEvent[] = [];
   const metas: StagedMeta[] = [];
+  const reads: ReadRecord[] = [];
 
   try {
     let turns = 0;
@@ -209,6 +212,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           turns,
           toolErrors: countUnresolvedErrors(events),
           truncated: true,
+          reads,
         };
       }
       const toolUses = res.content.filter((b) => b.type === "tool_use");
@@ -226,6 +230,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
           turns,
           toolErrors: countUnresolvedErrors(events),
           truncated: false,
+          reads,
         };
       }
 
@@ -240,8 +245,15 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
         const exec = await executeTool(tu.name, tu.input, p.backend);
         if (exec.staged) {
           addStaged(staged, metas, events, exec.staged, turns, tu.input);
-        } else if (exec.isError && tu.name !== "get_session") {
+        } else if (exec.isError && !READ_TOOLS.includes(tu.name)) {
           events.push({ type: "error", turn: turns, tool: tu.name, ...exerciseOf(tu.input) });
+        }
+        if (exec.read && !exec.isError) {
+          reads.push({
+            tool: tu.name,
+            content: exec.toolResultContent,
+            fallbackHtml: exec.read.fallbackHtml,
+          });
         }
         results.push({
           type: "tool_result",
@@ -262,6 +274,7 @@ export async function runIntent(p: RunIntentParams): Promise<IntentResult> {
       turns,
       toolErrors: countUnresolvedErrors(events),
       truncated: false,
+      reads,
     };
   } finally {
     clearTimeout(timer);

@@ -25,21 +25,34 @@ export function isRepsFarOff(newReps: number | null, refReps: number | null): bo
   return newReps >= FAR_OFF_REPS_FACTOR * refReps;
 }
 
-/** The load (kg) that made the action "far from last time", or null when it did not. */
-export function farOffLoad(a: StagedAction): number | null {
+/** The load (kg) that made the action "far from last time" and the reference it was compared to. */
+export function farOffLoadRef(a: StagedAction): { load: number; ref: number } | null {
   if (a.kind === "log_sets") {
     const r = a.resolved;
     const load = maxSystemLoad(r.entries, r.exercise, r.bwKg);
     const ref = r.lastSession?.maxSystemLoad ?? null;
-    return isLoadFarOff(load, ref, r.exercise.equipment?.stepKg ?? null) ? load : null;
+    return load !== null &&
+      ref !== null &&
+      isLoadFarOff(load, ref, r.exercise.equipment?.stepKg ?? null)
+      ? { load, ref }
+      : null;
   }
   if (a.kind === "edit_group") {
     const changed = a.after.entries.filter((e) => a.setIndexes.includes(e.setIndex));
     const load = maxSystemLoad(changed, a.after.exercise, a.after.bwKg);
     const ref = a.lastSession?.maxSystemLoad ?? null;
-    return isLoadFarOff(load, ref, a.after.exercise.equipment?.stepKg ?? null) ? load : null;
+    return load !== null &&
+      ref !== null &&
+      isLoadFarOff(load, ref, a.after.exercise.equipment?.stepKg ?? null)
+      ? { load, ref }
+      : null;
   }
   return null;
+}
+
+/** The load (kg) that made the action "far from last time", or null when it did not. */
+export function farOffLoad(a: StagedAction): number | null {
+  return farOffLoadRef(a)?.load ?? null;
 }
 
 /** The best reps that made the action "look high", or null when they did not. */
@@ -77,6 +90,9 @@ function actionReasons(a: StagedAction): ConfirmReason[] {
       break;
     case "delete_group":
       out.push("delete");
+      break;
+    case "save_memory":
+      out.push("memory");
       break;
     case "clarify_exercise":
       break;

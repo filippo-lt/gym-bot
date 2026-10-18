@@ -1,6 +1,6 @@
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createFakeModel,
   type ScriptedTurn,
@@ -9,7 +9,7 @@ import {
   turn,
 } from "../../src/ai/fake-model.js";
 import { createBot } from "../../src/bot/bot.js";
-import { BUDGET_REACHED, EXPIRED, STALE } from "../../src/bot/log-format.js";
+import { BUDGET_REACHED, EXPIRED, NUMBER_GUARD_FALLBACK, STALE } from "../../src/bot/log-format.js";
 import { saveAlias } from "../../src/logging/memory.js";
 import { createPending } from "../../src/logging/pending.js";
 import type { StagedAction } from "../../src/logging/types.js";
@@ -447,7 +447,7 @@ describe("confirm cards", () => {
     expect(await count("log_groups")).toBe(1);
     await t.say("3x8 squat 100 rir 2");
     expect(await count("log_groups")).toBe(1);
-    expect(t.texts().at(-1)).toContain("far from last time: 100 kg");
+    expect(t.texts().at(-1)).toContain("far from last time: 100 kg vs 60 kg last time");
   });
 });
 
@@ -1262,5 +1262,171 @@ describe("round 4", () => {
     await t.tap(squat?.data as string, 1001);
     expect(String(t.edits().at(-1)?.payload.text)).toBe("Exercise: squat");
     expect(await count("log_groups")).toBe(1);
+  });
+});
+
+describe("save_memory (M4)", () => {
+  const mem = (kind: string, content: string) => tool("save_memory", { kind, content });
+
+  it("always asks first; ✅ stores the item and says Saved: with an Undo; Undo deactivates it", async () => {
+    const t = setup([mem("limitation", "left shoulder sensitive on dips"), nothing]);
+    await t.say("my left shoulder is sensitive on dips");
+    expect(t.texts()[0]).toContain("Save this?");
+    expect(t.texts()[0]).toContain("• Remember (limitation): left shoulder sensitive on dips");
+    expect(t.buttons(t.lastSent()).map((b) => b.data.split(":")[0])).toEqual(["pa", "pa", "pa"]);
+    expect(await count("memory_items")).toBe(0);
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    const [item] = await sql`select kind, content, confirmed, active from memory_items`;
+    expect(item).toEqual({
+      kind: "limitation",
+      content: "left shoulder sensitive on dips",
+      confirmed: true,
+      active: true,
+    });
+    const saved = t.sent().at(-1);
+    expect(String(saved?.payload.text)).toBe("Saved: left shoulder sensitive on dips");
+    const undo = t.buttons(saved)[0];
+    expect(undo?.data).toMatch(/^md:\d+$/);
+    await t.tap(undo?.data as string, 1002);
+    expect((await sql`select 1 from memory_items where active`).length).toBe(0);
+    expect(t.answers().at(-1)?.payload.text).toBe("Deleted.");
+  });
+
+  it("✅ twice leaves one memory row", async () => {
+    const t = setup([mem("limitation", "no dips"), nothing]);
+    await t.say("no dips for me");
+    const okData = t.buttons(t.lastSent())[0]?.data as string;
+    await t.tap(okData, 1001);
+    await t.tap(okData, 1001);
+    expect(await count("memory_items")).toBe(1);
+  });
+
+  it("❌ stores nothing, and the next prompt carries the confirmed item only", async () => {
+    const t = setup([mem("preference", "cable face pulls over band"), nothing, nothing]);
+    await t.say("I prefer cable face pulls over band");
+    await t.tap(t.buttons(t.lastSent())[2]?.data as string, 1001);
+    expect(await count("memory_items")).toBe(0);
+    await t.say("hello");
+    const sys = t.model.requests[1]?.system as { text: string }[];
+    expect(sys.map((b) => b.text).join("\n")).not.toContain("User limitations and preferences");
+  });
+
+  it("combined with a log it is one card, nothing written directly", async () => {
+    const t = setup([
+      turn(
+        toolUse("save_memory", { kind: "limitation", content: "no dips" }),
+        toolUse("log_sets", benchLog()),
+      ),
+      nothing,
+    ]);
+    await t.say("bench 2x6 55, and no dips for me");
+    expect(t.texts()[0]).toContain("Save this?");
+    expect(await count("log_groups")).toBe(0);
+    expect(await count("memory_items")).toBe(0);
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    expect(await count("log_groups")).toBe(1);
+    expect(await count("memory_items")).toBe(1);
+  });
+
+  it("saved items reach the next model request", async () => {
+    const t = setup([mem("limitation", "no dips"), nothing, nothing]);
+    await t.say("no dips for me");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1001);
+    await t.say("alternative to bench?");
+    const sys = t.model.requests.at(-1)?.system as { text: string }[];
+    expect(sys.at(-1)?.text).toContain("- limitation: no dips");
+  });
+});
+
+describe("number guard in the text flow (M4)", () => {
+  const history = (said: string) => ({ exercise: { said, slug: said } });
+
+  it("lets a reply through when every number is in the tool result", async () => {
+    const t = setup([
+      tool("log_sets", squatLog()),
+      nothing,
+      tool("get_exercise_history", history("squat")),
+      turn(text("Last time: 3 × 8 at 60 kg.")),
+    ]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("what did I squat?");
+    expect(t.texts().at(-1)).toBe("Last time: 3 × 8 at 60 kg.");
+  });
+
+  it("an invented number gets the code-formatted history instead", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = setup([
+      tool("log_sets", squatLog()),
+      nothing,
+      tool("get_exercise_history", history("squat")),
+      turn(text("You squatted 99 kg last time.")),
+    ]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("what did I squat?");
+    const reply = t.texts().at(-1) as string;
+    expect(reply).not.toContain("99");
+    expect(reply).toContain("<b>squat</b>");
+    expect(reply).toContain("3 × 8 · 60 kg");
+    expect(warn).toHaveBeenCalledWith("ai: reply rejected, 1 unknown number(s)");
+    expect(String(warn.mock.calls.flat())).not.toContain("99");
+    const last = await sql`select text from conversation_messages order by id desc limit 1`;
+    expect(String(last[0]?.text)).toContain("squat — 1 session");
+    expect(String(last[0]?.text)).not.toContain("<b>");
+    warn.mockRestore();
+  });
+
+  it("an empty reply after a read sends the code-formatted answer", async () => {
+    const t = setup([
+      tool("log_sets", squatLog()),
+      nothing,
+      tool("get_exercise_history", history("squat")),
+      nothing,
+    ]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("what did I squat?");
+    expect(t.texts().at(-1)).toContain("<b>squat</b>");
+    const last = await sql`select text from conversation_messages order by id desc limit 1`;
+    expect(String(last[0]?.text)).not.toContain("<b>");
+  });
+
+  it("without a read to fall back on it says it can't answer reliably", async () => {
+    const t = setup([turn(text("Do 12 reps of 80 kg."))]);
+    await t.say("what should I lift?");
+    expect(t.texts().at(-1)).toBe(NUMBER_GUARD_FALLBACK);
+  });
+
+  it("numbers from the user's own message and the prompt are fine", async () => {
+    const t = setup([turn(text("Got it, 5 minutes."))]);
+    await t.say("I have 5 minutes");
+    expect(t.texts().at(-1)).toBe("Got it, 5 minutes.");
+  });
+});
+
+describe("removed groups retire their echo (M4)", () => {
+  it("✅ on /undo edits the original echo to Removed, without buttons", async () => {
+    const t = setup([tool("log_sets", squatLog()), nothing]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("/undo");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1002);
+    const echoEdit = t.edits().find((e) => e.payload.message_id === 1001);
+    expect(String(echoEdit?.payload.text)).toBe("Removed: squat 3 × 8 · 60 kg");
+    expect(echoEdit?.payload.reply_markup).toBeUndefined();
+  });
+
+  it("the Undo button edits the echo too", async () => {
+    const t = setup([tool("log_sets", squatLog()), nothing]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 5000);
+    const echoEdit = t.edits().find((e) => e.payload.message_id === 1001);
+    expect(String(echoEdit?.payload.text)).toBe("Removed: squat 3 × 8 · 60 kg");
+  });
+
+  it("a Telegram error while editing the echo is swallowed", async () => {
+    const t = setup([tool("log_sets", squatLog()), nothing]);
+    await t.say("3x8 squat 60 rir 2");
+    await t.say("/undo");
+    t.fail.edits = true;
+    await t.tap(t.buttons(t.lastSent())[0]?.data as string, 1002);
+    expect(await count("log_groups")).toBe(0);
   });
 });

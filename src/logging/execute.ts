@@ -3,7 +3,7 @@
  * never duplicates a write and never fails (SPEC 3).
  */
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
-import { pendingActions, writeLedger } from "../db/schema/agent.js";
+import { memoryItems, pendingActions, writeLedger } from "../db/schema/agent.js";
 import { logEntries, logGroups, sessionItems } from "../db/schema/log.js";
 import { hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db, Q, Tx } from "./db.js";
@@ -303,6 +303,24 @@ async function writeAction(tx: Tx, a: StagedAction, now: Date): Promise<LedgerRe
       const snap = await deleteGroup(tx, a.snapshot.groupId);
       if (!snap) throw new StaleActionError(`Log group ${a.snapshot.groupId} no longer exists.`);
       return { kind: "delete", snapshot: snap };
+    }
+    case "save_memory": {
+      const [m] = await tx
+        .insert(memoryItems)
+        .values({
+          kind: a.input.kind,
+          content: a.input.content,
+          structured: null,
+          confirmed: true,
+          active: true,
+        })
+        .returning({ id: memoryItems.id });
+      return {
+        kind: "memory",
+        memoryId: (m as { id: number }).id,
+        memoryKind: a.input.kind,
+        content: a.input.content,
+      };
     }
     case "clarify_exercise":
       throw new Error("A clarify_exercise action cannot be executed.");

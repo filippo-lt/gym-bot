@@ -33,7 +33,7 @@ export function esc(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function day(date: string, fmt: string): string {
+export function day(date: string, fmt: string): string {
   return DateTime.fromISO(date, { zone: "utc" }).setLocale("en").toFormat(fmt);
 }
 
@@ -117,7 +117,7 @@ function prescription(item: SessionItem): string {
   return shorten(item.prescriptionRaw);
 }
 
-function itemLine(item: SessionItem, n: number): string {
+export function itemLine(item: SessionItem, n: number): string {
   let line = `${n}. ${STATUS_ICON[item.status]}<b>${esc(itemName(item))}</b> — ${esc(prescription(item))}`;
   if (item.rirMin != null && item.rirMax != null)
     line += ` · RIR ${range(item.rirMin, item.rirMax)}`;
@@ -127,11 +127,11 @@ function itemLine(item: SessionItem, n: number): string {
   return line;
 }
 
-function fallbackLine(fb: FallbackPrescription): string {
+export function fallbackLine(fb: FallbackPrescription): string {
   return `Not at 6 clean reps yet → bodyweight ${setsReps(fb.then)} (or assisted ${setsReps(fb.else)})`;
 }
 
-function extraLine(extra: SessionItem): string {
+export function extraLine(extra: SessionItem): string {
   const raw = (extra.extrasRaw ?? extra.prescriptionRaw).replace(/^\s*\+\s*/, "");
   return `+ ${raw.replace(/\bBW\b/g, "bodyweight")}`;
 }
@@ -217,7 +217,7 @@ export function formatSession(session: Session): string {
   }
 }
 
-function weekRange(startDate: string): string {
+export function weekRange(startDate: string): string {
   const start = DateTime.fromISO(startDate, { zone: "utc" }).setLocale("en");
   const end = start.plus({ days: 6 });
   return start.month === end.month

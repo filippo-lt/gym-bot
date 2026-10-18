@@ -1,10 +1,13 @@
 import type {
   EditLastInput,
+  GetAlternativesInput,
+  GetExerciseHistoryInput,
   GetSessionInput,
   LoggingBackend,
   LogSetsInput,
   PromptContext,
   PromptStatic,
+  SaveMemoryInput,
   StagedAction,
   TokenUsage,
   UndoLastInput,
@@ -26,7 +29,19 @@ export function fakeBackend(): LoggingBackend & { calls: string[] } {
     calls,
     async getSession(_i: GetSessionInput) {
       calls.push("get_session");
-      return { items: [] };
+      return { facts: { items: [] }, fallbackHtml: "<b>Plan</b>" };
+    },
+    async getExerciseHistory(i: GetExerciseHistoryInput) {
+      calls.push(`history:${i.exercise.said}`);
+      return { facts: { found: true, sessions: [] }, fallbackHtml: "<b>History</b>" };
+    },
+    async getAlternatives(i: GetAlternativesInput) {
+      calls.push(`alternatives:${i.exercise.said}`);
+      return { facts: { found: true }, fallbackHtml: null };
+    },
+    async stageSaveMemory(i: SaveMemoryInput) {
+      calls.push(`memory:${i.kind}`);
+      return { ok: true, action: { kind: "save_memory", input: i }, preview: "staged memory" };
     },
     async stageLogSets(input: LogSetsInput) {
       calls.push(`log_sets:${input.exercise.said}`);
@@ -73,6 +88,7 @@ export const promptContext: PromptContext = {
   todayLabel: "Tue 27 Oct 2026 · Week 5 · Strength",
   todayItems: [],
   aliases: [],
+  memory: [],
   pending: null,
   lastSaved: [],
   recent: [],

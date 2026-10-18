@@ -45,6 +45,19 @@ describe("decidePolicy", () => {
     expect(reasons([{ kind: "delete_group", snapshot: snapshot() }])).toEqual(["delete"]);
   });
 
+  it("always confirms save_memory, alone or with other actions", () => {
+    const mem: StagedAction = {
+      kind: "save_memory",
+      input: { kind: "limitation", content: "left shoulder sensitive on dips" },
+    };
+    expect(decidePolicy([mem])).toEqual({ mode: "confirm", reasons: ["memory"] });
+    expect(reasons([mem, logAction()])).toEqual(["multiple_writes", "memory"]);
+    expect(decidePolicy([mem], { openPending: true })).toEqual({
+      mode: "confirm",
+      reasons: ["replaces_pending", "memory"],
+    });
+  });
+
   it("collects several reasons without duplicates", () => {
     const a = logAction({ match: "unplanned", guessedFields: ["reps"] });
     expect(reasons([a, a])).toEqual(["multiple_writes", "not_in_today", "guessed"]);

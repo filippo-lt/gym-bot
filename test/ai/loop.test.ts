@@ -308,4 +308,42 @@ describe("unresolved tool errors", () => {
     if (res.kind === "ok") expect(res.staged).toHaveLength(1);
     expect(backend.calls).toEqual(["log_sets:bench"]);
   });
+
+  it("collects read results in order and read errors never count as tool errors", async () => {
+    const model = createFakeModel([
+      [
+        toolUse("get_session", { day: "mon", date: "2026-10-26" }),
+        toolUse("get_exercise_history", { exercise: { said: "squat" } }),
+        toolUse("get_alternatives", { exercise: { said: "fp" } }),
+      ],
+      [text("ok")],
+    ]);
+    const backend = fakeBackend();
+    const res = await runIntent({ ...base, model, backend, usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", toolErrors: 0, staged: [] });
+    if (res.kind !== "ok") return;
+    expect(res.reads).toEqual([
+      {
+        tool: "get_exercise_history",
+        content: JSON.stringify({ found: true, sessions: [] }),
+        fallbackHtml: "<b>History</b>",
+      },
+      { tool: "get_alternatives", content: JSON.stringify({ found: true }), fallbackHtml: null },
+    ]);
+  });
+
+  it("a staged save_memory is not an error and a bad one is only fixed by another save_memory", async () => {
+    const model = createFakeModel([
+      [toolUse("save_memory", { kind: "limitation", content: "left shoulder" })],
+      [text("")],
+    ]);
+    const res = await runIntent({ ...base, model, backend: fakeBackend(), usage: fakeUsage() });
+    expect(res).toMatchObject({ kind: "ok", toolErrors: 0 });
+    if (res.kind === "ok") expect(res.staged.map((s) => s.kind)).toEqual(["save_memory"]);
+    const events: IntentEvent[] = [
+      { type: "error", turn: 1, tool: "save_memory", said: null, slug: null },
+      { type: "staged", turn: 2, said: "x", slug: null, kind: "log_sets" },
+    ];
+    expect(countUnresolvedErrors(events)).toBe(1);
+  });
 });

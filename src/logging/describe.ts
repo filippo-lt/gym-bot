@@ -51,6 +51,8 @@ export function describeAction(a: StagedAction): string {
       return `remove ${a.snapshot.exercise.name} ${describeEntries(a.snapshot.entries)}`;
     case "clarify_exercise":
       return `unclear exercise "${a.said}"`;
+    case "save_memory":
+      return `remember (${a.input.kind}): ${a.input.content}`;
   }
 }
 
