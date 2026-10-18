@@ -17,6 +17,7 @@ import {
   voiceBudgetText,
 } from "../../src/bot/log-format.js";
 import type { MediaSource } from "../../src/bot/logging-flow.js";
+import { runWithDeadline } from "../../src/runtime/deadline.js";
 import { SttError } from "../../src/stt/stt.js";
 import { connect, MON, resetAndSeed } from "./logging-fixture.js";
 
@@ -276,6 +277,17 @@ describe("voice notes", () => {
     await t.voice(11);
     expect(t.texts()).toEqual([voiceBudgetText(0, 10)]);
     expect(t.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("the STT timeout is clamped to the invocation deadline", async () => {
+    const t = setup([ok], { transcript: "" });
+    // 6 s left minus the 5 s margin: the 20 s STT timeout becomes the 1 s floor.
+    await runWithDeadline(Date.now() + 6_000, () => t.voice(5));
+    const call = t.transcribe.mock.calls[0] as unknown as [unknown, { signal: AbortSignal }];
+    const { signal } = call[1];
+    expect(signal.aborted).toBe(false);
+    await new Promise((r) => setTimeout(r, 1_300));
+    expect(signal.aborted).toBe(true);
   });
 
   it("STT throws: specific text naming the provider, no usage recorded; success records seconds", async () => {

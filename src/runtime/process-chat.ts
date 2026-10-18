@@ -51,10 +51,15 @@ async function ignoreErrors(fn: () => Promise<void>): Promise<void> {
  * A "busy" or "lease_held" exit can leave a message waiting until the next webhook or cron tick
  * (at most 15 min). That is accepted by SPEC §3.
  */
-async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSummary) {
+async function runRound(
+  deps: ProcessChatDeps,
+  owner: string,
+  summary: ProcessSummary,
+  invocation: { startedAt: number; handlerRuns: number },
+) {
   const { db, chatId } = deps;
   const now = deps.now ?? Date.now;
-  const startedAt = deps.startedAt ?? now();
+  const { startedAt } = invocation;
 
   if (!(await acquireOrRenew(db, chatId, owner))) {
     summary.stoppedReason = "lease_held";
@@ -86,8 +91,10 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
       }
       // The first row of an invocation always runs (its timeouts are clamped); later rows
       // that cannot fit wait for the next invocation, attempts untouched.
-      const handledAny = summary.processed + summary.failed > 0;
-      if (handledAny && hardEndMs(startedAt) - now() < MIN_TIME_LEFT_MS[inputKind(row.payload)]) {
+      if (
+        invocation.handlerRuns > 0 &&
+        hardEndMs(startedAt) - now() < MIN_TIME_LEFT_MS[inputKind(row.payload)]
+      ) {
         summary.stoppedReason = "deadline";
         return;
       }
@@ -103,6 +110,7 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
 
       await ignoreErrors(() => deps.sendTyping(chatId));
       try {
+        invocation.handlerRuns += 1;
         await runWithDeadline(hardEndMs(startedAt), () => deps.handle(claimed.payload));
       } catch (error) {
         const failure = classify(error, "other");
@@ -151,6 +159,7 @@ async function runRound(deps: ProcessChatDeps, owner: string, summary: ProcessSu
 export async function processChat(deps: ProcessChatDeps): Promise<ProcessSummary> {
   const owner = deps.owner ?? randomUUID();
   const now = deps.now ?? Date.now;
+  const invocation = { startedAt: deps.startedAt ?? now(), handlerRuns: 0 };
   const summary: ProcessSummary = {
     chatId: deps.chatId,
     processed: 0,
@@ -159,7 +168,7 @@ export async function processChat(deps: ProcessChatDeps): Promise<ProcessSummary
   };
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    await runRound(deps, owner, summary);
+    await runRound(deps, owner, summary, invocation);
     // A row may have arrived while we were releasing: look once more.
     if (["lease_held", "busy", "retry_later"].includes(summary.stoppedReason)) break;
     if (now() >= deps.deadline) break;

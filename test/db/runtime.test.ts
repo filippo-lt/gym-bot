@@ -450,6 +450,36 @@ describe("invocation deadline and notices", () => {
     expect(await statuses()).toEqual(["1:done:1", "2:pending:0"]);
   });
 
+  it("startedAt defaults once per processChat, not per round", async () => {
+    await enqueue(main.db, { update_id: 1, chat_id: CHAT, payload: { message: { text: "a" } } });
+    await enqueue(main.db, { update_id: 2, chat_id: CHAT, payload: { message: { text: "b" } } });
+    let clock = 0;
+    const summary = await processChat({
+      ...base,
+      now: () => clock,
+      handle: async () => {
+        clock = 50_000; // 35 s left of 85 s: a text row (45 s) no longer fits
+      },
+    });
+    // Round 1 stops on the deadline; the follow-up round must not restart the clock.
+    expect(summary).toMatchObject({ processed: 1, stoppedReason: "deadline" });
+    expect(await statuses()).toEqual(["1:done:1", "2:pending:0"]);
+  });
+
+  it("sweep-failed stuck rows do not count as a handled row", async () => {
+    await seed(2);
+    await main.sql`update inbox set status = 'processing', attempts = 3, claimed_at = now() - interval '151 seconds' where update_id = 1000`;
+    const handled: number[] = [];
+    const summary = await processChat({
+      ...base,
+      startedAt: 0,
+      now: () => 80_000, // 5 s left: only the first handled row may run
+      handle: async (p) => void handled.push((p as { n: number }).n),
+    });
+    expect(handled).toEqual([1001]);
+    expect(summary.failed).toBe(1);
+  });
+
   it("the first row always runs, even when late", async () => {
     await enqueue(main.db, { update_id: 1, chat_id: CHAT, payload: { message: { voice: {} } } });
     const summary = await processChat({

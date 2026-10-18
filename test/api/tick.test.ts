@@ -50,12 +50,18 @@ describe("GET /api/cron/tick", () => {
   });
 
   it("200 and sweeps every chat with open rows", async () => {
+    const before = Date.now();
     const res = await GET(get({ authorization: `Bearer ${secret}` }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; swept: { chatId: number }[] };
     expect(body.ok).toBe(true);
     expect(body.swept.map((s) => s.chatId)).toEqual([11, 22]);
     expect(processChat).toHaveBeenCalledTimes(2);
+    for (const [deps] of processChat.mock.calls as unknown as [{ startedAt: number }][]) {
+      expect(typeof deps.startedAt).toBe("number");
+      expect(deps.startedAt).toBeLessThanOrEqual(Date.now());
+      expect(deps.startedAt).toBeGreaterThanOrEqual(before);
+    }
     expect(execute).toHaveBeenCalled();
   });
 

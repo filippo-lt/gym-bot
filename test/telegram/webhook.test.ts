@@ -81,6 +81,7 @@ describe("POST /api/telegram", () => {
   });
 
   it("stores the update and schedules processing for the allowed user", async () => {
+    const before = Date.now();
     const res = await POST(post(message(USER)));
     expect(res.status).toBe(200);
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -91,6 +92,9 @@ describe("POST /api/telegram", () => {
     expect(waitUntil).toHaveBeenCalledTimes(1);
     await waitUntil.mock.calls[0]?.[0];
     expect(processChat).toHaveBeenCalledWith(expect.objectContaining({ chatId: 99 }));
+    const deps = (processChat.mock.calls as unknown as [{ startedAt: number }][])[0]?.[0];
+    expect(deps?.startedAt).toBeGreaterThanOrEqual(before);
+    expect(deps?.startedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it("catches and logs a processChat failure inside waitUntil", async () => {
