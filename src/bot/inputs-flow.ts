@@ -26,13 +26,12 @@ import {
   maskToGroups,
 } from "./log-format.js";
 import { morningMessage, renderTodayText } from "./morning.js";
+import { READINESS_EMOJI, READINESS_QUESTION } from "./readiness-text.js";
 
 const HTML = { parse_mode: "HTML" as const };
 
 export const BW_USAGE = "Send your bodyweight in kg, for example: /bw 78.5";
-export const READINESS_QUESTION = "How do you feel today?";
-
-export const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
+export { READINESS_EMOJI, READINESS_QUESTION };
 
 const opts = (m: Message) =>
   m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
@@ -178,14 +177,6 @@ export function createInputs(deps: InputsDeps): Inputs {
       ],
       { now },
     );
-    if (morningDate === undefined) {
-      await edit(ctx, { text: `Noted: ${READINESS_EMOJI[level]}`, keyboard: [] });
-    } else {
-      // The re-freeze already ran inside executeActions: re-render the session with the new level.
-      const { text } = await renderTodayText(db, date, now);
-      await edit(ctx, morningMessage(text, date, level));
-    }
-    await ctx.answerCallbackQuery();
     // The signal moves the level only while it is frozen and nothing is logged; later it counts for the next day.
     const [started] = await db
       .select({ id: logGroups.id })
@@ -193,6 +184,15 @@ export function createInputs(deps: InputsDeps): Inputs {
       .where(eq(logGroups.sessionDate, date))
       .limit(1);
     const frozen = await loadFrozenLevel(db, date);
+    const forTomorrow = Boolean(started && frozen);
+    if (morningDate === undefined) {
+      await edit(ctx, { text: `Noted: ${READINESS_EMOJI[level]}`, keyboard: [] });
+    } else {
+      // The re-freeze already ran inside executeActions: re-render the session with the current level.
+      const { text } = await renderTodayText(db, date, now);
+      await edit(ctx, morningMessage(text, date, level, { forTomorrow }));
+    }
+    await ctx.answerCallbackQuery();
     if (started && frozen) {
       await ctx.reply(
         `You already started today, so today stays ${frozen}. I'll use this tomorrow.`,

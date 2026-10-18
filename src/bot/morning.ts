@@ -3,8 +3,8 @@ import type { Db } from "../db/seed-plan.js";
 import { loadSessionAdvice, type SessionAdvice } from "../progression/session-advice.js";
 import { cb } from "./callbacks.js";
 import { formatSession } from "./format.js";
-import { READINESS_EMOJI, READINESS_QUESTION } from "./inputs-flow.js";
 import type { Message } from "./log-format.js";
+import { READINESS_EMOJI, READINESS_QUESTION } from "./readiness-text.js";
 import { getSession } from "./session.js";
 
 export const MORNING_GREETING = "☀️ Good morning.";
@@ -39,10 +39,11 @@ export function morningMessage(
   todayText: string,
   date: string,
   readiness?: "t" | "o" | "s",
+  opts: { forTomorrow?: boolean } = {},
 ): Message {
   if (readiness) {
     return {
-      text: `${MORNING_GREETING}\nNoted: ${READINESS_EMOJI[readiness]}\n\n${todayText}`,
+      text: `${MORNING_GREETING}\nNoted: ${READINESS_EMOJI[readiness]}${opts.forTomorrow ? " · counts for tomorrow" : ""}\n\n${todayText}`,
       keyboard: [],
     };
   }

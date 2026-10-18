@@ -1,7 +1,7 @@
 import type { Transformer } from "grammy";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createBot } from "../../src/bot/bot.js";
-import { MORNING_GREETING } from "../../src/bot/morning.js";
+import { MORNING_GREETING, renderTodayText } from "../../src/bot/morning.js";
 import { morningJob } from "../../src/jobs/morning.js";
 import { runDueJobs } from "../../src/jobs/runner.js";
 import { connect, resetAndSeed } from "./logging-fixture.js";
@@ -91,6 +91,8 @@ describe("morning readiness tap", () => {
     expect(text).toContain(MORNING_GREETING);
     expect(text).toContain("Noted: 😴");
     expect(text).not.toContain("Readiness:");
+    expect(text).not.toContain("counts for tomorrow");
+    expect(text).toContain((await renderTodayText(db, TUE, new Date("2026-10-27T05:10:00Z"))).text);
     expect(edits(calls)[0]?.payload.reply_markup).toBeUndefined();
     expect(sends(calls)).toHaveLength(0);
     expect(await derived()).toBe("YELLOW");
@@ -102,6 +104,7 @@ describe("morning readiness tap", () => {
       select ${TUE}::date, now(), id, 'text' from exercises limit 1`;
     const calls = await tap(new Date("2026-10-27T05:10:00Z"), "rd:t:m:20261027", 101);
     expect(edits(calls)).toHaveLength(1);
+    expect(String(edits(calls)[0]?.payload.text)).toContain("Noted: 😴 · counts for tomorrow");
     const replies = sends(calls).map((c) => String(c.payload.text));
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("You already started today, so today stays GREEN.");
@@ -130,6 +133,7 @@ describe("class Save follow-up", () => {
     const calls = await tap(new Date("2026-10-30T05:10:00Z"), save, 110);
     expect(edits(calls)).toHaveLength(1);
     expect(sends(calls)).toHaveLength(1);
+    expect(String(sends(calls)[0]?.payload.text)).toContain("Fri 30 Oct");
     expect((await sql`select 1 from class_logs where date = '2026-10-29'`).length).toBe(1);
   });
 
