@@ -13,6 +13,10 @@ describe("swapQuestion", () => {
     expect(swapQuestion(resolvedSwap({ scope: "rest", days: "every_day" }))).toBeNull();
     expect(swapQuestion(resolvedSwap({ scope: "rest", futureWeekdays: ["mon"] }))).toBeNull();
     expect(swapQuestion(resolvedSwap({ scope: "today" }))).toBeNull();
+    // "This day" is not an option when the reference weekday has no later session.
+    expect(
+      swapQuestion(resolvedSwap({ scope: "rest", futureWeekdays: ["tue", "fri"] })),
+    ).toBeNull();
   });
 });
 

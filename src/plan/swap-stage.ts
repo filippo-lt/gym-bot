@@ -25,7 +25,14 @@ export const WEEKDAY_ORDER: Weekday[] = ["mon", "tue", "wed", "thu", "fri"];
 /** Which question the flow must ask before the card, or null when the card can be shown. */
 export function swapQuestion(r: ResolvedSwap): "scope" | "days" | null {
   if (r.scope === null) return "scope";
-  if (r.scope === "rest" && r.days === null && r.futureWeekdays.length > 1) return "days";
+  if (
+    r.scope === "rest" &&
+    r.days === null &&
+    r.futureWeekdays.length > 1 &&
+    r.futureWeekdays.includes(r.referenceWeekday)
+  ) {
+    return "days";
+  }
   return null;
 }
 
@@ -81,15 +88,20 @@ export async function resolveSwap(
   const ladder = await loadLadder(db);
 
   // A replacement that is an HSPU ladder step is not a plan change (the step is tracked from logs).
-  const repSaid = normalizeAlias(input.replacement.said);
-  const repSlug = repSaid.replaceAll(" ", "_");
-  if (
-    ladder.some(
+  // The same check runs on the name of a `new` exercise, so it cannot slip through that way.
+  const isLadderStep = (said: string, slug?: string): boolean => {
+    const norm = normalizeAlias(said);
+    return ladder.some(
       (l) =>
-        normalizeAlias(l.name) === repSaid ||
-        l.slug === repSlug ||
-        (input.replacement.slug !== undefined && l.slug === input.replacement.slug),
-    )
+        normalizeAlias(l.name) === norm ||
+        l.slug === norm.replaceAll(" ", "_") ||
+        l.slug === slugFromName(said) ||
+        (slug !== undefined && l.slug === slug),
+    );
+  };
+  if (
+    isLadderStep(input.replacement.said, input.replacement.slug) ||
+    (input.replacement.new && isLadderStep(input.replacement.new.name))
   ) {
     return refuse(
       "That is an HSPU step. The HSPU step is tracked from your logs, so I changed nothing.",
@@ -208,10 +220,17 @@ export async function resolveSwap(
   const scope = input.scope ?? null;
   let days: ResolvedSwap["days"] = scope === "today" ? null : (input.days ?? null);
   const only = futureWeekdays[0];
-  if (days === null && futureWeekdays.length === 1 && only !== undefined) {
+  if (days === null && only !== undefined && futureWeekdays.length === 1) {
     // One weekday left: nothing to ask. "every_day" when it is not the reference weekday keeps
     // that weekday in (this_day would restrict to the reference weekday).
     days = only === referenceWeekday ? "this_day" : "every_day";
+  } else if (
+    days === null &&
+    futureWeekdays.length > 0 &&
+    !futureWeekdays.includes(referenceWeekday)
+  ) {
+    // "This day" would match no later session, so it is not offered.
+    days = "every_day";
   }
 
   const resolved: ResolvedSwap = {

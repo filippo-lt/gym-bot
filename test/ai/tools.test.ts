@@ -231,18 +231,24 @@ describe("swap_exercise input", () => {
   });
 
   it("accepts scope, days, day and a new exercise", async () => {
-    const r = await run({
-      ...base,
-      scope: "rest",
-      days: "every_day",
-      day: "mon",
-      replacement: {
-        said: "band pull-apart",
-        new: { name: "Band pull-apart", type: "bodyweight_reps", muscle_group: "back" },
+    const backend = fakeBackend();
+    const r = await executeTool(
+      "swap_exercise",
+      {
+        ...base,
+        scope: "rest",
+        days: "every_day",
+        day: "mon",
+        replacement: {
+          said: "band pull-apart",
+          new: { name: "Band pull-apart", type: "bodyweight_reps", muscle_group: "back" },
+        },
       },
-    });
-    // The fake backend refuses, but the input itself was valid.
+      backend,
+    );
+    // The fake backend refuses, but the input itself was valid and reached it.
     expect(r.toolResultContent).not.toContain("Invalid input");
+    expect(backend.calls).toEqual(["swap:face pull>band pull-apart"]);
   });
 
   it("rejects unknown type, load_basis, scope and extra keys", async () => {

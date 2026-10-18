@@ -62,7 +62,6 @@ export function swapScopeQuestion(
 export function swapDaysQuestion(
   r: ResolvedSwap,
   pendingId: number,
-  _today: string = trainingDate(new Date()),
 ): { text: string; buttons: QuestionButtons } {
   return {
     text: `${esc(r.from.name)} is on ${weekdayList(r.futureWeekdays)}. Swap it on which days?`,
@@ -125,7 +124,11 @@ export function swapCardText(r: ResolvedSwap, today: string = trainingDate(new D
     lines.push(`${text} Past sessions and logs stay as they are.`);
   } else if (r.scope === "today") {
     const detail = r.prescription ? `${r.prescription}, same tags` : "same tags";
-    lines.push(`Swap for ${refLabel(r, today)}: ${swapLine(r)} (${detail}). Nothing else changes.`);
+    const when =
+      r.referenceDate === today
+        ? `today (${dateText(r.referenceDate)})`
+        : dateText(r.referenceDate);
+    lines.push(`Swap for ${when}: ${swapLine(r)} (${detail}). Nothing else changes.`);
   } else {
     lines.push(`Swap ${swapLine(r)}.`);
   }

@@ -250,6 +250,42 @@ describe("resolveSwap", () => {
     expect(r.to.id).not.toBeNull();
   });
 
+  it("refuses a `new` exercise whose name is an HSPU step", async () => {
+    const reply = await refused(
+      swap({
+        replacement: {
+          said: "my favourite",
+          new: { name: "Pike push-up", type: "bodyweight_reps", muscle_group: "shoulders" },
+        },
+      }),
+    );
+    expect(reply).toContain("HSPU");
+    const r = await stageSwap(
+      db,
+      swap({
+        replacement: {
+          said: "my favourite",
+          new: { name: "Pike push up", type: "bodyweight_reps", muscle_group: "shoulders" },
+        },
+      }) as never,
+      new Date("2026-10-19T09:00:00Z"),
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("a slug-only replacement resolves to the catalog exercise", async () => {
+    const r = await ok(
+      swap({
+        replacement: {
+          said: "leg press",
+          slug: "leg_press",
+          new: { name: "Leg press x", type: "weighted", muscle_group: "legs" },
+        },
+      }),
+    );
+    expect(r.to).toMatchObject({ slug: "leg_press", isNew: false, newSpec: null });
+  });
+
   it("builds a new exercise from `new`", async () => {
     const r = await ok(
       swap({

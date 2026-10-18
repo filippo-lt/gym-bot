@@ -23,7 +23,7 @@ describe("swap questions", () => {
     expect(q.buttons[0]).toEqual(["Only Fri 23 Oct", "sw:42:t"]);
   });
   it("days question uses the weekday of the reference day", () => {
-    const q = swapDaysQuestion(resolvedSwap({ scope: "rest" }), 7, TODAY);
+    const q = swapDaysQuestion(resolvedSwap({ scope: "rest" }), 7);
     expect(q.buttons).toEqual([
       ["Only Mondays", "sw:7:d"],
       ["Every day", "sw:7:a"],
@@ -35,7 +35,7 @@ describe("swap questions", () => {
 describe("swapCardText", () => {
   it("only today", () => {
     expect(swapCardText(resolvedSwap({ scope: "today" }), TODAY)).toBe(
-      "Swap for today: Face pull → Band pull-apart (3 × 15, same tags). Nothing else changes.",
+      "Swap for today (Mon 19 Oct): Face pull → Band pull-apart (3 × 15, same tags). Nothing else changes.",
     );
     expect(swapCardText(resolvedSwap({ scope: "today", referenceDate: "2026-10-23" }), TODAY)).toBe(
       "Swap for Fri 23 Oct: Face pull → Band pull-apart (3 × 15, same tags). Nothing else changes.",
