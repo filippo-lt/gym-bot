@@ -123,6 +123,7 @@ export function formatChartMenu(mainLifts: { id: number; name: string }[]): Mess
 
 export const CHART_USAGE =
   "Which chart? For example: /chart squat · /chart pull-up · /chart volume";
+export const CHART_FAILED = "Sorry, I couldn't draw that chart right now.";
 export const CHART_UNKNOWN = "I don't know that exercise. Try /chart squat.";
 export const HISTORY_USAGE = "Which exercise? For example: /history squat";
 export const HISTORY_UNKNOWN = "I don't know that exercise. Try /history squat.";

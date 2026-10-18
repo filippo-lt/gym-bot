@@ -22,6 +22,7 @@ import {
 } from "./log-format.js";
 import { type AiSource, createFlow, type Flow, type MediaSource } from "./logging-flow.js";
 import {
+  CHART_FAILED,
   CHART_UNKNOWN,
   formatChartChoice,
   formatChartMenu,
@@ -201,12 +202,18 @@ export function createBot(deps: BotDeps): Bot {
   }
 
   async function sendChart(ctx: Context, req: ChartRequest) {
-    const result = await charts.buildChart(deps.db, req, deps.now());
-    if (!result.ok) return void (await ctx.reply(result.text, html));
-    await ctx.replyWithPhoto(new InputFile(result.png, "chart.png"), {
-      caption: result.caption,
-      ...html,
-    });
+    try {
+      const result = await charts.buildChart(deps.db, req, deps.now());
+      if (!result.ok) return void (await ctx.reply(result.text, html));
+      await ctx.replyWithPhoto(new InputFile(result.png, "chart.png"), {
+        caption: result.caption,
+        ...html,
+      });
+    } catch (error) {
+      // A renderer that fails to load or draw must not turn into silence and an inbox retry.
+      console.error("chart: render failed", error instanceof Error ? error.name : "");
+      await ctx.reply(CHART_FAILED, html);
+    }
   }
 
   bot.command("undo", (ctx) => flow.undoCommand(ctx));

@@ -1,6 +1,6 @@
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type BotDeps,
   createBot,
@@ -567,6 +567,26 @@ describe("/chart", () => {
     await tap(bot, data);
     expect(requests).toEqual([request]);
     expect(calls.map((c) => c.method)).toEqual(["answerCallbackQuery", "sendPhoto"]);
+  });
+
+  it("a renderer failure replies with an apology and does not throw", async () => {
+    const charts: NonNullable<BotDeps["charts"]> = {
+      mainLifts: async () => [],
+      buildChart: async () => {
+        throw new Error("resvg missing");
+      },
+    };
+    const { calls, send, bot } = setup(undefined, undefined, charts);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await send("/chart volume");
+    await tap(bot, "ch:v");
+    err.mockRestore();
+    expect(calls.map((c) => c.method)).toEqual([
+      "sendMessage",
+      "answerCallbackQuery",
+      "sendMessage",
+    ]);
+    expect(String(calls[0]?.payload.text)).toBe("Sorry, I couldn't draw that chart right now.");
   });
 
   it("help lists /chart", () => {

@@ -26,6 +26,18 @@ beforeEach(async () => {
   await group("squat", "2026-09-28", [{ reps: 5, load: 77.5 }]);
 });
 
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+async function photoBytes(payload: Record<string, unknown>): Promise<Buffer> {
+  const file = payload.photo as {
+    toRaw(): Promise<Iterable<Uint8Array> | AsyncIterable<Uint8Array>>;
+  };
+  const raw = await file.toRaw();
+  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  const chunks: Uint8Array[] = [];
+  for await (const c of raw) chunks.push(c);
+  return Buffer.concat(chunks);
+}
+
 const botInfo = {
   id: 1,
   is_bot: true,
@@ -77,6 +89,7 @@ describe("/chart (real DB and renderer)", () => {
     expect(calls.map((c) => c.method)).toEqual(["sendPhoto"]);
     expect(calls[0]?.payload.parse_mode).toBe("HTML");
     expect(String(calls[0]?.payload.caption)).toContain("2 sessions");
+    expect((await photoBytes(calls[0]?.payload ?? {})).subarray(0, 4).equals(PNG)).toBe(true);
   });
 
   it("/chart with an exercise that has no history answers with text", async () => {
@@ -91,6 +104,7 @@ describe("/chart (real DB and renderer)", () => {
     await send("/chart volume");
     expect(calls.map((c) => c.method)).toEqual(["sendPhoto"]);
     expect(calls[0]?.payload.parse_mode).toBe("HTML");
+    expect((await photoBytes(calls[0]?.payload ?? {})).subarray(0, 4).equals(PNG)).toBe(true);
   });
 
   it("/chart lists the seeded main lifts as buttons", async () => {
