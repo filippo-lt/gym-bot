@@ -14,7 +14,7 @@ export type CallbackAction =
   /** Undo of a direct readiness / bodyweight / class write: the ledger row it belongs to. */
   | { t: "uw"; key: string; index: number }
   /** /readiness: t = tired, o = ok, s = strong. */
-  | { t: "rd"; level: "t" | "o" | "s" }
+  | { t: "rd"; level: "t" | "o" | "s"; morningDate?: string }
   /** /class toggles: `mask` is the selection after the tap (pull 1, push 2, legs 4); `save` = Save tapped. */
   | { t: "cg"; mask: number; date: string; save: boolean }
   /** Class-with-moves card (a pending): `mask` is the heavy selection after the tap; `save` = Save tapped. */
@@ -42,6 +42,9 @@ export const cb = {
   undoWrite: (key: string, index: number) => `uw:${key}:${index}`,
   readiness: (level: "t" | "o" | "s") => `rd:${level}`,
   /** The class Thursday (ISO date) rides along as YYYYMMDD, so a late Save lands on the card's own day. */
+  /** Morning-message buttons: the message's own date rides along as YYYYMMDD. */
+  readinessMorning: (level: "t" | "o" | "s", date: string) =>
+    `rd:${level}:m:${date.replaceAll("-", "")}`,
   classMask: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}`,
   classSave: (mask: number, date: string) => `cg:${mask}:${date.replaceAll("-", "")}:ok`,
   classMoves: (pendingId: number, mask: number) => `cm:${pendingId}:${mask}`,
@@ -99,10 +102,20 @@ export function parseCallback(data: string): CallbackAction | null {
       const m = /^ue:([up]:\d{1,15}):(\d{1,3})$/.exec(data);
       return m ? { t: "ue", key: m[1] as string, index: Number(m[2]) } : null;
     }
-    case "rd":
-      return (a === "t" || a === "o" || a === "s") && parts.length === 2
-        ? { t: "rd", level: a }
-        : null;
+    case "rd": {
+      if (a !== "t" && a !== "o" && a !== "s") return null;
+      if (parts.length === 2) return { t: "rd", level: a };
+      const m = /^rd:[tos]:m:(\d{4})(\d{2})(\d{2})$/.exec(data);
+      if (!m) return null;
+      const morningDate = `${m[1]}-${m[2]}-${m[3]}`;
+      if (
+        Number.isNaN(Date.parse(morningDate)) ||
+        new Date(morningDate).toISOString().slice(0, 10) !== morningDate
+      ) {
+        return null;
+      }
+      return { t: "rd", level: a, morningDate };
+    }
     case "cg": {
       const mask = int(a);
       const d = /^(\d{4})(\d{2})(\d{2})$/.exec(b ?? "");

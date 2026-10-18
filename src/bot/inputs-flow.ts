@@ -30,7 +30,7 @@ const HTML = { parse_mode: "HTML" as const };
 export const BW_USAGE = "Send your bodyweight in kg, for example: /bw 78.5";
 export const READINESS_QUESTION = "How do you feel today?";
 
-const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
+export const READINESS_EMOJI = { t: "😴", o: "🙂", s: "💪" } as const;
 
 const opts = (m: Message) =>
   m.keyboard.length ? { ...HTML, reply_markup: inlineKeyboard(m.keyboard) } : HTML;
