@@ -1,6 +1,6 @@
 import type { Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type BotDeps,
   createBot,
@@ -32,7 +32,7 @@ const botInfo: UserFromGetMe = {
   supports_join_request_queries: false,
 };
 
-function setup(flow?: Flow, reads?: BotDeps["reads"]) {
+function setup(flow?: Flow, reads?: BotDeps["reads"], charts?: BotDeps["charts"]) {
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
   const dates: string[] = [];
   const transformer: Transformer = async (_prev, method, payload) => {
@@ -48,6 +48,7 @@ function setup(flow?: Flow, reads?: BotDeps["reads"]) {
     transformer,
     ...(flow ? { flow } : {}),
     ...(reads ? { reads } : {}),
+    ...(charts ? { charts } : {}),
     sessions: {
       getSession: async (_db, date) => {
         dates.push(date);
@@ -446,5 +447,149 @@ describe("query commands", () => {
 
   it("help lists the query commands", () => {
     for (const c of ["/next", "/session", "/history", "/plan"]) expect(HELP_TEXT).toContain(c);
+  });
+});
+
+describe("/chart", () => {
+  const squat = { id: 11, slug: "squat", name: "Squat" } as CatalogExercise;
+  const lookups = (lookup: Awaited<ReturnType<NonNullable<BotDeps["reads"]>["lookupExercise"]>>) =>
+    ({
+      lookupExercise: async () => lookup,
+      getExerciseHistory: async () => null,
+      getPlanOverview: async () => null,
+    }) satisfies NonNullable<BotDeps["reads"]>;
+  function fakeCharts(ok = true) {
+    const requests: unknown[] = [];
+    const charts: NonNullable<BotDeps["charts"]> = {
+      mainLifts: async () => [
+        { id: 11, name: "Squat" },
+        { id: 12, name: "Bench press" },
+      ],
+      buildChart: async (_db, req) => {
+        requests.push(req);
+        return ok
+          ? { ok: true, png: Buffer.from("png"), caption: "<b>Squat</b> · 7 sessions", facts: {} }
+          : { ok: false, reason: "not_enough_data", text: "Not enough data to chart Squat yet." };
+      },
+    };
+    return { charts, requests };
+  }
+  const tap = (bot: ReturnType<typeof setup>["bot"], data: string) =>
+    bot.handleUpdate({
+      update_id: 900,
+      callback_query: {
+        id: "cb",
+        chat_instance: "x",
+        from: { id: 42, is_bot: false, first_name: "F" },
+        data,
+        message: { message_id: 5, date: 0, chat: { id: 42, type: "private", first_name: "F" } },
+      },
+    });
+  type Markup = { inline_keyboard: { text: string; callback_data: string }[][] };
+
+  it("without argument gives usage and main-lift buttons plus Volume", async () => {
+    const { charts } = fakeCharts();
+    const { calls, send } = setup(undefined, undefined, charts);
+    await send("/chart");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("sendMessage");
+    expect(String(calls[0]?.payload.text)).toContain("/chart squat");
+    const markup = calls[0]?.payload.reply_markup as Markup;
+    expect(markup.inline_keyboard).toEqual([
+      [{ text: "Squat", callback_data: "ch:11" }],
+      [{ text: "Bench press", callback_data: "ch:12" }],
+      [{ text: "Volume", callback_data: "ch:v" }],
+    ]);
+  });
+
+  it("/chart volume sends a photo with the caption", async () => {
+    const { charts, requests } = fakeCharts();
+    const { calls, send } = setup(undefined, undefined, charts);
+    await send("/chart volume");
+    expect(requests).toEqual([{ kind: "volume" }]);
+    expect(calls.map((c) => c.method)).toEqual(["sendPhoto"]);
+    expect(calls[0]?.payload.parse_mode).toBe("HTML");
+    expect(calls[0]?.payload.caption).toBe("<b>Squat</b> · 7 sessions");
+  });
+
+  it("/chart <exercise> with one match builds the auto chart", async () => {
+    const { charts, requests } = fakeCharts();
+    const { calls, send } = setup(undefined, lookups({ kind: "ok", exercise: squat }), charts);
+    await send("/chart squat");
+    expect(requests).toEqual([{ kind: "exercise", exerciseId: 11, metric: "auto" }]);
+    expect(calls.map((c) => c.method)).toEqual(["sendPhoto"]);
+    expect(calls[0]?.payload.caption).toBe("<b>Squat</b> · 7 sessions");
+  });
+
+  it("a chart that cannot be built replies with its text", async () => {
+    const { charts } = fakeCharts(false);
+    const { calls, send } = setup(undefined, lookups({ kind: "ok", exercise: squat }), charts);
+    await send("/chart squat");
+    expect(calls.map((c) => c.method)).toEqual(["sendMessage"]);
+    expect(calls[0]?.payload.parse_mode).toBe("HTML");
+    expect(String(calls[0]?.payload.text)).toBe("Not enough data to chart Squat yet.");
+  });
+
+  it("unknown exercise gets a short message and no chart", async () => {
+    const { charts, requests } = fakeCharts();
+    const { calls, send } = setup(undefined, lookups({ kind: "unknown" }), charts);
+    await send("/chart zzz");
+    expect(requests).toEqual([]);
+    expect(String(calls[0]?.payload.text)).toBe("I don't know that exercise. Try /chart squat.");
+  });
+
+  it("an ambiguous name asks with ch buttons", async () => {
+    const { charts, requests } = fakeCharts();
+    const amb = lookups({
+      kind: "ambiguous",
+      candidates: [
+        { id: 11, slug: "squat", name: "Squat" },
+        { id: 12, slug: "hack_squat", name: "Hack squat" },
+      ],
+    });
+    const { calls, send } = setup(undefined, amb, charts);
+    await send("/chart sq");
+    expect(requests).toEqual([]);
+    expect(String(calls[0]?.payload.text)).toBe('Which exercise is "sq"?');
+    const markup = calls[0]?.payload.reply_markup as Markup;
+    expect(markup.inline_keyboard).toEqual([
+      [{ text: "Squat", callback_data: "ch:11" }],
+      [{ text: "Hack squat", callback_data: "ch:12" }],
+    ]);
+  });
+
+  it.each([
+    ["ch:v", { kind: "volume" }],
+    ["ch:12", { kind: "exercise", exerciseId: 12, metric: "auto" }],
+  ])("a %s tap answers the callback and sends the photo", async (data, request) => {
+    const { charts, requests } = fakeCharts();
+    const { calls, bot } = setup(undefined, undefined, charts);
+    await tap(bot, data);
+    expect(requests).toEqual([request]);
+    expect(calls.map((c) => c.method)).toEqual(["answerCallbackQuery", "sendPhoto"]);
+  });
+
+  it("a renderer failure replies with an apology and does not throw", async () => {
+    const charts: NonNullable<BotDeps["charts"]> = {
+      mainLifts: async () => [],
+      buildChart: async () => {
+        throw new Error("resvg missing");
+      },
+    };
+    const { calls, send, bot } = setup(undefined, undefined, charts);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await send("/chart volume");
+    await tap(bot, "ch:v");
+    err.mockRestore();
+    expect(calls.map((c) => c.method)).toEqual([
+      "sendMessage",
+      "answerCallbackQuery",
+      "sendMessage",
+    ]);
+    expect(String(calls[0]?.payload.text)).toBe("Sorry, I couldn't draw that chart right now.");
+  });
+
+  it("help lists /chart", () => {
+    expect(HELP_TEXT).toContain("/chart");
   });
 });

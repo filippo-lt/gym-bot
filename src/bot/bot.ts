@@ -1,5 +1,8 @@
-import { Bot, type Context, type Transformer } from "grammy";
+import { asc, eq } from "drizzle-orm";
+import { Bot, type Context, InputFile, type Transformer } from "grammy";
 import type { UserFromGetMe } from "grammy/types";
+import type { ChartRequest, ChartResult } from "../charts/index.js";
+import { exercises } from "../db/schema/index.js";
 import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { parseDayArg } from "../domain/day-ref.js";
@@ -7,7 +10,8 @@ import { loadSessionAdvice, type SessionAdvice } from "../progression/session-ad
 import { type ExerciseLookup, lookupExercise } from "../queries/exercise-lookup.js";
 import { type ExerciseHistory, getExerciseHistory } from "../queries/history.js";
 import { getPlanOverview, nextItem, type PlanOverview } from "../queries/plan-overview.js";
-import { parseHistoryCallback } from "./callbacks.js";
+import { parseChartCallback, parseHistoryCallback } from "./callbacks.js";
+import { trySendFallback } from "./chart-fallback.js";
 import { formatSession, formatWeek, hiddenItemIds } from "./format.js";
 import { createInputs } from "./inputs-flow.js";
 import {
@@ -19,6 +23,10 @@ import {
 } from "./log-format.js";
 import { type AiSource, createFlow, type Flow, type MediaSource } from "./logging-flow.js";
 import {
+  CHART_FAILED,
+  CHART_UNKNOWN,
+  formatChartChoice,
+  formatChartMenu,
   formatHistory,
   formatHistoryChoice,
   formatNext,
@@ -60,6 +68,11 @@ export interface BotDeps {
     getExerciseHistory: (db: Db, exerciseId: number) => Promise<ExerciseHistory | null>;
     getPlanOverview: (db: Db, today: string) => Promise<PlanOverview | null>;
   };
+  /** Test seam: replace the chart builder (loaded lazily by default) and the main-lift buttons. */
+  charts?: {
+    buildChart: (db: Db, req: ChartRequest, now: Date) => Promise<ChartResult>;
+    mainLifts?: (db: Db) => Promise<{ id: number; name: string }[]>;
+  };
   /** Test seam: replace the logging flow. */
   flow?: Flow;
 }
@@ -71,12 +84,32 @@ export function createBot(deps: BotDeps): Bot {
   if (deps.transformer) bot.api.config.use(deps.transformer);
   const queries = deps.sessions ?? { getSession, getWeek };
   const flow =
-    deps.flow ?? createFlow({ db: deps.db, now: deps.now, ai: deps.ai, media: deps.media });
+    deps.flow ??
+    createFlow({
+      db: deps.db,
+      now: deps.now,
+      ai: deps.ai,
+      media: deps.media,
+      buildChart: deps.charts?.buildChart,
+    });
   const reads = deps.reads ?? {
     lookupExercise,
     getExerciseHistory: (db: Db, id: number) => getExerciseHistory(db, id),
     getPlanOverview,
   };
+  const charts = deps.charts ?? {
+    // Vega and resvg load only when a chart is asked for, not on every webhook cold start.
+    buildChart: async (db: Db, req: ChartRequest, now: Date) =>
+      (await import("../charts/index.js")).buildChart(db, req, now),
+  };
+  const mainLifts =
+    charts.mainLifts ??
+    ((db: Db) =>
+      db
+        .select({ id: exercises.id, name: exercises.name })
+        .from(exercises)
+        .where(eq(exercises.isMainLift, true))
+        .orderBy(asc(exercises.id)));
   const html = { parse_mode: "HTML" as const };
   const today = () => trainingDate(deps.now());
   const adviceFor = deps.advice ?? (deps.sessions ? async () => null : loadSessionAdvice);
@@ -150,6 +183,22 @@ export function createBot(deps: BotDeps): Bot {
     await sendHistory(ctx, found.exercise.id);
   });
 
+  bot.command("chart", async (ctx) => {
+    const said = ctx.match.trim();
+    if (!said) {
+      const menu = formatChartMenu(await mainLifts(deps.db));
+      return void (await ctx.reply(menu.text, withKeyboard(menu)));
+    }
+    if (said.toLowerCase() === "volume") return void (await sendChart(ctx, { kind: "volume" }));
+    const found = await reads.lookupExercise(deps.db, said);
+    if (found.kind === "unknown") return void (await ctx.reply(CHART_UNKNOWN, html));
+    if (found.kind === "ambiguous") {
+      const choice = formatChartChoice(said, found.candidates);
+      return void (await ctx.reply(choice.text, withKeyboard(choice)));
+    }
+    await sendChart(ctx, { kind: "exercise", exerciseId: found.exercise.id, metric: "auto" });
+  });
+
   bot.command("plan", async (ctx) => {
     const overview = await reads.getPlanOverview(deps.db, today());
     await ctx.reply(overview ? formatPlan(overview) : "No plan found in the database.", html);
@@ -158,6 +207,21 @@ export function createBot(deps: BotDeps): Bot {
   async function sendHistory(ctx: Context, exerciseId: number) {
     const history = await reads.getExerciseHistory(deps.db, exerciseId);
     await ctx.reply(history ? formatHistory(history) : HISTORY_UNKNOWN, html);
+  }
+
+  async function sendChart(ctx: Context, req: ChartRequest) {
+    try {
+      const result = await charts.buildChart(deps.db, req, deps.now());
+      if (!result.ok) return void (await ctx.reply(result.text, html));
+      await ctx.replyWithPhoto(new InputFile(result.png, "chart.png"), {
+        caption: result.caption,
+        ...html,
+      });
+    } catch (error) {
+      // A renderer that fails to load or draw must not turn into silence and an inbox retry.
+      console.error("chart: render failed", error instanceof Error ? error.name : "");
+      await trySendFallback(() => ctx.reply(CHART_FAILED, html));
+    }
   }
 
   bot.command("undo", (ctx) => flow.undoCommand(ctx));
@@ -169,6 +233,18 @@ export function createBot(deps: BotDeps): Bot {
     await ctx.answerCallbackQuery();
     const parsed = parseHistoryCallback(ctx.callbackQuery.data);
     if (parsed) await sendHistory(ctx, parsed.exerciseId);
+  });
+
+  bot.callbackQuery(/^ch:(v|\d{1,9})$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const parsed = parseChartCallback(ctx.callbackQuery.data);
+    if (!parsed) return;
+    await sendChart(
+      ctx,
+      "volume" in parsed
+        ? { kind: "volume" }
+        : { kind: "exercise", exerciseId: parsed.exerciseId, metric: "auto" },
+    );
   });
 
   // /readiness, /class and the HSPU card: their own handlers, not the logging flow's.

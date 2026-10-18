@@ -229,7 +229,7 @@ async function historyWindow(
   return { label: "all time" };
 }
 
-const notFound = (
+export const notFound = (
   lookup: { kind: "ambiguous"; candidates: { slug: string; name: string }[] } | { kind: "unknown" },
 ): ReadResult => ({
   facts:

@@ -193,6 +193,15 @@ export const getExerciseHistoryInputSchema = z
   });
 export type GetExerciseHistoryInput = z.infer<typeof getExerciseHistoryInputSchema>;
 
+export const CHART_METRICS = ["load", "reps", "volume"] as const;
+
+export const renderChartInputSchema = z.object({
+  metric: z.enum(CHART_METRICS),
+  exercise: z.string().min(1).max(60).optional(),
+  weeks: z.number().int().min(1).max(52).optional(),
+});
+export type RenderChartInput = z.infer<typeof renderChartInputSchema>;
+
 export const getAlternativesInputSchema = z.strictObject({
   exercise: z.strictObject({
     slug: z.string().min(1).max(60).optional(),
@@ -405,11 +414,20 @@ export interface ReadResult {
   isError?: boolean;
 }
 
+/** A rendered chart waiting to be sent after the reply. */
+export interface PendingChart {
+  png: Buffer;
+  /** Telegram HTML, escaped. */
+  caption: string;
+}
+
 /** The tools' backend, injected into the AI loop (DB-backed in production, fake in tests). */
 export interface LoggingBackend {
   getSession(input: GetSessionInput): Promise<ReadResult>;
   getExerciseHistory(input: GetExerciseHistoryInput): Promise<ReadResult>;
   getAlternatives(input: GetAlternativesInput): Promise<ReadResult>;
+  /** Builds a chart for this message (one per message); the flow sends it after the reply. */
+  renderChart(input: RenderChartInput): Promise<ReadResult>;
   stageSaveMemory(input: SaveMemoryInput): Promise<StageResult>;
   stageReadiness(input: LogReadinessInput): Promise<StageResult>;
   stageBodyweight(input: LogBodyweightInput): Promise<StageResult>;

@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
+_Last updated: 18 Oct 2026 (M6 deployed; live test pending. M8 PR open; M7 and M9 in parallel branches)._
 
 ## Milestones (SPEC §8)
 
@@ -17,7 +17,7 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | deployed 18 Oct, live test pending | #12 |
 | 7 | Plan changes (swaps with scope, plan versioning) | todo | |
-| 8 | Morning message + charts | todo | |
+| 8 | Morning message + charts | PR open, not merged | #13 |
 | 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | todo | |
 
 ## What happened, in short
@@ -46,6 +46,13 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
   - migration 0006 (`job_runs`, `pending_actions.input_source`/`transcript`) applied to production; STT env vars set in Vercel; health and tick OK after deploy
   - decisions: voice notes are mixed Italian/English, so no language is forced; every voice write needs a tap, even a single clear log; a ✏️ correction keeps the voice origin; on the photo card "Not heavy" saves in one tap; a photo without a caption never starts with groups ticked; set counts show only what is written ("6 sets", "6+ sets", or none); a heavy-only report keeps the stored moves and photo, a report with moves replaces them
   - design and plan: `docs/superpowers/specs/2026-10-18-m6-voice-photo-design.md`, `docs/superpowers/plans/2026-10-18-m6-voice-photo.md`
+- **M8 (#13, PR open, 18 Oct):**
+  - morning job: Mon–Fri 06:00–10:00 Rome, the exact `/today` text with 😴 / 🙂 / 💪 buttons; a tap re-freezes today until the first log and edits the message in place; Friday asks about Thursday first and re-sends the session after Save; "plan finished" once on Mon 21 Dec; quiet at weekends, before/after the plan and once something is logged
+  - charts: `/chart <exercise>` (e1RM per session; most reps per set; pull-ups both; HSPU per step; holds in seconds), `/chart volume` (hard sets per week per muscle group), `/chart` buttons, and the `render_chart` chat tool (image after the reply, one per message)
+  - renderer: Vega-Lite → SVG → PNG with `@resvg/resvg-js` and a bundled Inter font; no native build, no hosted chart service
+  - no migration, no new env vars
+  - decisions: the user left the design calls to Claude; an independent agent then answered the open questions and its answers were adopted (e1RM only for load, most reps only, timed holds out of volume). `/done`, `/checkin`, the Friday 20:00 check-in and the Sunday summary are NOT in M8 (proposed as their own milestone)
+  - design and plan: `docs/superpowers/specs/2026-10-18-m8-morning-charts-design.md`, `docs/superpowers/plans/2026-10-18-m8-morning-charts.md`
 
 ## Open items
 
@@ -60,6 +67,14 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
 - Decide what to do with the untracked `.github/workflows/automerge.yml` (it auto-merges every PR; nobody in the sessions created it; it has never been committed). The standing rule is that only the user merges.
 - **Cutover:** pick a training day, run `pnpm history:import --dry-run`, then `pnpm history:import`, then stop using the old tool.
 
+- **M8 after merge:** run `pnpm telegram:setup https://gym-bot-xi.vercel.app` once to register `/chart` in the command menu. Then the M8 live test (below).
+- **M8 live test (from the phone, after deploy):**
+  - `/chart squat` → a PNG with readable labels (if the labels are missing, the font didn't reach the Vercel bundle); `/chart pull-up` → two panels; `/chart volume` → stacked bars; `/chart` → buttons
+  - "how is my bench going?" → a short reply, then the chart
+  - the next weekday at 06:00 → the morning message; tap 😴 → the same message updates in place with "Noted: 😴"
+  - Friday 06:00 with Thursday not reported → the class card first, then the session; Save → the session again with the Friday changes
+- **Next milestone to plan:** weekly check-in (`/done`, `/checkin`, Friday 20:00 check-in, Sunday summary). Recovery score and the check-in max stay missing until then; schedule it before W12 (14 Dec).
+
 **To verify on the first weekdays (could not be tested on a Sunday):**
 - Suggested loads in a weekday `/today`.
 - The "far from the suggestion" confirm card.
@@ -73,6 +88,9 @@ _Last updated: 18 Oct 2026 (M6 deployed; live test pending). Next: M7._
 - After a re-import, undo of an earlier bot log restores the status recorded at log time, even if the fresh export changed it.
 - If marking a scheduled job done fails after its message was sent, the job can send again 5 minutes later while its window is open.
 - A photo over 3.5 MB gets the generic "couldn't read that photo" reply instead of a "too large" message.
+- M8: if marking the morning job done fails after the send, it can repeat every 5 minutes inside its 06:00–10:00 window (same runner issue as above; proposed for M9). On a Friday with Thursday unreported, a failure between the class card and the morning message re-sends the class card too.
+- M8: a Telegram redelivery of a class-card Save on Friday re-sends the Friday session (no duplicate write; `executeActions` has no replay flag).
+- M8: with no plan at all the morning job is recorded as failed instead of skipped.
 
 ## How we work
 
