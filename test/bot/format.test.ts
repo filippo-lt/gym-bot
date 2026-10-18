@@ -166,7 +166,7 @@ describe("other states", () => {
     );
   });
   it("finished", () => {
-    expect(formatFinished()).toBe("The 12-week plan is finished. 🎉 A new plan comes later.");
+    expect(formatFinished()).toBe("The plan is finished.");
   });
 });
 

@@ -61,7 +61,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "get_exercise_history",
     description:
-      "Read-only. Returns the user's logged sessions of ONE exercise, newest first, each with a ready-made 'line' in code-formatted text, plus the current e1RM estimate when there is one. Use it for 'what did I do', 'when did I last', 'my history of X'. Give exercise.said (the user's words) and slug only when sure. last_n is how many sessions (default 5, max 10). period (this_week or last_week) or plan_week (1-12) narrows the dates: code turns them into dates, never you. Never both period and plan_week. If the result says found:false, tell the user briefly (ambiguous: name the candidates).",
+      "Read-only. Returns the user's logged sessions of ONE exercise, newest first, each with a ready-made 'line' in code-formatted text, plus the current e1RM estimate when there is one. Use it for 'what did I do', 'when did I last', 'my history of X'. Give exercise.said (the user's words) and slug only when sure. last_n is how many sessions (default 5, max 10). period (this_week or last_week) or plan_week (week number of the plan) narrows the dates: code turns them into dates, never you. Never both period and plan_week. If the result says found:false, tell the user briefly (ambiguous: name the candidates).",
     input_schema: inputSchema(getExerciseHistoryInputSchema),
   },
   {

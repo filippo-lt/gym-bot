@@ -185,8 +185,8 @@ export const getExerciseHistoryInputSchema = z
     last_n: z.number().int().min(1).max(10).optional(),
     /** Calendar week of today. Code turns it into dates. */
     period: z.enum(HISTORY_PERIODS).optional(),
-    /** A week of the 12-week plan. */
-    plan_week: z.number().int().min(1).max(12).optional(),
+    /** A week of the plan; code checks it against the version's week count. */
+    plan_week: z.number().int().min(1).max(52).optional(),
   })
   .refine((v) => !(v.period !== undefined && v.plan_week !== undefined), {
     message: "Give either period or plan_week, not both.",

@@ -786,7 +786,7 @@ export function createLoggingBackend(
   return {
     getSession: (input: GetSessionInput) => readSession(db, clock(), input),
     getExerciseHistory: (input) => readExerciseHistory(db, clock(), input),
-    getAlternatives: (input) => readAlternatives(db, input),
+    getAlternatives: (input) => readAlternatives(db, input, clock()),
     stageSaveMemory: async (input) => stageSaveMemory(input),
     stageReadiness: async (input) => stageReadiness(input, clock()),
     stageBodyweight: async (input) => stageBodyweight(input, clock()),

@@ -11,6 +11,7 @@ import {
   stageUndoLast,
 } from "../../src/logging/resolve.js";
 import type { LogSetsInput, StagedAction } from "../../src/logging/types.js";
+import { createVersion, loadLatestContent } from "../../src/plan/versions.js";
 import { connect, exId, MON, resetAndSeed, SAT, TUE } from "./logging-fixture.js";
 
 const { sql, db } = connect();
@@ -129,6 +130,29 @@ describe("resolve", () => {
     expect(new Date(String(g?.performed_at)).toISOString()).toBe(TUE.toISOString());
     const [si] = await sql`select session_date::text as d, status from session_items`;
     expect(si).toMatchObject({ d: "2026-09-28", status: "done" });
+  });
+
+  it("a make-up for Monday's v1 item still matches when v2 is effective from Tuesday", async () => {
+    const [plan] = await sql`select id from plans`;
+    const planId = plan?.id as number;
+    const [v1Bench] = await sql`
+      select i.id from planned_items i join plan_versions v on v.id = i.plan_version_id
+      where v.version = 1 and i.item_key = 'w01-mon-03-0'`;
+    const base = await db.transaction((tx) => loadLatestContent(tx, planId));
+    await db.transaction((tx) =>
+      createVersion(tx, {
+        planId,
+        baseVersionId: base.versionId,
+        content: base.content,
+        effectiveFrom: "2026-09-29",
+        reason: "swap",
+        change: { kind: "swap", from: 1, to: 2, weekdays: "all", fromDate: "2026-09-29" },
+      }),
+    );
+    const a = await stage(input(), TUE);
+    if (a.kind !== "log_sets") throw new Error("expected log");
+    expect(a.resolved).toMatchObject({ match: "makeup", sessionDate: "2026-09-28" });
+    expect(a.resolved.plannedItem?.id).toBe(v1Bench?.id);
   });
 
   it("uses the named weekday for a make-up", async () => {

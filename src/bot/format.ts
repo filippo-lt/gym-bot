@@ -384,7 +384,7 @@ export function formatBeforeStart(startDate: string): string {
 }
 
 export function formatFinished(): string {
-  return "The 12-week plan is finished. 🎉 A new plan comes later.";
+  return "The plan is finished.";
 }
 
 export function formatSession(

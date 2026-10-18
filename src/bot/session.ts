@@ -1,16 +1,9 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { classLogs, sessionItems } from "../db/schema/log.js";
-import {
-  exercises,
-  hspuLadder,
-  plannedItemOptions,
-  plannedItems,
-  planWeeks,
-} from "../db/schema/plan.js";
+import { hspuLadder } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
-import { planWeekFor, weekdayOf } from "../domain/calendar.js";
-import { loadPlanContext } from "../logging/plan-context.js";
+import { planDayOn, planDaysBetween } from "../plan/effective.js";
 import type {
   FallbackPrescription,
   HiitSpec,
@@ -65,6 +58,8 @@ export interface SessionItem {
   timeMinMax: number | null;
   fallback: FallbackPrescription | null;
   status: ItemStatus;
+  /** Name of the exercise a one-off swap replaced today, for "instead of X today". */
+  swappedFrom: string | null;
 }
 
 export type Session =
@@ -108,86 +103,32 @@ export type WeekOverview =
       days: WeekDay[];
     };
 
-async function requirePlanContext(db: Db, date: string) {
-  const ctx = await loadPlanContext(db, date);
-  if (!ctx) throw new Error("No plan found in the database.");
-  return ctx;
-}
-
-async function loadWeekRow(db: Db, versionId: number, week: number) {
-  const [row] = await db
-    .select()
-    .from(planWeeks)
-    .where(and(eq(planWeeks.planVersionId, versionId), eq(planWeeks.week, week)));
-  if (!row) throw new Error(`Plan week ${week} is missing.`);
-  return row;
-}
-
 export async function getSession(db: Db, date: string): Promise<Session> {
-  const ctx = await requirePlanContext(db, date);
-  const status = planWeekFor(date, ctx.startDate, ctx.weeks);
-  if (status.status === "before_start") {
-    return { kind: "before_start", startDate: ctx.startDate };
-  }
-  if (status.status === "finished") return { kind: "finished" };
+  const day = await planDayOn(db, date);
+  if (day.kind === "no_plan") throw new Error("No plan found in the database.");
+  if (day.kind === "before_start") return { kind: "before_start", startDate: day.startDate };
+  if (day.kind === "finished") return { kind: "finished" };
+  if (day.kind === "rest") return { kind: "rest", date, week: day.week, phase: day.phase };
 
-  const weekRow = await loadWeekRow(db, ctx.versionId, status.week);
-  const weekday = weekdayOf(date);
-  if (!weekday) {
-    return { kind: "rest", date, week: status.week, phase: weekRow.phase };
-  }
-
-  const rows = await db
-    .select()
-    .from(plannedItems)
-    .where(
-      and(
-        eq(plannedItems.planVersionId, ctx.versionId),
-        eq(plannedItems.week, status.week),
-        eq(plannedItems.weekday, weekday),
-      ),
-    )
-    .orderBy(asc(plannedItems.itemOrder), asc(plannedItems.subItem));
-
-  const ids = rows.map((r) => r.id);
+  const ids = day.items.map((r) => r.plannedItemId);
   const stepRows = await db.select({ id: hspuLadder.id, name: hspuLadder.name }).from(hspuLadder);
   const stepNames = new Map(stepRows.map((r) => [r.id, r.name]));
-  const optionRows = ids.length
-    ? await db
-        .select({
-          plannedItemId: plannedItemOptions.plannedItemId,
-          optionIndex: plannedItemOptions.optionIndex,
-          slug: exercises.slug,
-          name: exercises.name,
-        })
-        .from(plannedItemOptions)
-        .innerJoin(exercises, eq(exercises.id, plannedItemOptions.exerciseId))
-        .where(inArray(plannedItemOptions.plannedItemId, ids))
-        .orderBy(asc(plannedItemOptions.plannedItemId), asc(plannedItemOptions.optionIndex))
-    : [];
   const statusRows = ids.length
     ? await db
         .select({ plannedItemId: sessionItems.plannedItemId, status: sessionItems.status })
         .from(sessionItems)
         .where(and(eq(sessionItems.sessionDate, date), inArray(sessionItems.plannedItemId, ids)))
     : [];
-
-  const optionsById = new Map<number, { slug: string; name: string }[]>();
-  for (const o of optionRows) {
-    const list = optionsById.get(o.plannedItemId) ?? [];
-    list.push({ slug: o.slug, name: o.name });
-    optionsById.set(o.plannedItemId, list);
-  }
   const statusById = new Map(statusRows.map((s) => [s.plannedItemId, s.status]));
 
-  const items: SessionItem[] = rows.map((r) => ({
-    plannedItemId: r.id,
+  const items: SessionItem[] = day.items.map((r) => ({
+    plannedItemId: r.plannedItemId,
     itemOrder: r.itemOrder,
     subItem: r.subItem,
     block: r.block,
     planName: r.planName,
     variantLabel: r.variantLabel,
-    options: optionsById.get(r.id) ?? [],
+    options: r.options.map((o) => ({ slug: o.slug, name: o.name })),
     prescriptionRaw: r.prescriptionRaw,
     extrasRaw: r.extrasRaw,
     setsMin: r.setsMin,
@@ -199,32 +140,33 @@ export async function getSession(db: Db, date: string): Promise<Session> {
     durationSMax: r.durationSMax,
     hiit: r.hiit,
     tempo: r.tempo,
-    modifiers: r.modifiers as Modifier[],
+    modifiers: r.modifiers,
     hspuStep: r.hspuStepId == null ? null : (stepNames.get(r.hspuStepId) ?? null),
     rirMin: r.rirMin,
     rirMax: r.rirMax,
-    tags: r.tags as Tag[],
-    priority: r.priority as Priority,
+    tags: r.tags,
+    priority: r.priority,
     note: r.note,
     timeMinMin: r.timeMinMin,
     timeMinMax: r.timeMinMax,
-    fallback: r.fallbackPrescription,
-    status: statusById.get(r.id) ?? "planned",
+    fallback: r.fallback,
+    status: statusById.get(r.plannedItemId) ?? "planned",
+    swappedFrom: r.swappedToday?.from.name ?? null,
   }));
 
   const result: Session = {
     kind: "session",
     date,
-    week: status.week,
-    phase: weekRow.phase,
-    isDeload: weekRow.isDeload,
-    isTest: weekRow.isTest,
-    weekday,
-    focus: DAY_FOCUS[weekday],
+    week: day.week,
+    phase: day.phase,
+    isDeload: day.isDeload,
+    isTest: day.isTest,
+    weekday: day.weekday,
+    focus: DAY_FOCUS[day.weekday],
     items,
   };
 
-  if (weekday === "fri") {
+  if (day.weekday === "fri") {
     const thursday = DateTime.fromISO(date, { zone: "utc" }).minus({ days: 1 }).toISODate();
     const [log] = await db
       .select({ heavyGroups: classLogs.heavyGroups })
@@ -236,45 +178,32 @@ export async function getSession(db: Db, date: string): Promise<Session> {
 }
 
 export async function getWeek(db: Db, date: string): Promise<WeekOverview> {
-  const ctx = await requirePlanContext(db, date);
-  const status = planWeekFor(date, ctx.startDate, ctx.weeks);
-  if (status.status === "before_start") {
-    return { kind: "before_start", startDate: ctx.startDate };
-  }
-  if (status.status === "finished") return { kind: "finished" };
+  const first = await planDayOn(db, date);
+  if (first.kind === "no_plan") throw new Error("No plan found in the database.");
+  if (first.kind === "before_start") return { kind: "before_start", startDate: first.startDate };
+  if (first.kind === "finished") return { kind: "finished" };
 
-  const weekRow = await loadWeekRow(db, ctx.versionId, status.week);
-  const mains = await db
-    .select({ id: plannedItems.id, weekday: plannedItems.weekday })
-    .from(plannedItems)
-    .where(
-      and(
-        eq(plannedItems.planVersionId, ctx.versionId),
-        eq(plannedItems.week, status.week),
-        eq(plannedItems.subItem, 0),
-      ),
-    );
-  const exposureRows = mains.length
-    ? await db
-        .select({ id: plannedItemOptions.plannedItemId })
-        .from(plannedItemOptions)
-        .innerJoin(exercises, eq(exercises.id, plannedItemOptions.exerciseId))
-        .where(
-          and(
-            eq(exercises.slug, "class_exposure"),
-            inArray(
-              plannedItemOptions.plannedItemId,
-              mains.map((m) => m.id),
-            ),
-          ),
-        )
-    : [];
-  const exposure = new Set(exposureRows.map((r) => r.id));
-  const real = mains.filter((m) => !exposure.has(m.id));
-  const ids = real.map((m) => m.id);
+  // Each day of the week is read under the version effective on that day: a week can straddle two.
+  const monday = DateTime.fromISO(date, { zone: "utc" })
+    .minus({ days: DateTime.fromISO(date, { zone: "utc" }).weekday - 1 })
+    .toISODate() as string;
   const dates = WEEKDAY_ORDER.map((_, i) =>
-    DateTime.fromISO(weekRow.startDate, { zone: "utc" }).plus({ days: i }).toISODate(),
+    DateTime.fromISO(monday, { zone: "utc" }).plus({ days: i }).toISODate(),
   ) as string[];
+  const planDays = await planDaysBetween(db, monday, dates[4] as string);
+
+  // Class exposure never counts as a session item.
+  const mainsByDate = new Map<string, number[]>();
+  for (const d of planDays) {
+    if (d.kind !== "day") continue;
+    mainsByDate.set(
+      d.date,
+      d.items
+        .filter((i) => i.subItem === 0 && !i.options.some((o) => o.slug === "class_exposure"))
+        .map((i) => i.plannedItemId),
+    );
+  }
+  const ids = [...mainsByDate.values()].flat();
   const statusRows = ids.length
     ? await db
         .select({
@@ -288,7 +217,7 @@ export async function getWeek(db: Db, date: string): Promise<WeekOverview> {
 
   const days: WeekDay[] = WEEKDAY_ORDER.map((weekday, i) => {
     const dayDate = dates[i] as string;
-    const dayIds = new Set(real.filter((m) => m.weekday === weekday).map((m) => m.id));
+    const dayIds = new Set(mainsByDate.get(dayDate) ?? []);
     const mine = statusRows.filter((s) => dayIds.has(s.plannedItemId) && s.sessionDate === dayDate);
     const count = (st: ItemStatus) => mine.filter((s) => s.status === st).length;
     return {
@@ -304,11 +233,11 @@ export async function getWeek(db: Db, date: string): Promise<WeekOverview> {
 
   return {
     kind: "week",
-    week: status.week,
-    phase: weekRow.phase,
-    isDeload: weekRow.isDeload,
-    isTest: weekRow.isTest,
-    startDate: weekRow.startDate,
+    week: first.week,
+    phase: first.phase,
+    isDeload: first.isDeload,
+    isTest: first.isTest,
+    startDate: monday,
     days,
   };
 }

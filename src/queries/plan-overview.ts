@@ -62,7 +62,8 @@ export async function getPlanOverview(db: Db, today: string): Promise<PlanOvervi
     for (let i = 0; i < 10; i += 1) {
       const date = addDays(first, i);
       const weekday = weekdayOf(date);
-      const s = planWeekFor(date, ctx.startDate, ctx.weeks);
+      const version = ctx.index.versionFor(date) ?? ctx.index.versions[0];
+      const s = planWeekFor(date, ctx.startDate, version?.weeks ?? ctx.weeks);
       if (s.status === "finished") break;
       if (weekday && s.status === "active") {
         nextTrainingDay = { date, weekday, focus: DAY_FOCUS[weekday] };

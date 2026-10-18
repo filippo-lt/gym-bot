@@ -1,8 +1,12 @@
 /** Read-only facts for "alternative to X?" questions. Claude proposes; code supplies facts. */
 import { arrayOverlaps, eq, inArray } from "drizzle-orm";
+import { WEEKDAY_ORDER } from "../bot/session.js";
 import { equipment, exercises, plannedItemOptions, plannedItems } from "../db/schema/plan.js";
+import { trainingDate } from "../domain/calendar.js";
 import type { Db } from "../logging/db.js";
 import { listMemory } from "../logging/memory.js";
+import { versionOn } from "../plan/effective.js";
+import { addDays } from "../plan-import/build-plan.js";
 import type { Priority, Weekday } from "../plan-import/types.js";
 
 export interface AlternativeFacts {
@@ -37,9 +41,14 @@ const NON_MOVEMENT_TAGS = new Set([
 ]);
 const MAX_SAME_PATTERN = 12;
 
+/**
+ * "Where it is planned" comes from the version effective on `today`, for dates from today on.
+ * One-off swaps are not looked at: this is a cheap overview, not the day's session.
+ */
 export async function getAlternativeFacts(
   db: Db,
   exercise: { id: number },
+  today: string = trainingDate(new Date()),
 ): Promise<AlternativeFacts | null> {
   const [ex] = await db
     .select({ e: exercises, equipmentName: equipment.name })
@@ -48,14 +57,23 @@ export async function getAlternativeFacts(
     .where(eq(exercises.id, exercise.id));
   if (!ex) return null;
 
+  const version = await versionOn(db, today);
   const optionRows = await db
     .select({ itemId: plannedItemOptions.plannedItemId })
     .from(plannedItemOptions)
     .where(eq(plannedItemOptions.exerciseId, exercise.id));
   const itemIds = [...new Set(optionRows.map((r) => r.itemId))];
+  // Movement tags come from every version, so a swapped-away exercise still has a pattern.
   const items = itemIds.length
     ? await db.select().from(plannedItems).where(inArray(plannedItems.id, itemIds))
     : [];
+  // Plan week N starts on startDate + 7 * (N - 1). Planned = version effective today, from today on.
+  const upcoming = items.filter(
+    (i) =>
+      version !== null &&
+      i.planVersionId === version.versionId &&
+      addDays(version.startDate, 7 * (i.week - 1) + WEEKDAY_ORDER.indexOf(i.weekday)) >= today,
+  );
 
   // How many options each of those items has: an OR item mixes the tags of its options.
   const allOptions = itemIds.length
@@ -74,7 +92,7 @@ export async function getAlternativeFacts(
 
   const seen = new Set<string>();
   const plannedIn: AlternativeFacts["plannedIn"] = [];
-  for (const i of [...items].sort((a, b) => a.week - b.week || a.itemOrder - b.itemOrder)) {
+  for (const i of [...upcoming].sort((a, b) => a.week - b.week || a.itemOrder - b.itemOrder)) {
     const key = `${i.weekday}|${i.block}|${i.planName}`;
     if (seen.has(key)) continue;
     seen.add(key);

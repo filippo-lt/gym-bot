@@ -8,6 +8,7 @@ import { seedPlan } from "../../src/db/seed-plan.js";
 import { buildHistoryImport, hashExport } from "../../src/history-import/index.js";
 import { executeActions, undoGroup } from "../../src/logging/execute.js";
 import { stageLogSets } from "../../src/logging/resolve.js";
+import { createVersion, loadLatestContent } from "../../src/plan/versions.js";
 import {
   EQUIPMENT,
   GOOD_OVERRIDES,
@@ -51,6 +52,35 @@ async function counts() {
 }
 
 describe("importHistory", () => {
+  it("refuses rows dated on or after a later version's effective_from", async () => {
+    const [plan] = await sql`select id from plans`;
+    const planId = plan?.id as number;
+    const base = await db.transaction((tx) => loadLatestContent(tx, planId));
+    await db.transaction((tx) =>
+      createVersion(tx, {
+        planId,
+        baseVersionId: base.versionId,
+        content: base.content,
+        effectiveFrom: "2026-10-05",
+        reason: "swap",
+        change: { kind: "swap", from: 1, to: 2, weekdays: "all", fromDate: "2026-10-05" },
+      }),
+    );
+    const r = build();
+    const first = [
+      ...r.session_items.map((x) => x.session_date),
+      ...r.log_groups.map((x) => x.session_date),
+      ...r.class_logs.map((x) => x.date),
+    ]
+      .filter((d) => d >= "2026-10-05")
+      .sort()[0] as string;
+    expect(first).toBeDefined();
+    await expect(importHistory(db, r, opts)).rejects.toThrow(
+      new RegExp(`${first}.*2026-10-05.*version 2`),
+    );
+    expect(await counts()).toMatchObject({ session_items: 0, log_groups: 0 });
+  });
+
   it("imports twice with identical counts", async () => {
     const first = await importHistory(db, build(), opts);
     expect(first.inserted.log_groups).toBe(8);

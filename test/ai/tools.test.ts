@@ -95,10 +95,10 @@ describe("read tools", () => {
     expect(
       (await ok({ exercise: { said: "squat" }, last_n: 10, period: "last_week" })).isError,
     ).toBe(false);
-    expect((await ok({ exercise: { said: "squat" }, plan_week: 12 })).isError).toBe(false);
+    expect((await ok({ exercise: { said: "squat" }, plan_week: 13 })).isError).toBe(false);
     expect((await ok({ exercise: { said: "squat" }, last_n: 11 })).isError).toBe(true);
     expect((await ok({ exercise: { said: "squat" }, last_n: 0 })).isError).toBe(true);
-    expect((await ok({ exercise: { said: "squat" }, plan_week: 13 })).isError).toBe(true);
+    expect((await ok({ exercise: { said: "squat" }, plan_week: 53 })).isError).toBe(true);
     expect((await ok({ exercise: { said: "squat" }, period: "next_week" })).isError).toBe(true);
     expect(
       (await ok({ exercise: { said: "squat" }, period: "this_week", plan_week: 2 })).isError,

@@ -1,9 +1,10 @@
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { classCard } from "../bot/inputs-flow.js";
 import { APP_TIMEZONE } from "../config/constants.js";
-import { classLogs, plans } from "../db/schema/index.js";
+import { classLogs } from "../db/schema/index.js";
 import { planWeekFor, weekdayOf } from "../domain/calendar.js";
+import { versionOn } from "../plan/effective.js";
 import type { Job } from "./runner.js";
 
 export const CLASS_QUESTION =
@@ -20,8 +21,8 @@ export const classQuestionJob: Job = {
     return { date };
   },
   async run(ctx, date) {
-    const [plan] = await ctx.db.select().from(plans).orderBy(desc(plans.id)).limit(1);
-    if (!plan || planWeekFor(date, plan.startDate, plan.weeks).status !== "active") {
+    const version = await versionOn(ctx.db, date);
+    if (!version || planWeekFor(date, version.startDate, version.weeks).status !== "active") {
       return "skipped";
     }
     const [logged] = await ctx.db

@@ -301,10 +301,14 @@ async function e1rmFact(db: Db, exerciseId: number) {
   }
 }
 
-export async function readAlternatives(db: Db, input: GetAlternativesInput): Promise<ReadResult> {
+export async function readAlternatives(
+  db: Db,
+  input: GetAlternativesInput,
+  now: Date = new Date(),
+): Promise<ReadResult> {
   const found = await lookupExercise(db, input.exercise.said, input.exercise.slug);
   if (found.kind !== "ok") return notFound(found);
-  const facts = await getAlternativeFacts(db, { id: found.exercise.id });
+  const facts = await getAlternativeFacts(db, { id: found.exercise.id }, trainingDate(now));
   if (!facts) return notFound({ kind: "unknown" });
   return { facts: { found: true, want: input.want ?? null, ...facts }, fallbackHtml: null };
 }
