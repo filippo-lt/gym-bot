@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeModel, text, toolUse } from "../../src/ai/fake-model.js";
 import { countUnresolvedErrors, type IntentEvent, runIntent } from "../../src/ai/loop.js";
+import { summarize } from "../../src/bot/log-format.js";
+import { decidePolicy } from "../../src/logging/policy.js";
+import type {
+  GroupSnapshot,
+  LoggingBackend,
+  ResolvedSwap,
+  SwapExerciseInput,
+} from "../../src/logging/types.js";
 import { fakeBackend, fakeUsage, promptContext, promptStatic } from "./helpers.js";
 
 const base = {
@@ -361,5 +369,215 @@ describe("unresolved tool errors", () => {
       { type: "staged", turn: 2, said: "x", slug: null, kind: "log_sets" },
     ];
     expect(countUnresolvedErrors(events)).toBe(1);
+  });
+
+  describe("repeated swap_exercise calls", () => {
+    const swapInput = (extra: object = {}, from = "Romanian deadlift", to = "good mornings") => ({
+      exercise: { said: from },
+      replacement: { said: to },
+      scope: "today",
+      ...extra,
+    });
+    const idOf = (said: string) => [...said].reduce((n, c) => n + c.charCodeAt(0), 0);
+    const resolvedSwap = (i: SwapExerciseInput): ResolvedSwap =>
+      ({
+        from: { id: idOf(i.exercise.said), name: i.exercise.said },
+        to: {
+          id: idOf(i.replacement.said),
+          name: i.replacement.said,
+          slug: i.replacement.said,
+          isNew: false,
+          newSpec: null,
+        },
+        referenceDate: "2026-10-19",
+        scope: i.scope ?? null,
+        days: null,
+        referenceWeekday: "mon",
+        futureWeekdays: [],
+        todayItemIds: [88],
+        loggedOnReference: false,
+        affectedSessions: 0,
+        sessionsByWeekday: {},
+        prescription: "2 × 6",
+      }) as ResolvedSwap;
+    const swapBackend = () => {
+      const backend = fakeBackend();
+      backend.stageSwap = async (i: SwapExerciseInput) => ({
+        ok: true,
+        action: { kind: "swap", input: i, resolved: resolvedSwap(i) },
+        preview: "Staged a plan change.",
+      });
+      return backend;
+    };
+    const run = async (script: Parameters<typeof createFakeModel>[0], backend = swapBackend()) => {
+      const res = await runIntent({
+        ...base,
+        model: createFakeModel(script),
+        backend,
+        usage: fakeUsage(),
+      });
+      if (res.kind !== "ok") throw new Error("not ok");
+      return res;
+    };
+
+    it("collapses identical resolved swaps (cosmetic input differences) into one", async () => {
+      const model = createFakeModel([
+        [
+          toolUse("swap_exercise", swapInput({ day: "today" })),
+          toolUse("swap_exercise", swapInput()),
+        ],
+        [toolUse("swap_exercise", swapInput({ day: "today" }))],
+        [text("ok")],
+      ]);
+      const res = await runIntent({ ...base, model, backend: swapBackend(), usage: fakeUsage() });
+      if (res.kind !== "ok") throw new Error("not ok");
+      expect(res.staged).toHaveLength(1);
+      const decision = decidePolicy(res.staged);
+      expect(decision).toMatchObject({ mode: "confirm" });
+      if (decision.mode === "confirm") {
+        expect(decision.reasons).not.toContain("multiple_writes");
+        expect(decision.reasons).toContain("plan_change");
+      }
+      expect(summarize(res.staged).split(";")).toHaveLength(1);
+    });
+
+    it("keeps two different swaps as two lines", async () => {
+      const model = createFakeModel([
+        [
+          toolUse("swap_exercise", swapInput()),
+          toolUse("swap_exercise", swapInput({}, "Squat", "leg press")),
+        ],
+        [text("ok")],
+      ]);
+      const res = await runIntent({ ...base, model, backend: swapBackend(), usage: fakeUsage() });
+      if (res.kind !== "ok") throw new Error("not ok");
+      expect(res.staged).toHaveLength(2);
+      expect(summarize(res.staged).split(";")).toHaveLength(2);
+    });
+
+    it("keeps the same pair for today and for the rest", async () => {
+      const res = await run([
+        [
+          toolUse("swap_exercise", swapInput()),
+          toolUse("swap_exercise", swapInput({ scope: "rest" })),
+        ],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(2);
+    });
+
+    it("keeps the same exercise swapped to two different ones", async () => {
+      const res = await run([
+        [
+          toolUse("swap_exercise", swapInput({}, "Romanian deadlift", "good mornings")),
+          toolUse("swap_exercise", swapInput({}, "Romanian deadlift", "leg curl")),
+        ],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(2);
+    });
+
+    it("keeps two new exercises with the same slug but different specs", async () => {
+      const backend = fakeBackend();
+      backend.stageSwap = async (i: SwapExerciseInput) => {
+        const r = resolvedSwap(i);
+        r.to = {
+          id: null,
+          name: "Thing",
+          slug: "thing",
+          isNew: true,
+          newSpec: {
+            type: "weighted",
+            loadBasis: i.replacement.said === "a" ? "barbell_total" : "per_hand",
+            equipmentSlug: null,
+            muscleGroup: "legs",
+          },
+        };
+        return { ok: true, action: { kind: "swap", input: i, resolved: r }, preview: "x" };
+      };
+      const res = await run(
+        [
+          [
+            toolUse("swap_exercise", swapInput({}, "Romanian deadlift", "a")),
+            toolUse("swap_exercise", swapInput({}, "Romanian deadlift", "b")),
+          ],
+          [text("ok")],
+        ],
+        backend,
+      );
+      expect(res.staged).toHaveLength(2);
+    });
+
+    it("a dropped retry still fixes an earlier invalid swap", async () => {
+      const res = await run([
+        [toolUse("swap_exercise", swapInput())],
+        [toolUse("swap_exercise", { exercise: { said: "x" } })],
+        [toolUse("swap_exercise", swapInput({ day: "today" }))],
+        [text("ok")],
+      ]);
+      expect(res.staged).toHaveLength(1);
+      expect(res.swapRefusals).toEqual([]);
+      expect(res.toolErrors).toBe(0);
+    });
+  });
+
+  describe("other deduped actions", () => {
+    const snap = (groupId: number) => ({ groupId }) as GroupSnapshot;
+    const backendWith = (undoIds: number[]) => {
+      const backend = fakeBackend();
+      let n = 0;
+      backend.stageUndoLast = async () => ({
+        ok: true,
+        action: { kind: "delete_group", snapshot: snap(undoIds[n++] ?? 0) },
+        preview: "Staged removal",
+      });
+      return backend;
+    };
+    const run = async (script: Parameters<typeof createFakeModel>[0], backend: LoggingBackend) => {
+      const res = await runIntent({
+        ...base,
+        model: createFakeModel(script),
+        backend,
+        usage: fakeUsage(),
+      });
+      if (res.kind !== "ok") throw new Error("not ok");
+      return res;
+    };
+
+    it("two undo calls on the same group collapse into one removal", async () => {
+      const res = await run(
+        [[toolUse("undo_last_entry", {}), toolUse("undo_last_entry", {})], [text("ok")]],
+        backendWith([5, 5]),
+      );
+      expect(res.staged).toHaveLength(1);
+    });
+
+    it("delete_group of different groups both stay", async () => {
+      const res = await run(
+        [[toolUse("undo_last_entry", {}), toolUse("undo_last_entry", {})], [text("ok")]],
+        backendWith([5, 6]),
+      );
+      expect(res.staged).toHaveLength(2);
+    });
+
+    it("identical save_memory collapses, distinct ones stay", async () => {
+      const mem = (content: string) => ({ kind: "limitation", content });
+      const same = await run(
+        [
+          [toolUse("save_memory", mem("bad knee")), toolUse("save_memory", mem("bad knee"))],
+          [text("ok")],
+        ],
+        fakeBackend(),
+      );
+      expect(same.staged).toHaveLength(1);
+      const distinct = await run(
+        [
+          [toolUse("save_memory", mem("bad knee")), toolUse("save_memory", mem("bad back"))],
+          [text("ok")],
+        ],
+        fakeBackend(),
+      );
+      expect(distinct.staged).toHaveLength(2);
+    });
   });
 });
