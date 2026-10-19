@@ -67,13 +67,28 @@ describe("skip labels", () => {
   const hspuOn = async (date: string, today: string) =>
     (await loadSkipDay(db, date, today)).open.find((t) => t.planName === "HSPU progression");
 
-  it("an HSPU item on a future day shows the plan's step, like /today", async () => {
+  const logHspu = async (date: string) => {
     const [step] = await sql`select id from hspu_ladder where slug = 'full_wall_hspu'`;
-    await sql`insert into log_groups (session_date, performed_at, exercise_id, source, hspu_step_id)
-      values ('2026-09-29', '2026-09-29T08:00:00Z', ${await exId(sql, "hspu")}, 'text', ${step?.id})`;
+    const [g] =
+      await sql`insert into log_groups (session_date, performed_at, exercise_id, source, hspu_step_id)
+      values (${date}, ${`${date}T08:00:00Z`}, ${await exId(sql, "hspu")}, 'text', ${step?.id}) returning id`;
+    await sql`insert into log_entries (group_id, set_index, reps) values (${g?.id}, 1, 3)`;
+  };
+
+  it("an HSPU item on a future day shows the plan's step, like /today", async () => {
+    await logHspu("2026-09-29");
     // /today for a later day is plan text only (no advice)
     expect(await loadSessionAdvice(db, "2026-10-06", TUE)).toBeNull();
     expect((await hspuOn("2026-10-06", "2026-09-29"))?.label).toBe("HSPU — hspu_negative");
+  });
+
+  it("today shows the step of the last real log, like /today", async () => {
+    await logHspu("2026-09-28");
+    const label = (await hspuOn("2026-09-29", "2026-09-29"))?.label;
+    expect(label).toBe("HSPU — full_wall_hspu");
+    const advice = await loadSessionAdvice(db, "2026-09-29", TUE);
+    const id = (await hspuOn("2026-09-29", "2026-09-29"))?.plannedItemId as number;
+    expect(advice?.items.get(id)?.hspuStep?.name).toBe("full_wall_hspu");
   });
 
   it("an accepted advance counts as the current step today, like /today", async () => {

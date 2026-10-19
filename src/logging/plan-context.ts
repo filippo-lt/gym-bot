@@ -98,6 +98,7 @@ export async function loadDayPlan(
   db: Q,
   ctx: PlanContext | null,
   date: string,
+  // Only matters for the skip label's live HSPU step.
   today?: string,
 ): Promise<DayPlan> {
   const empty: DayPlan = { date, weekday: null, week: null, phase: null, items: [] };
