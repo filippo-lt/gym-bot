@@ -56,6 +56,14 @@ async function logBench(key = "u:900") {
   return e.status === "done" && e.results[0]?.kind === "log" ? e.results[0].groupId : 0;
 }
 
+describe("skip labels", () => {
+  it("name an HSPU item with its ladder step, like /today", async () => {
+    const { open } = await loadSkipDay(db, "2026-09-29");
+    const hspu = open.find((t) => t.planName === "HSPU progression");
+    expect(hspu?.label).toBe("HSPU — hspu_negative");
+  });
+});
+
 describe("loadSkipDay", () => {
   it("lists planned items and leaves out done, skipped and logged ones", async () => {
     const all = (await loadSkipDay(db, DATE)).open;
