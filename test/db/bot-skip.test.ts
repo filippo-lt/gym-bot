@@ -40,6 +40,8 @@ type Call = { method: string; payload: Record<string, unknown> };
 beforeEach(async () => {
   await resetAndSeed(db, sql);
   await sql`insert into bodyweight_logs (date, kg, source) values ('2026-09-28', 70, 'bot')`;
+  await sql`update exercises set name = 'Bench press' where slug = 'bench_press'`;
+  await sql`update exercises set name = 'Lateral raise' where slug = 'lateral_raise'`;
 });
 
 function setup(script: ScriptedTurn[] = []) {
@@ -151,6 +153,21 @@ describe("/skip", () => {
     expect(t.answers().at(-1)).toBe("Nothing to undo.");
   });
 
+  it("after Undo, /skip sent again lists the item again", async () => {
+    const t = setup();
+    await t.say("/skip");
+    const data = `sk:20260928:${await itemId(BENCH)}`;
+    await t.tap(data, 1001, 2200);
+    await t.tap("us:u:2200:0", 1002);
+    await t.say("/skip");
+    const list = t
+      .sent()
+      .filter((c) => String(c.payload.text).startsWith("Skip what?"))
+      .at(-1);
+    expect(t.buttons(list).map((b) => b.data)).toContain(data);
+    expect(t.buttons(list).map((b) => b.text)).toContain("Bench press");
+  });
+
   it("a retried tap update re-sends the echo and writes nothing twice", async () => {
     const t = setup();
     await t.say("/skip");
@@ -208,7 +225,8 @@ describe("/skip", () => {
     await t.tap("sk:20260928:all", 1001);
     expect(await rows()).toEqual([]);
     const text = String(t.sent().at(-1)?.payload.text);
-    expect(text).toContain("Skip this?\n• Whole session (Mon 28 Sep): Warm-up, ");
+    expect(text).toContain("Skip this?\n• Whole session (Mon 28 Sep): ");
+    expect(text).toContain("Bench press");
     expect(text).toContain("skipping the whole session");
   });
 

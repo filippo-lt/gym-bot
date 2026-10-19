@@ -73,7 +73,7 @@ export function describeAction(a: StagedAction): string {
     case "skip_items":
       return a.whole
         ? `skip the whole session (${dateLabel(a.sessionDate)})`
-        : `skip ${a.items.map((i) => i.planName).join(", ")}`;
+        : `skip ${a.items.map((i) => i.label ?? i.planName).join(", ")}`;
   }
 }
 

@@ -36,6 +36,15 @@ describe("backupSummary", () => {
     );
   });
 
+  it("rounds weighted tokens to whole numbers", () => {
+    const t = backupSummary(meta, now, {
+      tokens: 213034.8,
+      sttSeconds: 0,
+      caps: { tokens: null, sttSeconds: null },
+    });
+    expect(t).toContain("This week: 213,035 AI tokens");
+  });
+
   it("drops the caps when unknown", () => {
     const t = backupSummary(meta, now, {
       tokens: 5,

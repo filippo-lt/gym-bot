@@ -19,7 +19,7 @@ type SkipResult = Extract<LedgerResult, { kind: "skip" }>;
 export function skipList(date: string, open: SkipTarget[]): Message {
   const keyboard: Keyboard = open.map((t) => [
     {
-      text: `${t.priority === "PRIMARY" ? "⭐ " : ""}${t.planName}`,
+      text: `${t.priority === "PRIMARY" ? "⭐ " : ""}${t.label ?? t.planName}`,
       data: cb.skip(date, t.plannedItemId),
     },
   ]);
@@ -27,7 +27,7 @@ export function skipList(date: string, open: SkipTarget[]): Message {
   return { text: `${LIST_HEADER} (${dateLabel(date)})`, keyboard };
 }
 
-const planNames = (r: SkipResult) => r.items.map((i) => esc(i.planName)).join(", ");
+const planNames = (r: SkipResult) => r.items.map((i) => esc(i.label ?? i.planName)).join(", ");
 
 /** The echo after a skip was saved, with Undo; nothing skipped has no button. */
 export function skipEcho(r: SkipResult, sourceKey: string, index: number): Message {

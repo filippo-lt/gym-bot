@@ -2,7 +2,7 @@
 
 Where GymBot stands, what is still open, and what comes next. Update this file at the end of every milestone or fix round. SPEC.md stays the source of truth for behaviour; this file is the progress log.
 
-_Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pending)._
+_Last updated: 19 Oct 2026 (M6–M9 live-tested in Telegram Web on Mon 19 Oct; fixes for what it found are in a PR to `dev`, not deployed yet)._
 
 ## Milestones (SPEC §8)
 
@@ -16,9 +16,9 @@ _Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pen
 | 4 | Queries (`/next`, `/session`, `/history`, `/plan`, history/alternatives in chat, memory, number guard) | live | #8 |
 | 5 | Progression + fatigue engine (suggested loads, e1RM, pull-up gate, HSPU, Friday tags, readiness, `/readiness`, `/class`, `/bw`, `/short`, `/skip`) | live, 5 weeks ahead of the 23 Nov target | #9, #10, #11 |
 | 6 | Voice + photo (Whisper, blackboard parsing, Thursday flow) | live (voice and photo live-tested 18 Oct) | #12 |
-| 7 | Plan changes (swaps with scope, plan versions, deload earlier) | merged to dev, deploying | |
-| 8 | Morning message + charts | deployed 18 Oct, live test pending | #13, #15 |
-| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | deployed 18 Oct, live test pending | #14, #15 |
+| 7 | Plan changes (swaps with scope, plan versions, deload earlier) | live (tested 19 Oct; deload card not tried) | #16, #17 |
+| 8 | Morning message + charts | live (tested 19 Oct; Friday class card not tried) | #13, #15 |
+| 9 | Hardening (cost guard review, weekly backup, restore from backup, tool-failure messages) | live (tested 19 Oct; Sunday job on 25 Oct) | #14, #15 |
 
 ## What happened, in short
 
@@ -64,49 +64,46 @@ _Last updated: 18 Oct 2026 (M7 PR open to dev; M6 live; M8 and M9 live tests pen
   - no migration, one new optional env var (`RESTORE_DATABASE_URL`, local use only)
   - decisions: the user left the design to Claude; an independent agent answered the open design questions and its answers were adopted (`docs/superpowers/specs/2026-10-18-m9-design-qa.md`). Known minor issue "photo over 3.5 MB" is fixed (a smaller Telegram size is used when one fits); the others stay
   - design and plan: `docs/superpowers/specs/2026-10-18-m9-hardening-design.md`, `docs/superpowers/plans/2026-10-18-m9-hardening.md`
-- **M7 (PR open to dev):**
+- **M7 (#16, deployed 18 Oct via #17):**
   - swaps: `/swap` or chat ("swap face pulls for band pull-aparts only today"). Scope is Only today (a one-off override) or Rest of plan (a new plan version, from tomorrow). A one-off swap on a later day moves to the new version's items (or is dropped with a message). An exercise on several weekdays asks "this weekday only / every day". Always a card, saved on ✅, with Undo until the change is used
   - plan versions are full copies; `planDayOn` is the one reader of the plan for a date; the week count comes from `plan_weeks` rows. Past logs and suggestions are never changed
   - deload earlier: when two RED sessions (or low recovery) happen in a row, a separate card offers to move the deload one week earlier; ✅ writes a new version. Asked once until the fatigue signal clears
-  - migration 0007: the `session_overrides` table (RLS, 2 indexes) and `plan_versions.change`; no change to `proposals`. History import now refuses rows dated after a later version starts
+  - migration 0007 (applied to production 18 Oct): the `session_overrides` table (RLS, 2 indexes) and `plan_versions.change`; no change to `proposals`. Health OK and `telegram:setup` run after deploy (`/swap` in the command menu). History import now refuses rows dated after a later version starts
   - decisions: the user left the design to Claude; an independent Opus review answered 17 open questions and all answers were adopted. Rulings: "only today" means the next session that has the exercise, named on the card; RIR is recomputed for the new option list; a failed or refused swap says so in plain words, nothing is staged
   - design and plan: `docs/superpowers/specs/2026-10-18-m7-plan-changes-design.md`, `docs/superpowers/plans/2026-10-18-m7-plan-changes.md`; demo: `docs/m7-demo.md`
+- **Live test (Mon 19 Oct, Telegram Web):**
+  - working: morning message and readiness tap (in place), all read commands, `/chart volume` and `/chart` buttons, chart questions in chat, text log + RIR + correction + `/undo`, swaps (only today, rest of plan, days question, scope question + Cancel, refusal when already logged, Undo for each), `/export`, `/usage`, `/skip` + Undo. Production checked against a read-only baseline afterwards: unchanged
+  - found and fixed (PR to `dev`): the model could stage the same swap 3× in one message (a card with three identical lines); staged swaps, removals and memories are now deduped on the resolved target. Display: no "baseline — tell me your weight" (or Friday / max-test / fallback notes) under done, skipped or modified items; backup summary rounds weighted tokens; `/chart` says "N sessions logged, none can be plotted yet" instead of "0 sessions"; `/skip` buttons and texts use the `/today` names, and the HSPU name on them follows the same live-step rule as `/today` (`liveHspuStep`)
+  - cutover: `pnpm history:import --dry-run` against the 18 Oct export replaces the same rows (nothing new), so the import was not re-run; the bot is the source of truth from 19 Oct
 
 ## Open items
 
 **For the user (manual):**
 - **M6:** voice and photo are live-tested. Still open: Thu 22 Oct 21:00 → the class question arrives (skipped if the class is already logged).
-- **M7 live test (from the phone, a weekday):** follow `docs/m7-demo.md` (swap today, swap rest of plan, days question, new exercise, Undo for each).
 - Revoke the Telegram bot token in BotFather, update `.env.local` and Vercel, redeploy, then run `pnpm telegram:setup https://gym-bot-xi.vercel.app`.
 - Remove the unused `SUPABASE_DB_PASSWORD` and the Supabase integration's unused service-role key from Vercel.
 - Send band colours with their kg of assistance (or answer the bot the first time it asks).
 - Decide what to do with the untracked `.github/workflows/automerge.yml` (it auto-merges every PR; nobody in the sessions created it; it has never been committed). The standing rule is that only the user merges.
-- **Cutover:** pick a training day, run `pnpm history:import --dry-run`, then `pnpm history:import`, then stop using the old tool.
+- **Cutover:** stop using the old tool (the 18 Oct export is already imported; re-export and dry-run again only if you logged there after 18 Oct 07:00).
+- **Fix PR:** review and merge the live-test fix PR into `dev`, then deploy `dev → main` (no migration).
 
-- **M8 live test (from the phone, after deploy):**
-  - `/chart squat` → a PNG with readable labels (if the labels are missing, the font didn't reach the Vercel bundle); `/chart pull-up` → two panels; `/chart volume` → stacked bars; `/chart` → buttons
-  - "how is my bench going?" → a short reply, then the chart
-  - the next weekday at 06:00 → the morning message; tap 😴 → the same message updates in place with "Noted: 😴"
-  - Friday 06:00 with Thursday not reported → the class card first, then the session; Save → the session again with the Friday changes
+- **M8, still to see:** `/chart <exercise>` once 2+ logged sessions exist (only `/chart volume` had data on 19 Oct); Friday 06:00 with Thursday not reported → the class card first, then the session.
 - **M9 (optional):** rehearse a restore locally (`docs/SETUP.md`, "Restore from a backup"), using the backup the bot sent on 18 Oct; never against production without an explicit OK.
-- **M9 demo (from the phone, after deploy):**
-  - `/usage` → today's and this month's AI tokens against the caps, and today's voice minutes
-  - `/export` → "Preparing your backup…", a summary with row counts, then `gymbot-backup-<date>.json` and `gymbot-backup-<date>-csv.zip`; open the zip in Files and a CSV in Numbers
-  - Sun 25 Oct between 18:00 and 18:15 → the same summary with "This week: … Limits per day: …" and the two files, without asking
-  - send a class board photo as a big "file" photo or a high-resolution shot → it is read (a smaller size is used), or "That photo is too large (max 3.5 MB)…" if no size fits
-  - failure texts can't be triggered safely in production; they are covered by tests
+- **M9, still to see:** Sun 25 Oct 18:00–18:15 → the weekly backup without asking; a big class board photo from the phone → read at a smaller size, or "That photo is too large (max 3.5 MB)…". Failure texts can't be triggered safely in production; tests cover them.
+- **M7, still to see:** the deload-earlier card (needs two RED sessions in a row; see `docs/m7-demo.md` step 7).
 - **M7 open points (the user decides):**
   - deload drop threshold: the next deload is dropped when it would be less than 21 days after the moved one; exactly 21 days keeps it. If you want 3 full training weeks between deloads, it is a one-line change in `src/plan/deload.ts`
   - no deload offer when next week is the test week (W12)
 - **Next milestone to plan:** weekly check-in (`/done`, `/checkin`, Friday 20:00 check-in, Sunday summary). Recovery score and the check-in max stay missing until then; schedule it before W12 (14 Dec).
 
-**To verify on the first weekdays (could not be tested on a Sunday):**
+**To verify on the first non-deload weekdays (19 Oct is a deload day with baseline items only):**
 - Suggested loads in a weekday `/today`.
 - The "far from the suggestion" confirm card.
 - The Friday view after a heavy Thursday class.
 - The read-only engine run on real data showed RDL and lat pulldown as "baseline, tell me your weight". The imported week 1 has no per-set reps or RIR, so the first logged sessions set the baseline.
 
 **Known minor issues (not blocking):**
+- `/skip`: Undo of a skip doesn't put the button back on the old list message (the list message id isn't known there); sending `/skip` again lists it.
 - M7: undo of an "only today" swap leaves the suggestion rows made for the replacement (harmless; unlogged rows are cleaned on the next `/today`).
 - M7: the morning message does not send the deload card yet; M8's job can call `deloadProposal`.
 - M7: two concurrent `/today` could send two deload cards (single user, chat lease makes it very unlikely).

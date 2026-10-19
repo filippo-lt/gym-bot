@@ -354,7 +354,7 @@ describe("stageSwap", () => {
     );
     if (!r.ok) throw new Error(r.error);
     expect(r.action.kind).toBe("swap");
-    expect(r.preview).toContain("Do not repeat");
+    expect(r.preview).toContain("do not call swap_exercise again");
   });
   it("turns a refusal into a tool error", async () => {
     const r = await stageSwap(
