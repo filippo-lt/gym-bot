@@ -57,7 +57,7 @@ export function createSkipFlow(deps: SkipFlowDeps) {
 
   async function skipCommand(ctx: Context): Promise<void> {
     const date = trainingDate(deps.now());
-    const day = await loadSkipDay(db, date);
+    const day = await loadSkipDay(db, date, trainingDate(deps.now()));
     if (!day.hasSession) return void (await send(ctx, NO_SESSION));
     if (day.open.length === 0) return void (await send(ctx, NOTHING_TO_SKIP));
     await send(ctx, skipList(date, day.open));
@@ -66,7 +66,7 @@ export function createSkipFlow(deps: SkipFlowDeps) {
   /** The tapped message only ever shows the list: re-render it after a tap (best effort). */
   async function refreshList(ctx: Context, date: string): Promise<void> {
     try {
-      const day = await loadSkipDay(db, date);
+      const day = await loadSkipDay(db, date, trainingDate(deps.now()));
       await editQuietly(ctx, day.open.length ? skipList(date, day.open) : NOTHING_TO_SKIP);
     } catch {
       // the list is only a convenience
@@ -135,7 +135,7 @@ export function createSkipFlow(deps: SkipFlowDeps) {
       await remember(chatId, "A tapped skip button was from another day; nothing changed.");
       return;
     }
-    const day = await loadSkipDay(db, a.date);
+    const day = await loadSkipDay(db, a.date, trainingDate(now));
     const targets =
       a.item === "all" ? day.open : day.open.filter((t) => t.plannedItemId === a.item);
     if (targets.length === 0 || (a.item !== "all" && targets.length !== 1)) {

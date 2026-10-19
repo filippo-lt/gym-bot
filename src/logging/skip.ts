@@ -41,9 +41,10 @@ const toTarget = (i: DayItem): SkipTarget => ({
 export async function loadSkipDay(
   db: Q,
   date: string,
+  today?: string,
 ): Promise<{ hasSession: boolean; open: SkipTarget[]; items: DayItem[] }> {
   const ctx = await loadPlanContext(db, date);
-  const plan = await loadDayPlan(db, ctx, date);
+  const plan = await loadDayPlan(db, ctx, date, today);
   return {
     hasSession: plan.items.length > 0,
     open: plan.items.filter(isOpen).map(toTarget),
@@ -213,7 +214,7 @@ export async function stageSkip(db: Q, input: SkipItemsInput, now: Date): Promis
   }
   const date = dateForDay(ctx, today, input.day);
   const label = dateLabel(date);
-  const { open, items } = await loadSkipDay(db, date);
+  const { open, items } = await loadSkipDay(db, date, today);
 
   if (input.whole_session) {
     if (open.length === 0) return fail(`Nothing open to skip on ${label}.`);
