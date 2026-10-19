@@ -1,7 +1,8 @@
 /** Plan lookups for logging: which planned items exist on a date, and which have a group. */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { DateTime } from "luxon";
 import { logGroups, sessionItems } from "../db/schema/log.js";
+import { hspuLadder } from "../db/schema/plan.js";
 import { planWeekFor } from "../domain/calendar.js";
 import { loadVersionIndex, planDayOn, type VersionIndex } from "../plan/effective.js";
 import type { Weekday } from "../plan-import/types.js";
@@ -58,6 +59,8 @@ export interface DayItem {
   hasGroup: boolean;
   hspuStepId: number | null;
   variantLabel: string | null;
+  /** HSPU ladder step name: the last logged step, else the plan's own; null for other items. */
+  hspuStepName: string | null;
   status: string;
 }
 
@@ -90,6 +93,32 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
     : [];
   const withGroup = new Set(groupRows.map((g) => g.plannedItemId));
   const statusById = new Map(statusRows.map((s) => [s.plannedItemId, s.status]));
+  const ladder = new Map(
+    (await db.select({ id: hspuLadder.id, name: hspuLadder.name }).from(hspuLadder)).map((l) => [
+      l.id,
+      l.name,
+    ]),
+  );
+  const hspuNames = new Map<number, string>();
+  for (const r of day.items) {
+    if (!r.options.some((o) => o.slug === "hspu")) continue;
+    const [last] = await db
+      .select({ stepId: logGroups.hspuStepId })
+      .from(logGroups)
+      .where(
+        and(
+          inArray(
+            logGroups.exerciseId,
+            r.options.map((o) => o.id),
+          ),
+          isNotNull(logGroups.hspuStepId),
+        ),
+      )
+      .orderBy(desc(logGroups.sessionDate), desc(logGroups.id))
+      .limit(1);
+    const name = ladder.get(last?.stepId ?? -1) ?? ladder.get(r.hspuStepId ?? -1);
+    if (name) hspuNames.set(r.plannedItemId, name);
+  }
   const items: DayItem[] = day.items.map((r) => ({
     info: {
       id: r.plannedItemId,
@@ -110,6 +139,7 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
     hasGroup: withGroup.has(r.plannedItemId),
     hspuStepId: r.hspuStepId,
     variantLabel: r.variantLabel,
+    hspuStepName: hspuNames.get(r.plannedItemId) ?? null,
     status: statusById.get(r.plannedItemId) ?? "planned",
   }));
   return { date, weekday: day.weekday, week: day.week, phase: day.phase, items };

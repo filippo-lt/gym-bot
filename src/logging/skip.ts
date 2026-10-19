@@ -30,11 +30,10 @@ const isOpen = (i: DayItem): boolean => !i.hasGroup && i.status === "planned";
 const toTarget = (i: DayItem): SkipTarget => ({
   plannedItemId: i.info.id,
   planName: i.info.planName,
-  label: baseItemName({
-    options: i.options,
-    planName: i.info.planName,
-    variantLabel: i.variantLabel,
-  }),
+  label: baseItemName(
+    { options: i.options, planName: i.info.planName, variantLabel: i.variantLabel },
+    i.hspuStepName,
+  ),
   priority: i.info.priority,
 });
 

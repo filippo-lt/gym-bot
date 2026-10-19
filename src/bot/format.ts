@@ -208,8 +208,8 @@ function advisedLines(item: SessionItem, n: number, adv: AdviceItem, c: AdvisedC
   const labelCtx: LabelContext = { bodyweightDate: c.advice.bodyweightDate };
   const heavyGroup = heavyGroupFor(item.tags, c.heavy, HEAVY_TAGS);
   const why = heavyGroup ? `heavy ${heavyGroup} Thursday` : "heavy Thursday";
-  // A logged or skipped item has its answer: no "tell me your weight" style hints.
-  const answered = item.status === "done" || item.status === "skipped";
+  // A logged, skipped or imported item has its answer: no "tell me your weight" style hints.
+  const answered = item.status !== "planned";
   const perOption = item.options.map((o) => {
     const ex = exerciseBySlug(c.advice, o.slug);
     const sug = ex ? (adv.suggestions[ex.id] ?? null) : null;
@@ -245,9 +245,10 @@ function advisedLines(item: SessionItem, n: number, adv: AdviceItem, c: AdvisedC
   } else if (first?.notes.length) {
     out.push(`   <i>${esc(first.notes.join(" · "))}</i>`);
   }
-  const fri = fridayText(adv, why);
+  const fri = answered ? null : fridayText(adv, why);
   if (fri) out.push(`   <i>${esc(fri)}</i>`);
   if (
+    !answered &&
     c.advice.level === "RED" &&
     item.tags.includes("skill_practice") &&
     adv.prescription?.sets != null
@@ -259,7 +260,7 @@ function advisedLines(item: SessionItem, n: number, adv: AdviceItem, c: AdvisedC
     out.push(`   <i>easy volume today: ${adv.prescription.sets} sets${rir}</i>`);
   }
   const pp = adv.pullup;
-  if (pp?.maxTestFirst) {
+  if (!answered && pp?.maxTestFirst) {
     out.push("   <i>Start with one max clean set (stop 1 rep before form breaks).</i>");
     if (pp.afterMaxTest) {
       const a = pp.afterMaxTest;
@@ -314,7 +315,8 @@ export function itemBlock(
   if (advice && adv) lines.push(...advisedLines(item, n, adv, { advice, heavy }));
   else lines.push(itemLine(item, n));
   // With advice the pull-up plan is already spelled out (gate, fallback or max test first).
-  if (item.fallback && !adv?.pullup) lines.push(`   <i>${esc(fallbackLine(item.fallback))}</i>`);
+  if (item.fallback && !adv?.pullup && item.status === "planned")
+    lines.push(`   <i>${esc(fallbackLine(item.fallback))}</i>`);
   for (const extra of extras) {
     const eadv = advice?.items.get(extra.plannedItemId);
     let text = extraLine(extra);

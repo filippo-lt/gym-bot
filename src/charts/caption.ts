@@ -30,7 +30,7 @@ const sessionsText = (n: number) => `${n} ${n === 1 ? "session" : "sessions"}`;
 /** `total` counts every logged session; `n` only those that can be plotted. */
 export function notEnoughText(name: string, n: number, total = n): string {
   if (total > n) {
-    return `Not enough data to chart ${safeName(name)} yet: ${sessionsText(total)} logged, ${n} with per-set data.`;
+    return `Not enough data to chart ${safeName(name)} yet: ${sessionsText(total)} logged, ${n === 0 ? "none" : n} I can plot yet.`;
   }
   return `Not enough data to chart ${safeName(name)} yet (${sessionsText(n)}).`;
 }

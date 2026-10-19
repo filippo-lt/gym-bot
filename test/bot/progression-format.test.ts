@@ -291,6 +291,44 @@ describe("formatToday with advice", () => {
     expect(out).not.toContain("⚠️");
   });
 
+  it.each(["done", "skipped", "modified"] as const)(
+    "a %s item shows no Friday or max-test text",
+    (status) => {
+      const fri = sessionFor(5, "fri", "2026-10-30", { thursday: { heavy: ["legs"] } });
+      const a = advice([
+        adv(2, {
+          friday: { kind: "reduce", sets: 2, reps: 4, rirMin: 3, rirMax: 4, skippable: true },
+          pullup: {
+            mode: "fallback_assisted",
+            maxTestFirst: true,
+            sets: 4,
+            repsMin: 6,
+            repsMax: 6,
+            labels: ["max_test_first"],
+            afterMaxTest: {
+              thresholdReps: 4,
+              bw: { sets: 4, repsMin: 4, repsMax: 6 },
+              assisted: { sets: 4, repsMin: 6, repsMax: 6 },
+            },
+          },
+        }),
+        adv(5, { friday: { kind: "offer_skip" }, skipOffer: true }),
+      ]);
+      const settled = {
+        ...fri,
+        items: fri.items.map((i) => ({ ...i, status })),
+      };
+      const open = formatToday(fri, a);
+      expect(open).toContain("or skip");
+      expect(open).toContain("can skip (heavy legs Thursday)");
+      const out = formatToday(settled, a);
+      expect(out).not.toContain("or skip");
+      expect(out).not.toContain("can skip");
+      expect(out).not.toContain("Start with one max clean set");
+      expect(out).not.toContain("Then bodyweight");
+    },
+  );
+
   it("Friday without a class report asks first", () => {
     const fri = sessionFor(5, "fri", "2026-10-30", { thursday: "not_reported" });
     const out = formatToday(fri, advice([], { askClassFirst: true }));
