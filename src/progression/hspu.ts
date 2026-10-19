@@ -23,6 +23,21 @@ export function hspuState(sessions: SessionRec[]): HspuState {
   return { stepOrder: last.hspuStepOrder, padHeight: pad };
 }
 
+/** The HSPU step /today shows for an item: the first option exercise whose history gives a step. */
+export function liveHspuStep(
+  exerciseIds: number[],
+  history: Record<number, SessionRec[]>,
+  ladder: HspuLadderStep[],
+): { order: number; name: string; padHeight: number | null } | null {
+  for (const exId of exerciseIds) {
+    const state = hspuState(history[exId] ?? []);
+    const step =
+      state.stepOrder === null ? undefined : ladder.find((l) => l.stepOrder === state.stepOrder);
+    if (step) return { order: step.stepOrder, name: step.name, padHeight: state.padHeight };
+  }
+  return null;
+}
+
 /** Plan's sets x reps when the state step equals the plan's step; otherwise the state step's ladder defaults. */
 export function hspuReps(state: HspuState, target: ItemTarget, ladder: HspuLadderStep[]): HspuReps {
   const step =

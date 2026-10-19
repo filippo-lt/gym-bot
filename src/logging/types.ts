@@ -375,6 +375,8 @@ export interface GroupSnapshot {
 export interface SkipTarget {
   plannedItemId: number;
   planName: string;
+  /** The name /today shows for the item; falls back to planName. */
+  label?: string;
   priority: Priority;
 }
 
@@ -625,7 +627,12 @@ export type LedgerResult =
       kind: "skip";
       sessionDate: string;
       whole: boolean;
-      items: { plannedItemId: number; planName: string; before: SessionItemBefore | null }[];
+      items: {
+        plannedItemId: number;
+        planName: string;
+        label?: string;
+        before: SessionItemBefore | null;
+      }[];
     };
 
 // ---------------------------------------------------------------------------

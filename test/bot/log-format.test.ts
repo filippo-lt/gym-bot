@@ -556,6 +556,40 @@ describe("skip texts", () => {
     expect(skipUndone(["A", "B"])).toEqual({ text: "Skip undone: A, B", keyboard: [] });
   });
 
+  it("falls back to the plan name for a ledger row without a label", () => {
+    const legacy = {
+      kind: "skip" as const,
+      sessionDate: "2026-10-19",
+      whole: false,
+      items: [{ plannedItemId: 5, planName: "Squat", before: null }],
+    };
+    expect(skipEcho(legacy, "u:9", 0).text).toBe("Skipped: Squat");
+    expect(
+      skipList("2026-10-19", [{ plannedItemId: 5, planName: "Squat", priority: "Low" }])
+        .keyboard[0],
+    ).toEqual([{ text: "Squat", data: "sk:20261019:5" }]);
+  });
+
+  it("uses the /today label when there is one", () => {
+    const list = skipList("2026-10-19", [
+      { plannedItemId: 5, planName: "Chest-supported row", label: "Ring row", priority: "Low" },
+    ]);
+    expect(list.keyboard[0]).toEqual([{ text: "Ring row", data: "sk:20261019:5" }]);
+    const echo = skipEcho(
+      {
+        kind: "skip",
+        sessionDate: "2026-10-19",
+        whole: false,
+        items: [
+          { plannedItemId: 5, planName: "Chest-supported row", label: "Ring row", before: null },
+        ],
+      },
+      "u:9",
+      0,
+    );
+    expect(echo.text).toBe("Skipped: Ring row");
+  });
+
   it("explains an ambiguous skip", () => {
     expect(reasonPhrases([skipAct("High")], ["skip_ambiguous"])).toEqual([
       "more than one planned item matches",

@@ -120,6 +120,9 @@ describe("notEnoughText", () => {
   it("pluralises", () => {
     expect(notEnoughText("Squat", 1)).toBe("Not enough data to chart Squat yet (1 session).");
     expect(notEnoughText("Squat", 2)).toBe("Not enough data to chart Squat yet (2 sessions).");
+    expect(notEnoughText("Pull-up", 0, 1)).toBe(
+      "Not enough data to chart Pull-up yet: 1 session logged, none can be plotted yet.",
+    );
   });
 });
 
