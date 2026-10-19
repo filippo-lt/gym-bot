@@ -10,7 +10,7 @@ import type { Db } from "../db/seed-plan.js";
 import { trainingDate } from "../domain/calendar.js";
 import { planDayOn } from "../plan/effective.js";
 import type { HiitSpec } from "../plan-import/types.js";
-import { hspuState } from "./hspu.js";
+import { liveHspuStep } from "./hspu.js";
 import { loadExerciseInfos, loadFrozenLevel, RECOVERY_METRIC } from "./load-history.js";
 import { type DeloadTrigger, earlierDeloadHint } from "./readiness.js";
 import { applyShort } from "./short.js";
@@ -76,17 +76,9 @@ function adviceItem(
 ): AdviceItem {
   const ladder = input.hspuLadder;
   const stepOf = (order: number) => ladder.find((l) => l.stepOrder === order);
-  let hspuStep: AdviceItem["hspuStep"] = null;
-  if (item.hspu) {
-    for (const exId of item.target.exerciseIds) {
-      const state = hspuState(input.history[exId] ?? []);
-      const step = state.stepOrder === null ? undefined : stepOf(state.stepOrder);
-      if (step) {
-        hspuStep = { order: step.stepOrder, name: step.name, padHeight: state.padHeight };
-        break;
-      }
-    }
-  }
+  const hspuStep: AdviceItem["hspuStep"] = item.hspu
+    ? liveHspuStep(item.target.exerciseIds, input.history, ladder)
+    : null;
   let hspuAdvance: AdviceItem["hspuAdvance"] = null;
   const adv: HspuAdvanceProposal | null = item.hspuAdvance;
   if (adv) {

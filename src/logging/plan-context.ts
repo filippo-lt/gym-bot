@@ -5,6 +5,14 @@ import { logGroups, sessionItems } from "../db/schema/log.js";
 import { planWeekFor } from "../domain/calendar.js";
 import { loadVersionIndex, planDayOn, type VersionIndex } from "../plan/effective.js";
 import type { Weekday } from "../plan-import/types.js";
+import { liveHspuStep } from "../progression/hspu.js";
+import {
+  loadExerciseInfos,
+  loadHspuLadder,
+  loadPlanEnv,
+  loadSessionRecs,
+} from "../progression/load-history.js";
+import type { SessionRec } from "../progression/types.js";
 import type { Q } from "./db.js";
 import type { Candidate, PlannedItemInfo } from "./types.js";
 
@@ -57,6 +65,9 @@ export interface DayItem {
   options: (Candidate & { id: number })[];
   hasGroup: boolean;
   hspuStepId: number | null;
+  variantLabel: string | null;
+  /** HSPU ladder step name: the last logged step, else the plan's own; null for other items. */
+  hspuStepName: string | null;
   status: string;
 }
 
@@ -68,7 +79,28 @@ export interface DayPlan {
   items: DayItem[];
 }
 
-export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string): Promise<DayPlan> {
+/** The same session history the live /today advice reads (accepted advances included). */
+async function liveHistory(
+  db: Q,
+  rows: { options: { id: number }[] }[],
+  date: string,
+): Promise<Record<number, SessionRec[]>> {
+  const env = await loadPlanEnv(db);
+  if (!env) return {};
+  const ids = [...new Set(rows.flatMap((r) => r.options.map((o) => o.id)))];
+  const infos = await loadExerciseInfos(db, ids);
+  const recs = await loadSessionRecs(db, env, infos, ids, date);
+  return Object.fromEntries(ids.map((id) => [id, recs.get(id) ?? []]));
+}
+
+/** `today` (the training date) lets an HSPU item carry the live step name, as /today shows it. */
+export async function loadDayPlan(
+  db: Q,
+  ctx: PlanContext | null,
+  date: string,
+  // Only matters for the skip label's live HSPU step.
+  today?: string,
+): Promise<DayPlan> {
   const empty: DayPlan = { date, weekday: null, week: null, phase: null, items: [] };
   if (!ctx) return empty;
   const day = await planDayOn(db, date);
@@ -89,6 +121,24 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
     : [];
   const withGroup = new Set(groupRows.map((g) => g.plannedItemId));
   const statusById = new Map(statusRows.map((s) => [s.plannedItemId, s.status]));
+  const hspuNames = new Map<number, string>();
+  const hspuItems = day.items.filter((r) => r.options.some((o) => o.slug === "hspu"));
+  if (hspuItems.length > 0) {
+    const ladder = await loadHspuLadder(db);
+    // Today /today uses the live step (last log or accepted advance); other days show the plan's own.
+    const live = today === date ? await liveHistory(db, hspuItems, date) : null;
+    for (const r of hspuItems) {
+      const step =
+        (live &&
+          liveHspuStep(
+            r.options.map((o) => o.id),
+            live,
+            ladder,
+          )) ||
+        ladder.find((l) => l.id === r.hspuStepId);
+      if (step) hspuNames.set(r.plannedItemId, step.name);
+    }
+  }
   const items: DayItem[] = day.items.map((r) => ({
     info: {
       id: r.plannedItemId,
@@ -108,6 +158,8 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
     options: r.options.map((o) => ({ id: o.id, slug: o.slug, name: o.name })),
     hasGroup: withGroup.has(r.plannedItemId),
     hspuStepId: r.hspuStepId,
+    variantLabel: r.variantLabel,
+    hspuStepName: hspuNames.get(r.plannedItemId) ?? null,
     status: statusById.get(r.plannedItemId) ?? "planned",
   }));
   return { date, weekday: day.weekday, week: day.week, phase: day.phase, items };

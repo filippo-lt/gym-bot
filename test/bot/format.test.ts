@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  baseItemName,
   esc,
   formatBeforeStart,
   formatFinished,
@@ -222,5 +223,29 @@ describe("day focus", () => {
     for (const [k, v] of Object.entries(names)) {
       expect(DAY_FOCUS[k as keyof typeof names]).toBe(json.day_focus[v]);
     }
+  });
+});
+
+describe("baseItemName", () => {
+  const base = { planName: "Hanging leg raise / knee raise", variantLabel: null };
+  it("names several options like /today", () => {
+    expect(
+      baseItemName({
+        ...base,
+        options: [
+          { slug: "hlr", name: "Hanging leg raise" },
+          { slug: "hkr", name: "Hanging knee raise" },
+        ],
+      }),
+    ).toBe("Hanging leg raise or hanging knee raise");
+  });
+  it("adds the variant to a single option", () => {
+    expect(
+      baseItemName({
+        planName: "⭐Clean strict pull-up",
+        variantLabel: "deload",
+        options: [{ slug: "pull_up", name: "Pull-up" }],
+      }),
+    ).toBe("Pull-up (deload)");
   });
 });

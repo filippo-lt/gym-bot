@@ -551,10 +551,10 @@ function actionLine(a: StagedAction, underRemoveHeader = false, today?: string):
     case "log_class":
       return esc(describeAction(a));
     case "skip_items": {
-      const names = a.items.map((i) => esc(i.planName)).join(", ");
+      const names = a.items.map((i) => esc(i.label ?? i.planName)).join(", ");
       if (a.whole) return `Whole session (${dateLabel(a.sessionDate)}): ${names}`;
       return a.items
-        .map((i) => `${esc(i.planName)}${i.priority === "PRIMARY" ? " (PRIMARY)" : ""}`)
+        .map((i) => `${esc(i.label ?? i.planName)}${i.priority === "PRIMARY" ? " (PRIMARY)" : ""}`)
         .join(", ");
     }
   }

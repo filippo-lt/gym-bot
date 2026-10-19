@@ -63,7 +63,7 @@ export async function buildChart(db: Db, req: ChartRequest, now: Date): Promise<
   const cap = exerciseCaption(name, ex, kind, load, reps, metric);
   if (!cap) {
     const n = distinctSessions(resolvePanels(kind, metric).panels, load, reps);
-    return { ok: false, reason: "not_enough_data", text: notEnoughText(name, n) };
+    return { ok: false, reason: "not_enough_data", text: notEnoughText(name, n, sessions.length) };
   }
   const png = await renderPng(exerciseSpec(name, ex, kind, load, reps, metric));
   return {

@@ -110,6 +110,31 @@ describe("buildChart", () => {
     expect(r).toMatchObject({ ok: false, reason: "not_enough_data" });
   });
 
+  it("says so when logged sessions cannot be plotted", async () => {
+    const exerciseId = await exId(sql, "bench_press");
+    const [g] = await sql`insert into log_groups (session_date, performed_at, exercise_id, source)
+      values ('2026-10-05', '2026-10-05T08:00:00Z', ${exerciseId}, 'text') returning id`;
+    await sql`insert into log_entries (group_id, set_index, reps) values (${g?.id}, 1, 5)`;
+    const r = await buildChart(db, { kind: "exercise", exerciseId, metric: "load" }, NOW);
+    expect(r).toMatchObject({ ok: false, reason: "not_enough_data" });
+    if (!r.ok) expect(r.text).toMatch(/1 session logged, none can be plotted yet\./);
+  });
+
+  it("says how many of several logged sessions can be plotted", async () => {
+    const exerciseId = await exId(sql, "bench_press");
+    for (const [date, load] of [
+      ["2026-10-05", null],
+      ["2026-10-06", 60],
+    ] as const) {
+      const [g] = await sql`insert into log_groups (session_date, performed_at, exercise_id, source)
+        values (${date}, ${`${date}T08:00:00Z`}, ${exerciseId}, 'text') returning id`;
+      await sql`insert into log_entries (group_id, set_index, reps, load_kg, rir) values (${g?.id}, 1, 5, ${load}, ${load === null ? null : 2})`;
+    }
+    const r = await buildChart(db, { kind: "exercise", exerciseId, metric: "load" }, NOW);
+    expect(r).toMatchObject({ ok: false, reason: "not_enough_data" });
+    if (!r.ok) expect(r.text).toMatch(/2 sessions logged, only 1 can be plotted\./);
+  });
+
   it("is no_numbers for a type without numbers", async () => {
     await sql`update exercises set type = 'skill_practice', load_basis = null where slug = 'face_pull'`;
     const r = await buildChart(
