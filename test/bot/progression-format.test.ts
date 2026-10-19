@@ -173,6 +173,20 @@ describe("formatToday with advice", () => {
     expect(out).toContain("<i>back after a break</i>");
   });
 
+  it("a done item shows no baseline ask", () => {
+    const asked = advice([
+      adv(5, { suggestions: { 3: sug({ ask: "load", labels: ["baseline_ask_load"] }) } }),
+    ]);
+    expect(formatToday(mon, asked)).toContain("baseline — tell me your weight");
+    const done = {
+      ...mon,
+      items: mon.items.map((i) => (i.plannedItemId === 5 ? { ...i, status: "done" as const } : i)),
+    };
+    const out = formatToday(done, asked);
+    expect(out).toContain("✓ ");
+    expect(out).not.toContain("tell me your weight");
+  });
+
   it("an item with no history asks for the weight, a stale bodyweight is dated", () => {
     const a = advice(
       [

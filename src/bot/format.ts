@@ -208,6 +208,8 @@ function advisedLines(item: SessionItem, n: number, adv: AdviceItem, c: AdvisedC
   const labelCtx: LabelContext = { bodyweightDate: c.advice.bodyweightDate };
   const heavyGroup = heavyGroupFor(item.tags, c.heavy, HEAVY_TAGS);
   const why = heavyGroup ? `heavy ${heavyGroup} Thursday` : "heavy Thursday";
+  // A logged or skipped item has its answer: no "tell me your weight" style hints.
+  const answered = item.status === "done" || item.status === "skipped";
   const perOption = item.options.map((o) => {
     const ex = exerciseBySlug(c.advice, o.slug);
     const sug = ex ? (adv.suggestions[ex.id] ?? null) : null;
@@ -215,7 +217,7 @@ function advisedLines(item: SessionItem, n: number, adv: AdviceItem, c: AdvisedC
       name: o.name,
       sug,
       load: ex && sug ? loadText(ex, sug) : null,
-      notes: suggestionNotes(sug, labelCtx, SESSION_VIEW_LABELS),
+      notes: answered ? [] : suggestionNotes(sug, labelCtx, SESSION_VIEW_LABELS),
     };
   });
   const multi = item.options.length > 1;
