@@ -133,7 +133,7 @@ describe("/skip", () => {
     expect(await rows()).toMatchObject([{ status: "skipped", source: "bot" }]);
     // the echo is its own message; the list is edited in place to the remaining items
     const echo = t.sent().at(-1);
-    expect(echo?.payload.text).toBe("Skipped: Bench press");
+    expect(echo?.payload.text).toBe("Skipped: bench_press");
     expect(t.buttons(echo).map((b) => b.data)).toEqual(["us:u:2000:0"]);
     const refreshed = t.edits().at(-1);
     expect(refreshed?.payload.message_id).toBe(1001);
@@ -145,7 +145,7 @@ describe("/skip", () => {
     await t.tap("us:u:2000:0", 1002);
     expect(await rows()).toEqual([]);
     expect(t.edits().at(-1)?.payload.message_id).toBe(1002);
-    expect(t.edits().at(-1)?.payload.text).toBe("Skip undone: Bench press");
+    expect(t.edits().at(-1)?.payload.text).toBe("Skip undone: bench_press");
     expect(t.answers()).toContain("Skip undone.");
     await t.tap("us:u:2000:0", 1002);
     expect(t.answers().at(-1)).toBe("Nothing to undo.");
@@ -158,7 +158,7 @@ describe("/skip", () => {
     await t.tap(data, 1001, 2100);
     await t.tap(data, 1001, 2100);
     expect(await rows()).toMatchObject([{ status: "skipped" }]);
-    expect(t.sent().at(-1)?.payload.text).toBe("Skipped: Bench press");
+    expect(t.sent().at(-1)?.payload.text).toBe("Skipped: bench_press");
     expect(t.buttons(t.sent().at(-1))[0]?.data).toBe("us:u:2100:0");
   });
 
@@ -180,7 +180,7 @@ describe("/skip", () => {
     const t = setup();
     await t.say("/skip");
     const list = t.sent()[0];
-    expect(t.buttons(list).some((b) => b.text === "⭐ Bench press")).toBe(true);
+    expect(t.buttons(list).some((b) => b.text === "⭐ bench_press")).toBe(true);
 
     await t.tap(`sk:20260928:${await itemId(BENCH)}`, 1001);
     expect(await rows()).toEqual([]);
@@ -198,7 +198,7 @@ describe("/skip", () => {
     expect(await rows()).toMatchObject([{ status: "skipped", source: "bot" }]);
     expect(t.edits().find((e) => e.payload.text === "Skipped ✓")?.payload.message_id).toBe(1002);
     const echo = t.sent().at(-1);
-    expect(echo?.payload.text).toBe("Skipped: Bench press");
+    expect(echo?.payload.text).toBe("Skipped: bench_press");
     expect(t.buttons(echo)[0]?.data).toMatch(/^us:p:\d+:0$/);
   });
 
@@ -225,7 +225,7 @@ describe("/skip", () => {
       turn(text("")),
     ]);
     await t.say("I skipped lateral raises");
-    expect(t.sent()[0]?.payload.text).toBe("Skipped: Lateral raise");
+    expect(t.sent()[0]?.payload.text).toBe("Skipped: lateral_raise");
     expect(t.buttons(t.sent()[0])[0]?.data).toMatch(/^us:u:\d+:0$/);
     expect(await rows()).toMatchObject([{ status: "skipped" }]);
   });
@@ -294,11 +294,11 @@ describe("/skip", () => {
     await t.tap(`sk:20260928:${await itemId(BENCH)}`, 1001, 3100);
     expect(await rows()).toMatchObject([{ status: "skipped" }]);
     const echo = t.sent().at(-1);
-    expect(echo?.payload.text).toBe("Skipped: Bench press");
+    expect(echo?.payload.text).toBe("Skipped: bench_press");
     expect(t.buttons(echo).map((b) => b.data)).toEqual(["us:u:3100:0"]);
     await t.tap("us:u:3100:0", 1002);
     expect(await rows()).toEqual([]);
-    expect(t.sent().at(-1)?.payload.text).toBe("Skip undone: Bench press");
+    expect(t.sent().at(-1)?.payload.text).toBe("Skip undone: bench_press");
   });
 
   it("a second ✅ on an empty skip card keeps 'Nothing skipped'", async () => {
