@@ -25,8 +25,14 @@ export function distinctSessions(panels: Panel[], load: LoadPoint[], reps: RepsP
   return new Set(panels.flatMap((p) => panelPoints(p, load, reps).map((x) => x.date))).size;
 }
 
-export function notEnoughText(name: string, n: number): string {
-  return `Not enough data to chart ${safeName(name)} yet (${n} ${n === 1 ? "session" : "sessions"}).`;
+const sessionsText = (n: number) => `${n} ${n === 1 ? "session" : "sessions"}`;
+
+/** `total` counts every logged session; `n` only those that can be plotted. */
+export function notEnoughText(name: string, n: number, total = n): string {
+  if (total > n) {
+    return `Not enough data to chart ${safeName(name)} yet: ${sessionsText(total)} logged, ${n} with per-set data.`;
+  }
+  return `Not enough data to chart ${safeName(name)} yet (${sessionsText(n)}).`;
 }
 
 export function nothingToChartText(name: string): string {
