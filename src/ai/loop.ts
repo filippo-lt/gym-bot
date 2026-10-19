@@ -145,6 +145,14 @@ function dedupeKey(a: StagedAction): string | null {
       "swap",
       r.from.id,
       r.to.id ?? `new:${r.to.slug}`,
+      r.to.newSpec
+        ? [
+            r.to.newSpec.type,
+            r.to.newSpec.loadBasis,
+            r.to.newSpec.muscleGroup,
+            r.to.newSpec.equipmentSlug,
+          ]
+        : null,
       r.scope,
       r.days,
       r.referenceDate,
@@ -172,7 +180,11 @@ function addStaged(
 ): void {
   const input = JSON.stringify(rawInput);
   const key = dedupeKey(action);
-  if (key !== null && staged.some((s) => dedupeKey(s) === key)) return;
+  if (key !== null && staged.some((s) => dedupeKey(s) === key)) {
+    // The retry still counts as a fix for earlier errors; nothing is added to the card.
+    events.push(stagedEvent(action, turn));
+    return;
+  }
   if (isLogLike(action)) {
     if (staged.some((_s, i) => metas[i]?.turn === turn && metas[i]?.input === input)) return;
     const matches = staged
