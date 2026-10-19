@@ -27,7 +27,7 @@ export function backupSummary(meta: BackupMeta, now: Date, weekly: WeeklyUsage |
   if (weekly) {
     const minutes = Math.round(weekly.sttSeconds / 60);
     lines.push(
-      `This week: ${nf.format(weekly.tokens)} AI tokens, ${nf.format(minutes)} min voice.`,
+      `This week: ${nf.format(Math.round(weekly.tokens))} AI tokens, ${nf.format(minutes)} min voice.`,
     );
     const caps: string[] = [];
     if (weekly.caps.tokens !== null) caps.push(`${nf.format(weekly.caps.tokens)} tokens`);
