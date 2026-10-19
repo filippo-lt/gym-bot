@@ -57,6 +57,7 @@ export interface DayItem {
   options: (Candidate & { id: number })[];
   hasGroup: boolean;
   hspuStepId: number | null;
+  variantLabel: string | null;
   status: string;
 }
 
@@ -108,6 +109,7 @@ export async function loadDayPlan(db: Q, ctx: PlanContext | null, date: string):
     options: r.options.map((o) => ({ id: o.id, slug: o.slug, name: o.name })),
     hasGroup: withGroup.has(r.plannedItemId),
     hspuStepId: r.hspuStepId,
+    variantLabel: r.variantLabel,
     status: statusById.get(r.plannedItemId) ?? "planned",
   }));
   return { date, weekday: day.weekday, week: day.week, phase: day.phase, items };

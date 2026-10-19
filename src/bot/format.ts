@@ -93,7 +93,11 @@ function itemName(item: SessionItem, hspuStepName?: string | null): string {
   return item.swappedFrom ? `${name} (instead of ${item.swappedFrom} today)` : name;
 }
 
-function baseItemName(item: SessionItem, hspuStepName?: string | null): string {
+/** The item name /today shows, without a swap note. Also used by the /skip buttons. */
+export function baseItemName(
+  item: Pick<SessionItem, "options" | "planName" | "variantLabel"> & { hspuStep?: string | null },
+  hspuStepName?: string | null,
+): string {
   const names = item.options.map((o) => o.name);
   if (names.length > 1) {
     return [names[0], ...names.slice(1).map((n) => n.charAt(0).toLowerCase() + n.slice(1))].join(

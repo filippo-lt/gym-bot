@@ -4,6 +4,7 @@
  * imported row keeps its source and Undo can put it back exactly.
  */
 import { and, eq } from "drizzle-orm";
+import { baseItemName } from "../bot/format.js";
 import { writeLedger } from "../db/schema/agent.js";
 import { logGroups, sessionItems } from "../db/schema/log.js";
 import { trainingDate } from "../domain/calendar.js";
@@ -29,6 +30,11 @@ const isOpen = (i: DayItem): boolean => !i.hasGroup && i.status === "planned";
 const toTarget = (i: DayItem): SkipTarget => ({
   plannedItemId: i.info.id,
   planName: i.info.planName,
+  label: baseItemName({
+    options: i.options,
+    planName: i.info.planName,
+    variantLabel: i.variantLabel,
+  }),
   priority: i.info.priority,
 });
 
@@ -65,6 +71,11 @@ export function skipAction(
 // ---------------------------------------------------------------------------
 // Write
 
+const nameFields = (t: SkipTarget) => ({
+  planName: t.planName,
+  ...(t.label ? { label: t.label } : {}),
+});
+
 /** Skips the targets that are still open inside the executor's transaction. */
 export async function writeSkip(tx: Tx, a: SkipAction): Promise<SkipResult> {
   const items: SkipResult["items"] = [];
@@ -98,7 +109,7 @@ export async function writeSkip(tx: Tx, a: SkipAction): Promise<SkipResult> {
         .returning({ id: sessionItems.id });
       // A concurrent writer may have changed the row since the check above.
       if (updated.length === 0) continue;
-      items.push({ plannedItemId: t.plannedItemId, planName: t.planName, before: row });
+      items.push({ plannedItemId: t.plannedItemId, ...nameFields(t), before: row });
       continue;
     }
     const inserted = await tx
@@ -113,7 +124,7 @@ export async function writeSkip(tx: Tx, a: SkipAction): Promise<SkipResult> {
       .onConflictDoNothing()
       .returning({ id: sessionItems.id });
     if (inserted.length > 0) {
-      items.push({ plannedItemId: t.plannedItemId, planName: t.planName, before: null });
+      items.push({ plannedItemId: t.plannedItemId, ...nameFields(t), before: null });
     }
   }
   return { kind: "skip", sessionDate: a.sessionDate, whole: a.whole, items };
@@ -146,7 +157,7 @@ export async function undoSkip(
         eq(sessionItems.status, "skipped"),
       );
       const restored = await restoreSkipped(tx, key, item.before);
-      if (restored) names.push(item.planName);
+      if (restored) names.push(item.label ?? item.planName);
     }
     return names.length > 0 ? { status: "undone", names } : { status: "none" };
   });
