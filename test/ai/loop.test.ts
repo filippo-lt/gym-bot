@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeModel, text, toolUse } from "../../src/ai/fake-model.js";
 import { countUnresolvedErrors, type IntentEvent, runIntent } from "../../src/ai/loop.js";
+import { summarize } from "../../src/bot/log-format.js";
+import { decidePolicy } from "../../src/logging/policy.js";
+import type { ResolvedSwap, SwapExerciseInput } from "../../src/logging/types.js";
 import { fakeBackend, fakeUsage, promptContext, promptStatic } from "./helpers.js";
 
 const base = {
@@ -361,5 +364,77 @@ describe("unresolved tool errors", () => {
       { type: "staged", turn: 2, said: "x", slug: null, kind: "log_sets" },
     ];
     expect(countUnresolvedErrors(events)).toBe(1);
+  });
+
+  describe("repeated swap_exercise calls", () => {
+    const swapInput = (extra: object = {}, from = "Romanian deadlift", to = "good mornings") => ({
+      exercise: { said: from },
+      replacement: { said: to },
+      scope: "today",
+      ...extra,
+    });
+    const resolvedSwap = (fromId: number, toName: string): ResolvedSwap =>
+      ({
+        from: { id: fromId, name: `from ${fromId}` },
+        to: { id: 99, name: toName, slug: toName, isNew: false, newSpec: null },
+        referenceDate: "2026-10-19",
+        scope: "today",
+        days: null,
+        referenceWeekday: "mon",
+        futureWeekdays: [],
+        todayItemIds: [88],
+        loggedOnReference: false,
+        affectedSessions: 0,
+        sessionsByWeekday: {},
+        prescription: "2 × 6",
+      }) as ResolvedSwap;
+    const swapBackend = () => {
+      const backend = fakeBackend();
+      backend.stageSwap = async (i: SwapExerciseInput) => ({
+        ok: true,
+        action: {
+          kind: "swap",
+          input: i,
+          resolved: resolvedSwap(i.exercise.said === "Romanian deadlift" ? 6 : 7, "Good morning"),
+        },
+        preview: "Staged a plan change.",
+      });
+      return backend;
+    };
+
+    it("collapses identical resolved swaps (cosmetic input differences) into one", async () => {
+      const model = createFakeModel([
+        [
+          toolUse("swap_exercise", swapInput({ day: "today" })),
+          toolUse("swap_exercise", swapInput()),
+        ],
+        [toolUse("swap_exercise", swapInput({ day: "today" }))],
+        [text("ok")],
+      ]);
+      const res = await runIntent({ ...base, model, backend: swapBackend(), usage: fakeUsage() });
+      if (res.kind !== "ok") throw new Error("not ok");
+      expect(res.staged).toHaveLength(1);
+      const decision = decidePolicy(res.staged);
+      expect(decision).toMatchObject({ mode: "confirm" });
+      if (decision.mode === "confirm") {
+        expect(decision.reasons).not.toContain("multiple_writes");
+        expect(decision.reasons).toContain("plan_change");
+      }
+      expect(summarize(res.staged).split(";")).toHaveLength(1);
+    });
+
+    it("keeps two different swaps as two lines", async () => {
+      const model = createFakeModel([
+        [
+          toolUse("swap_exercise", swapInput()),
+          toolUse("swap_exercise", swapInput({}, "Squat", "leg press")),
+        ],
+        [text("ok")],
+      ]);
+      const res = await runIntent({ ...base, model, backend: swapBackend(), usage: fakeUsage() });
+      if (res.kind !== "ok") throw new Error("not ok");
+      expect(res.staged).toHaveLength(2);
+      expect(summarize(res.staged).split(";")).toHaveLength(2);
+    });
   });
 });

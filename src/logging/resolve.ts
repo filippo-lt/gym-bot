@@ -777,7 +777,7 @@ export async function stageSwap(db: Q, input: SwapExerciseInput, now: Date): Pro
   return {
     ok: true,
     action: { kind: "swap", input, resolved: r.resolved },
-    preview: `Staged a plan change: swap ${r.resolved.from.name} for ${r.resolved.to.name}. The bot will ask the user to confirm, and which sessions if they did not say. Do not repeat it or any numbers.`,
+    preview: `Staged a plan change: swap ${r.resolved.from.name} for ${r.resolved.to.name}. The bot will ask the user to confirm, and which sessions if they did not say. This is done: do not call swap_exercise again for it, and do not repeat it or any numbers.`,
   };
 }
 

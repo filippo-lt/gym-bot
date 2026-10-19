@@ -135,7 +135,30 @@ interface StagedMeta {
 }
 
 /**
- * Adds a staged action. A log_sets/clarify_exercise from a later turn REPLACES an earlier turn's
+ * Identity of a staged action that must not appear twice on one card, from what code resolved
+ * (not the model's raw input, which differs cosmetically between retries). null = no dedupe.
+ */
+function dedupeKey(a: StagedAction): string | null {
+  if (a.kind === "swap") {
+    const r = a.resolved;
+    return JSON.stringify([
+      "swap",
+      r.from.id,
+      r.to.id ?? `new:${r.to.slug}`,
+      r.scope,
+      r.days,
+      r.referenceDate,
+      r.referenceWeekday,
+    ]);
+  }
+  if (a.kind === "delete_group") return `delete:${a.snapshot.groupId}`;
+  if (a.kind === "save_memory") return `memory:${JSON.stringify(a.input)}`;
+  return null;
+}
+
+/**
+ * Adds a staged action. A swap, removal or memory that repeats an already staged one (same
+ * resolved target) is dropped, in any turn. A log_sets/clarify_exercise from a later turn REPLACES an earlier turn's
  * for the same exercise (the model re-called the tool with a fix), keeping its position. In the
  * same turn an exact duplicate is dropped; different inputs both stay.
  */
@@ -148,6 +171,8 @@ function addStaged(
   rawInput: unknown,
 ): void {
   const input = JSON.stringify(rawInput);
+  const key = dedupeKey(action);
+  if (key !== null && staged.some((s) => dedupeKey(s) === key)) return;
   if (isLogLike(action)) {
     if (staged.some((_s, i) => metas[i]?.turn === turn && metas[i]?.input === input)) return;
     const matches = staged
