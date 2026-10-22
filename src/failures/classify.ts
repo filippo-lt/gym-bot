@@ -154,3 +154,25 @@ export function classify(error: unknown, step: FailureStep = "other"): Failure {
 export function describeFailure(f: Failure): string {
   return `${f.kind} (${f.detail})`;
 }
+
+const REASON_MAX = 300;
+
+/**
+ * Logs only: Anthropic's own `error.type: error.message` from an API error body, or "".
+ * This text comes from Anthropic, not from SQL or user data, so it is safe in console logs.
+ * Never store it in the inbox or show it to the user.
+ */
+export function apiErrorReason(error: unknown): string {
+  const e =
+    prop(error, "name") === "BotError" && prop(error, "error") !== undefined
+      ? prop(error, "error")
+      : error;
+  if (!(e instanceof Anthropic.APIError)) return "";
+  const inner = prop(e.error, "error");
+  const type = prop(inner, "type");
+  const message = prop(inner, "message");
+  return [type, message]
+    .filter((p) => typeof p === "string")
+    .join(": ")
+    .slice(0, REASON_MAX);
+}
