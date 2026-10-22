@@ -30,7 +30,7 @@ describe("readBoard", () => {
     ]);
     const res = await out;
     const req = model.requests[0];
-    expect(req?.tool_choice).toEqual({ type: "tool", name: "record_board" });
+    expect(req?.tool_choice).toEqual({ type: "auto" });
     const content = req?.messages[0]?.content as { type: string }[];
     expect(content.map((b) => b.type)).toEqual(["image", "text"]);
     expect(res.result).toEqual({ kind: "board", moves: [move], heavyGroups: ["legs"] });

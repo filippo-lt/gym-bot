@@ -61,7 +61,8 @@ export async function readBoard(args: {
         input_schema: inputSchema(boardInputSchema),
       },
     ],
-    tool_choice: { type: "tool", name: "record_board" },
+    // Forced tool choice ("tool"/"any") is rejected by current models (400): ask, and treat no call as not_board.
+    tool_choice: { type: "auto" },
     max_tokens: BOARD_MAX_TOKENS,
     signal: args.signal,
   });

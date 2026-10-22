@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { DrizzleQueryError } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { AiTimeoutError } from "../../src/ai/errors.js";
-import { classify, describeFailure } from "../../src/failures/classify.js";
+import { apiErrorReason, classify, describeFailure } from "../../src/failures/classify.js";
 import { SttError } from "../../src/stt/stt.js";
 import { FileTooLargeError } from "../../src/telegram/files.js";
 
@@ -121,5 +121,18 @@ describe("classify", () => {
     expect(classify(dom, "other").kind).toBe("unknown");
     expect(classify(dom).kind).toBe("unknown");
     expect(classify(new Anthropic.APIUserAbortError(), "other").kind).toBe("ai_timeout");
+  });
+});
+
+describe("apiErrorReason", () => {
+  it("reads type and message from the Anthropic error body", () => {
+    const body = { type: "error", error: { type: "invalid_request_error", message: "bad image" } };
+    const e = new Anthropic.APIError(400, body, "x", new Headers());
+    expect(apiErrorReason(e)).toBe("invalid_request_error: bad image");
+    expect(apiErrorReason({ name: "BotError", error: e })).toBe("invalid_request_error: bad image");
+  });
+  it("is empty for anything else", () => {
+    expect(apiErrorReason(api(400))).toBe("");
+    expect(apiErrorReason(new Error("secret text"))).toBe("");
   });
 });
