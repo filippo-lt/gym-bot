@@ -18,7 +18,7 @@ import { logGroups } from "../db/schema/log.js";
 import { exercises, hspuLadder, plannedItems } from "../db/schema/plan.js";
 import type { Db } from "../db/seed-plan.js";
 import { thursdayOnOrBefore, trainingDate } from "../domain/calendar.js";
-import { classify, describeFailure } from "../failures/classify.js";
+import { apiErrorReason, classify, describeFailure } from "../failures/classify.js";
 import { failureText, providerLabel } from "../failures/messages.js";
 import { classBreakdown } from "../logging/class-moves.js";
 import { appendMessage } from "../logging/conversation.js";
@@ -738,7 +738,7 @@ export function createFlow(deps: FlowDeps): Flow {
     } catch (error) {
       // Timeouts and API errors: tell the user once instead of burning the inbox retries.
       const failure = classify(error, "ai");
-      console.error("ai: intent failed", describeFailure(failure));
+      console.error("ai: intent failed", describeFailure(failure), apiErrorReason(error));
       const reply = failureText(failure, source);
       await send(ctx, heard ? { text: heard + esc(reply), keyboard: [] } : reply);
       await appendMessage(db, chatId, "assistant", reply);
@@ -1001,7 +1001,7 @@ export function createFlow(deps: FlowDeps): Flow {
       });
     } catch (error) {
       const failure = classify(error, "vision");
-      console.error("photo: vision failed", describeFailure(failure));
+      console.error("photo: vision failed", describeFailure(failure), apiErrorReason(error));
       await send(ctx, failureText(failure, "photo"));
       return;
     }
